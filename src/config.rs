@@ -205,11 +205,23 @@ impl Config {
                 }
 
                 // dynamic_select must have source
-                if field.field_type == FieldType::DynamicSelect && field.source.is_none() {
-                    errors.push(format!(
-                        "module '{name}', field '{}': dynamic_select requires 'source'",
-                        field.name
-                    ));
+                if field.field_type == FieldType::DynamicSelect {
+                    if field.source.is_none() {
+                        errors.push(format!(
+                            "module '{name}', field '{}': dynamic_select requires 'source'",
+                            field.name
+                        ));
+                    }
+
+                    // source path must not escape the vault via traversal
+                    if let Some(source) = &field.source
+                        && source.contains("..")
+                    {
+                        errors.push(format!(
+                            "module '{name}', field '{}': source path must not contain '..'",
+                            field.name
+                        ));
+                    }
                 }
             }
         }

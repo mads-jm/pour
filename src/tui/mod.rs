@@ -1,0 +1,77 @@
+pub mod dashboard;
+pub mod form;
+pub mod summary;
+
+use crate::app::{App, Screen};
+use ratatui::Frame;
+
+/// Top-level action returned by event handling.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Action {
+    /// No state change needed.
+    None,
+    /// The user wants to quit the application.
+    Quit,
+    /// Submit the current form for writing.
+    Submit,
+    /// Navigate to a different screen.
+    Navigate(Screen),
+}
+
+/// Dispatch rendering to the correct view based on the current screen.
+pub fn render(app: &App, frame: &mut Frame) {
+    match app.screen {
+        Screen::Dashboard => dashboard::render(app, frame),
+        Screen::Form => form::render(app, frame),
+        Screen::Summary => summary::render(app, frame),
+    }
+}
+
+/// Dispatch a key event to the correct handler based on the current screen.
+///
+/// Returns an `Action` that the main loop should act on.
+pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
+    match app.screen {
+        Screen::Dashboard => match dashboard::handle_key(app, key) {
+            dashboard::DashboardAction::Quit => Action::Quit,
+            dashboard::DashboardAction::SelectModule => {
+                let module_key = app.module_keys.get(app.selected_module).cloned();
+                if let Some(key) = module_key {
+                    app.form_state = app.init_form(&key);
+                    app.screen = Screen::Form;
+                }
+                Action::Navigate(Screen::Form)
+            }
+            dashboard::DashboardAction::None => Action::None,
+        },
+
+        Screen::Form => match form::handle_key(app, key) {
+            form::FormAction::Cancel => {
+                app.form_state = None;
+                app.screen = Screen::Dashboard;
+                Action::Navigate(Screen::Dashboard)
+            }
+            form::FormAction::Submit => Action::Submit,
+            form::FormAction::None => Action::None,
+        },
+
+        Screen::Summary => match summary::handle_key(key) {
+            summary::SummaryAction::Quit => Action::Quit,
+            summary::SummaryAction::Dashboard => {
+                app.summary_state = None;
+                app.screen = Screen::Dashboard;
+                Action::Navigate(Screen::Dashboard)
+            }
+            summary::SummaryAction::AnotherEntry => {
+                let module_key = app.module_keys.get(app.selected_module).cloned();
+                if let Some(key) = module_key {
+                    app.form_state = app.init_form(&key);
+                    app.screen = Screen::Form;
+                }
+                app.summary_state = None;
+                Action::Navigate(Screen::Form)
+            }
+            summary::SummaryAction::None => Action::None,
+        },
+    }
+}

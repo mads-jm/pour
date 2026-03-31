@@ -266,6 +266,31 @@ prompt = "Select item"
 }
 
 #[test]
+fn dynamic_select_source_with_path_traversal_fails_validation() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "item"
+field_type = "dynamic_select"
+prompt = "Select item"
+source = "../../etc/secrets"
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("must not contain '..'"),
+        "expected path traversal error, got: {msg}"
+    );
+}
+
+#[test]
 fn invalid_toml_produces_parse_error() {
     let result = Config::from_toml("this is not valid toml {{{{");
     assert!(result.is_err());

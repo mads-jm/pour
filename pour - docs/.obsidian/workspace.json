@@ -215,7 +215,7 @@
               },
               "pinned": true,
               "icon": "terminal",
-              "title": "Terminal: C:\\Windows\\System32\\conhost.exe"
+              "title": "Terminal: cmd"
             }
           }
         ]
