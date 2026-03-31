@@ -6,11 +6,11 @@
     "emojiStyle": "native",
     "iconColor": null,
     "recentlyUsedIcons": [
+      "LiFileText",
+      "LiMapPinned",
       "LiExternalLink",
       "LiGitMerge",
-      "LiClipboardList",
-      "LiUsersRound",
-      "LiSparkles"
+      "LiClipboardList"
     ],
     "recentlyUsedIconsSize": 5,
     "rules": [
@@ -46,10 +46,11 @@
   "02 milestones": "LiMilestone",
   "03 guides": "LiBookOpen",
   "04 architecture": "LiNetwork",
-  "06 reports": "LiAlertCircle",
+  "06 reports": "LiFileText",
   "99 meta": "LiSparkles",
   "07 stories": "LiUsersRound",
   "08 specs": "LiClipboardList",
   "09 PRs": "LiGitMerge",
-  "02 references": "LiExternalLink"
+  "02 references": "LiExternalLink",
+  "09 milestones": "LiMapPinned"
 }

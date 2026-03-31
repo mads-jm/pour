@@ -3,7 +3,7 @@ tags:
   - index
   - architecture
 date created: Tuesday, March 31st 2026, 12:12:35 am
-date modified: Tuesday, March 31st 2026, 5:18:16 am
+date modified: Tuesday, March 31st 2026, 10:34:11 pm
 ---
 
 # Architecture
@@ -19,6 +19,7 @@ date modified: Tuesday, March 31st 2026, 5:18:16 am
 ## Architecture Decision Records
 
 *None yet — ADRs will be added as architectural decisions are made.*
+
 
 
 

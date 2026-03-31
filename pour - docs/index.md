@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, March 31st 2026, 12:12:23 am
-date modified: Tuesday, March 31st 2026, 5:18:15 am
+date modified: Tuesday, March 31st 2026, 10:34:06 pm
 ---
 
 # Pour Documentation
@@ -17,15 +17,23 @@ date modified: Tuesday, March 31st 2026, 5:18:15 am
 
 ---
 
-## Directory Indexes (`00 index/`)
+## Vault Structure
 
 | Directory | Index | Contents |
 |-----------|-------|----------|
+| `00 index/` | `this note` | Root navigation hub for the vault |
+| `01 concepts/` | - | Atomic concept notes and durable project knowledge |
 | `02 references/` | [[REFERENCES]] | Library API references and external docs |
+| `03 guides/` | - | Developer workflow and implementation guides |
 | `04 architecture/` | [[ARCHITECTURE]] | Design spec, ADRs |
-| `05 notes/` | [[NOTES]] | Active development notes |
+| `05 notes/` | [[NOTES]] | Legacy fleeting notes and pre-atomic working notes |
+| `06 reports/` | - | Sprint reports and progress snapshots |
 | `07 stories/` | [[STORIES]] | Vision and manifesto |
 | `08 specs/` | [[SPECS]] | Feature and component specifications |
+| `09 milestones/` | - | Release and milestone summaries |
+| `99 meta/` | - | Templates and vault maintenance material |
+
+`.obsidian/` is vault configuration and snippet state, not part of the documentation corpus.
 
 ---
 
@@ -33,6 +41,8 @@ date modified: Tuesday, March 31st 2026, 5:18:15 am
 
 - __[[pour-design-spec]]__ — Complete design specification (source of truth)
 - __[[the_pour_manifesto]]__ — Why we build Pour
+- __[[System-Architecture-Overview]]__ — Concise subsystem map
+- __[[v1.0.0-Release]]__ — Current release milestone
 
 ---
 
@@ -77,17 +87,5 @@ API query -> disk scan -> `~/.cache/pour/state.json` cache -> freetext input
 
 __Last Updated__: 2026-03-31
 __Documentation Version__: v0.1.0
-
-
-
-
-
-
-
-
-
-
-
-
 
 
