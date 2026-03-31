@@ -91,6 +91,7 @@ cargo fmt -- --check     # check formatting
 ## Documentation
 
 Full documentation lives in [`pour - docs/`](pour%20-%20docs/index.md), an Obsidian vault with interconnected design specs, library references, and the project manifesto.
+Also accessible [in-browser](https://pour.madigan.app)
 
 ## License
 
