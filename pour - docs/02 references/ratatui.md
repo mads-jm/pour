@@ -6,7 +6,7 @@ tags:
 aliases:
   - ratatui
 date created: Tuesday, March 31st 2026, 12:14:35 am
-date modified: Tuesday, March 31st 2026, 12:51:43 am
+date modified: Tuesday, March 31st 2026, 3:25:21 am
 ---
 
 # Ratatui - TUI Framework Reference
@@ -184,4 +184,5 @@ Ratatui doesn't have built-in form widgets. Common patterns:
 2. __Event handler__ routes input to the active field
 3. __Render function__ draws each field with appropriate styling (active vs inactive)
 4. Third-party crates: `tui-textarea`, `tui-input` for text input widgets
+
 

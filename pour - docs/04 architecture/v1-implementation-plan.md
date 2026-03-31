@@ -8,20 +8,20 @@ aliases:
   - v1 plan
   - task backlog
 date created: Monday, March 30th 2026, 12:00:00 am
-date modified: Monday, March 30th 2026, 12:00:00 am
+date modified: Tuesday, March 31st 2026, 3:25:20 am
 ---
 
 # V1 Implementation Plan
 
 ## Guiding Principles
 
-- **Config first, transport second, TUI last** — each layer is testable independently
-- **No task depends on unverified prior work** — the inspector must sign off before dependents start
-- **Atomic tasks** — each can be implemented and tested in isolation
+- __Config first, transport second, TUI last__ — each layer is testable independently
+- __No task depends on unverified prior work__ — the inspector must sign off before dependents start
+- __Atomic tasks__ — each can be implemented and tested in isolation
 
 ## Critical Path
 
-```
+```ts
 Cargo.toml -> Config parsing -> Transport (API + FS) -> Output pipeline -> Data fetching -> TUI (form -> dashboard -> summary) -> CLI routing (main.rs)
 ```
 
@@ -39,4 +39,5 @@ Cargo.toml -> Config parsing -> Transport (API + FS) -> Output pipeline -> Data 
 ## Task Details
 
 See the Project State maintained by the Governor agent for current status of each task.
+
 

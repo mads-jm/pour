@@ -10,7 +10,7 @@
     "postProcess": true,
     "displayProgress": true,
     "inlineHTML": false,
-    "exportPath": "D:\\dev\\mads\\whatnext\\docs",
+    "exportPath": "D:\\dev\\mads\\pour\\docs",
     "filesToExport": [
       "all"
     ],
