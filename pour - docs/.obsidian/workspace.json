@@ -1,0 +1,262 @@
+{
+  "main": {
+    "id": "20972ef946581b30",
+    "type": "split",
+    "children": [
+      {
+        "id": "6a905dd429bbf90a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ee68a755b79db48a",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "index.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "index"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "de1922f784663caa",
+    "type": "split",
+    "children": [
+      {
+        "id": "d0b50fdea88219c5",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "61344c9ff6db58f5",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "0c464ab5aae76e17",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "7a59266bf3c792de",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "01426bfb2ed4acdd",
+    "type": "split",
+    "children": [
+      {
+        "id": "fcb1d4b43c31bc60",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9ecf195dd71bc4ea",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          },
+          {
+            "id": "0432df2be126b337",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "fd84889216c517c8",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "3cacdeda909762aa",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "339890619bb9a6ea",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "c12979c5e1d8c5b5",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      },
+      {
+        "id": "fa7861038d6e1bf6",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "6629666eed5eef8f",
+            "type": "leaf",
+            "pinned": true,
+            "state": {
+              "type": "terminal:terminal",
+              "state": {
+                "terminal:terminal": {
+                  "cwd": "D:\\dev\\mads\\pour\\pour - docs",
+                  "focus": false,
+                  "profile": {
+                    "args": [],
+                    "executable": "C:\\Windows\\System32\\cmd.exe",
+                    "followTheme": true,
+                    "name": "",
+                    "platforms": {
+                      "win32": true
+                    },
+                    "pythonExecutable": "python3",
+                    "restoreHistory": false,
+                    "rightClickAction": "copyPaste",
+                    "successExitCodes": [
+                      "0",
+                      "SIGINT",
+                      "SIGTERM"
+                    ],
+                    "terminalOptions": {
+                      "documentOverride": null
+                    },
+                    "type": "integrated",
+                    "useWin32Conhost": true
+                  },
+                  "serial": null
+                }
+              },
+              "pinned": true,
+              "icon": "terminal",
+              "title": "Terminal: C:\\Windows\\System32\\conhost.exe"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 913.5
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "obsidian-git:Open Git source control": false,
+      "templater-obsidian:Templater": false,
+      "webpage-html-export:Export as HTML": false,
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false,
+      "terminal:Open terminal": false,
+      "workspaces:Manage workspace layouts": false
+    }
+  },
+  "active": "9ecf195dd71bc4ea",
+  "lastOpenFiles": [
+    "index.md",
+    "00 index/REFERENCES.md",
+    "00 index/ARCHITECTURE.md",
+    "00 index/NOTES.md",
+    "00 index/SPECS.md",
+    "99 meta/00 templates/(TEMPLATE) Unique.md",
+    "04 architecture/pour-design-spec.md",
+    "02 references/ratatui.md",
+    "02 references/crossterm.md",
+    "02 references/reqwest.md",
+    "02 references/chrono.md",
+    "02 references/toml-serde.md",
+    "02 references/obsidian-local-rest-api.md",
+    "00 index/STORIES.md",
+    "README.md",
+    "07 stories/the_pour_manifesto.md",
+    "index.md.tmp.18436.1774917365397"
+  ]
+}
