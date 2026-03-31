@@ -241,7 +241,6 @@
   },
   "active": "ee68a755b79db48a",
   "lastOpenFiles": [
-    "99 meta/00 templates/(TEMPLATE) Unique.md",
     "07 stories/the_pour_manifesto.md",
     "README.md",
     "00 index/STORIES.md",
@@ -255,10 +254,12 @@
     "00 index/SPECS.md",
     "00 index/NOTES.md",
     "00 index/REFERENCES.md",
-    "index.md",
     "04 architecture/v1-implementation-plan.md",
     "00 index/ARCHITECTURE.md",
     "05 notes/sprint-1-foundation-report.md",
+    "05 notes/sprint-2-transport-report.md",
+    "index.md",
+    "99 meta/00 templates/(TEMPLATE) Unique.md",
     "index.md.tmp.18436.1774917365397"
   ]
 }

@@ -6,7 +6,7 @@ tags:
 aliases:
   - reqwest
 date created: Tuesday, March 31st 2026, 12:14:41 am
-date modified: Tuesday, March 31st 2026, 3:25:21 am
+date modified: Tuesday, March 31st 2026, 5:18:17 am
 ---
 
 # Reqwest - HTTP Client Reference

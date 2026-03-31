@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Tuesday, March 31st 2026, 3:25:21 am
+date modified: Tuesday, March 31st 2026, 5:18:17 am
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -102,5 +102,7 @@ The following are explicitly __deferred__:
 - Rich validation (min/max, regex)
 - Tag-based dynamic_select sources
 - Plugin/extension system
+
+
 
 
