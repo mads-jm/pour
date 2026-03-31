@@ -91,6 +91,10 @@ async fn run_loop(
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key_event) = event::read()?
         {
+            if !pour::should_handle_key_event(key_event) {
+                continue;
+            }
+
             // Ctrl+C always quits cleanly
             if key_event.modifiers.contains(KeyModifiers::CONTROL)
                 && key_event.code == KeyCode::Char('c')
