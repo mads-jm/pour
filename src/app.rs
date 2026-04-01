@@ -105,10 +105,32 @@ impl App {
     /// Create a new App with the given config and transport.
     ///
     /// Starts on the Dashboard screen with the first module selected.
-    /// Module keys are sorted alphabetically for stable, predictable ordering.
+    /// Module keys are ordered by `module_order` from config if present,
+    /// with any unlisted modules appended alphabetically.
     pub fn new(config: Config, transport: Transport) -> Self {
-        let mut module_keys: Vec<String> = config.modules.keys().cloned().collect();
-        module_keys.sort();
+        let module_keys = match &config.module_order {
+            Some(order) => {
+                let mut keys: Vec<String> = order
+                    .iter()
+                    .filter(|k| config.modules.contains_key(k.as_str()))
+                    .cloned()
+                    .collect();
+                let mut rest: Vec<String> = config
+                    .modules
+                    .keys()
+                    .filter(|k| !order.contains(k))
+                    .cloned()
+                    .collect();
+                rest.sort();
+                keys.extend(rest);
+                keys
+            }
+            None => {
+                let mut keys: Vec<String> = config.modules.keys().cloned().collect();
+                keys.sort();
+                keys
+            }
+        };
 
         App {
             config,

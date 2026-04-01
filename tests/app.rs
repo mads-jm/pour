@@ -61,9 +61,48 @@ fn new_sets_dashboard_screen_and_zero_selection() {
 }
 
 #[test]
-fn module_keys_sorted_alphabetically() {
+fn module_keys_sorted_alphabetically_without_module_order() {
     let app = make_app();
+    // No module_order in sample config, so alphabetical fallback
     assert_eq!(app.module_keys, vec!["coffee", "me"]);
+}
+
+#[test]
+fn module_keys_respect_module_order() {
+    let toml_with_order = r####"
+module_order = ["me", "coffee"]
+
+[vault]
+base_path = "/tmp/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/%Y/%Y-%m-%d-%H%M%S.md"
+display_name = "Coffee"
+
+[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+required = true
+options = ["V60", "AeroPress", "Espresso"]
+
+[modules.me]
+mode = "append"
+path = "Journal/%Y/%Y-%m-%d.md"
+append_under_header = "## Log"
+display_name = "Journal"
+
+[[modules.me.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "What's on your mind?"
+required = true
+"####;
+    let config = Config::from_toml(toml_with_order).expect("config with module_order should parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let app = App::new(config, transport);
+    assert_eq!(app.module_keys, vec!["me", "coffee"]);
 }
 
 #[test]

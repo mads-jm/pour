@@ -9,6 +9,9 @@ use toml_edit::DocumentMut;
 pub struct Config {
     pub vault: VaultConfig,
     pub modules: HashMap<String, ModuleConfig>,
+    /// Optional ordering for dashboard display. Modules not listed appear
+    /// alphabetically after the listed ones.
+    pub module_order: Option<Vec<String>>,
 }
 
 /// Vault connection settings.
