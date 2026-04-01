@@ -372,3 +372,131 @@ prompt = "Title"
     assert_eq!(config.vault.base_path, "/tmp/vault");
     assert!(config.modules.contains_key("test"));
 }
+
+// --- Path validation tests ---
+
+/// Helper: build a minimal config TOML with the given module path.
+fn config_with_module_path(path: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "{path}"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#
+    )
+}
+
+/// Helper: build a minimal config TOML with a dynamic_select source path.
+fn config_with_source_path(source: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "valid/path.md"
+
+[[modules.test.fields]]
+name = "item"
+field_type = "dynamic_select"
+prompt = "Select"
+source = "{source}"
+"#
+    )
+}
+
+#[test]
+fn module_path_rejects_unix_absolute() {
+    let result = Config::from_toml(&config_with_module_path("/etc/passwd"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("vault-relative"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_windows_drive() {
+    let result = Config::from_toml(&config_with_module_path("C:\\\\Users\\\\vault\\\\note.md"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("drive-qualified"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_windows_drive_forward_slash() {
+    let result = Config::from_toml(&config_with_module_path("D:/vault/note.md"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("drive-qualified"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_unc_backslash() {
+    let result = Config::from_toml(&config_with_module_path("\\\\\\\\server\\\\share\\\\note.md"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("UNC"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_unc_forward_slash() {
+    // //server/share starts with '/' so it's caught as absolute — correct behavior
+    let result = Config::from_toml(&config_with_module_path("//server/share/note.md"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("vault-relative"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_traversal() {
+    let result = Config::from_toml(&config_with_module_path("Journal/../../etc/passwd"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("traversal"), "got: {msg}");
+}
+
+#[test]
+fn module_path_rejects_leading_traversal() {
+    let result = Config::from_toml(&config_with_module_path("../outside.md"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("traversal"), "got: {msg}");
+}
+
+#[test]
+fn module_path_accepts_vault_relative() {
+    let result = Config::from_toml(&config_with_module_path("Journal/%Y/%Y-%m-%d.md"));
+    assert!(result.is_ok(), "vault-relative path should be accepted");
+}
+
+#[test]
+fn source_path_rejects_absolute() {
+    let result = Config::from_toml(&config_with_source_path("/etc/secrets"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("vault-relative"), "got: {msg}");
+}
+
+#[test]
+fn source_path_rejects_windows_drive() {
+    let result = Config::from_toml(&config_with_source_path("C:\\\\Data\\\\beans"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("drive-qualified"), "got: {msg}");
+}
+
+#[test]
+fn source_path_rejects_traversal() {
+    let result = Config::from_toml(&config_with_source_path("../../etc/secrets"));
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("traversal"), "got: {msg}");
+}

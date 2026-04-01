@@ -290,9 +290,57 @@ impl Config {
             return Err(e);
         }
 
-        std::fs::write(&path, &new_content).map_err(ConfigError::WriteError)?;
+        // Atomic write: write to a sibling temp file, then rename over the original.
+        // This prevents partial writes from bricking the config on crash.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        std::fs::rename(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
+    }
+
+    /// Check that a path is vault-relative and safe.
+    ///
+    /// Rejects absolute paths (Unix or Windows), drive-qualified paths,
+    /// UNC paths, and paths containing `..` traversal components.
+    fn validate_vault_relative_path(path: &str, label: &str, errors: &mut Vec<String>) {
+        let trimmed = path.trim();
+
+        if trimmed.is_empty() {
+            errors.push(format!("{label}: path must not be empty"));
+            return;
+        }
+
+        // Reject Unix absolute paths
+        if trimmed.starts_with('/') {
+            errors.push(format!("{label}: path must be vault-relative, not absolute"));
+            return;
+        }
+
+        // Reject Windows drive-qualified paths (e.g. C:, C:\, D:/)
+        if trimmed.len() >= 2
+            && trimmed.as_bytes()[0].is_ascii_alphabetic()
+            && trimmed.as_bytes()[1] == b':'
+        {
+            errors.push(format!(
+                "{label}: path must be vault-relative, not drive-qualified"
+            ));
+            return;
+        }
+
+        // Reject UNC paths (\\server\share or //server/share)
+        if trimmed.starts_with("\\\\") || trimmed.starts_with("//") {
+            errors.push(format!("{label}: path must be vault-relative, not a UNC path"));
+            return;
+        }
+
+        // Reject path traversal via '..' in any component
+        for component in trimmed.replace('\\', "/").split('/') {
+            if component == ".." {
+                errors.push(format!("{label}: path must not contain '..' traversal"));
+                return;
+            }
+        }
     }
 
     /// Validate the parsed config against business rules.
@@ -304,6 +352,13 @@ impl Config {
             if module.fields.is_empty() {
                 errors.push(format!("module '{name}': must have at least one field"));
             }
+
+            // Validate module write path is vault-relative
+            Self::validate_vault_relative_path(
+                &module.path,
+                &format!("module '{name}', path"),
+                &mut errors,
+            );
 
             // Append mode requires append_under_header
             if module.mode == WriteMode::Append && module.append_under_header.is_none() {
@@ -341,14 +396,13 @@ impl Config {
                         ));
                     }
 
-                    // source path must not escape the vault via traversal
-                    if let Some(source) = &field.source
-                        && source.contains("..")
-                    {
-                        errors.push(format!(
-                            "module '{name}', field '{}': source path must not contain '..'",
-                            field.name
-                        ));
+                    // source path must be vault-relative and safe
+                    if let Some(source) = &field.source {
+                        Self::validate_vault_relative_path(
+                            source,
+                            &format!("module '{name}', field '{}', source", field.name),
+                            &mut errors,
+                        );
                     }
                 }
             }

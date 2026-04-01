@@ -46,13 +46,13 @@ api_port = 27124
 
 [modules.coffee]
 mode = "create"
-path = "02-Logbook/Beans/%Y-%m-%d_%H%M_{method}.md"
+path = "02-Logbook/Beans/%Y-%m-%d_%H%M.md"
 
 [[modules.coffee.fields]]
 name = "bean"
-type = "dynamic_select"
+field_type = "dynamic_select"
 prompt = "Bean"
-source = "vault://02-Logbook/Beans/"
+source = "02-Logbook/Beans"
 ```
 
 ## Tech Stack
@@ -61,7 +61,7 @@ source = "vault://02-Logbook/Beans/"
 |------|-------|
 | TUI | `ratatui` + `crossterm` |
 | HTTP | `reqwest` + `tokio` |
-| Serialization | `serde` + `toml` + `serde_yaml` + `serde_json` |
+| Serialization | `serde` + `toml` + `toml_edit` + `serde_json` |
 | Time | `chrono` |
 
 ## Architecture
