@@ -36,17 +36,23 @@ pub fn render(app: &App, frame: &mut Frame) {
         ])
         .split(area);
 
-    // Title
+    // Title: "pour <key> — Display Name" to reinforce the CLI command
     let display_name = module
         .display_name
         .as_deref()
         .unwrap_or(module_key.as_str());
-    let title = Paragraph::new(Line::from(vec![Span::styled(
-        format!(" {display_name} "),
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    )]))
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled(
+            format!(" pour {module_key}"),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" — {display_name} "),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]))
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(title, chunks[0]);
 
@@ -68,8 +74,6 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" interact  "),
-            Span::styled("Ctrl+Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(" submit  "),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
             Span::raw(" clear/back"),
         ])
@@ -287,7 +291,7 @@ fn render_select_options(
 ///
 /// Returns a `FormAction` signalling what the wiring layer should do next.
 pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction {
-    use crossterm::event::{KeyCode, KeyModifiers};
+    use crossterm::event::KeyCode;
 
     let module_key = match app.module_keys.get(app.selected_module) {
         Some(k) => k.clone(),
@@ -319,12 +323,6 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     let is_textarea = active_field
         .map(|f| f.field_type == FieldType::Textarea)
         .unwrap_or(false);
-
-    // Ctrl+Enter — submit from anywhere
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Enter {
-        form_state.dropdown_open = false;
-        return FormAction::Submit;
-    }
 
     match key.code {
         // Esc (layered):

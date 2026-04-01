@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
+use super::VaultEntry;
+
 /// Filesystem-based writer for direct vault access.
 ///
 /// Used as a fallback when the Obsidian Local REST API is unavailable.
@@ -208,12 +210,80 @@ impl FsWriter {
         Ok(())
     }
 
+    /// List all entries in a directory with type information.
+    ///
+    /// Returns `.md` files (as stems) and subdirectories, sorted
+    /// directories-first then alphabetically within each group.
+    /// Non-`.md` files are excluded.
+    pub fn list_directory_all(&self, relative_dir_path: &str) -> Result<Vec<VaultEntry>> {
+        // Reject paths that attempt to escape the vault root
+        if relative_dir_path.contains("..") {
+            anyhow::bail!("FS: path must not contain '..'");
+        }
+
+        let full_path = self.resolve_path(relative_dir_path);
+
+        if !full_path.is_dir() {
+            anyhow::bail!("FS: directory not found: {}", full_path.display());
+        }
+
+        let mut entries: Vec<VaultEntry> = Vec::new();
+
+        let dir_entries = std::fs::read_dir(&full_path)
+            .with_context(|| format!("FS: failed to read directory {}", full_path.display()))?;
+
+        for entry in dir_entries {
+            let entry = entry.with_context(|| {
+                format!("FS: failed to read entry in {}", full_path.display())
+            })?;
+
+            let path = entry.path();
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n,
+                None => continue,
+            };
+
+            // Skip hidden entries (dotfiles/dotdirs like .obsidian, .git, .trash)
+            if name.starts_with('.') {
+                continue;
+            }
+
+            if path.is_dir() {
+                entries.push(VaultEntry {
+                    name: name.to_string(),
+                    is_dir: true,
+                });
+            } else if path.is_file()
+                && let Some(ext) = path.extension()
+                && ext == "md"
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                entries.push(VaultEntry {
+                    name: stem.to_string(),
+                    is_dir: false,
+                });
+            }
+        }
+
+        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        });
+
+        Ok(entries)
+    }
+
     /// List `.md` files in a directory, returning their stem names.
     ///
     /// For example, a directory containing `latte.md` and `espresso.md`
     /// would return `["espresso", "latte"]` (sorted alphabetically).
     /// Non-`.md` files and subdirectories are excluded.
     pub fn list_directory(&self, relative_dir_path: &str) -> Result<Vec<String>> {
+        if relative_dir_path.contains("..") {
+            anyhow::bail!("FS: path must not contain '..'");
+        }
+
         let full_path = self.resolve_path(relative_dir_path);
 
         if !full_path.is_dir() {

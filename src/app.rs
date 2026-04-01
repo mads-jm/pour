@@ -1,5 +1,5 @@
-use crate::config::{Config, FieldType, ModuleConfig};
-use crate::transport::{Transport, TransportMode};
+use crate::config::{Config, FieldType, ModuleConfig, WriteMode};
+use crate::transport::{Transport, TransportMode, VaultEntry};
 use std::collections::HashMap;
 
 /// Which screen the TUI is currently displaying.
@@ -8,6 +8,7 @@ pub enum Screen {
     Dashboard,
     Form,
     Summary,
+    Configure,
 }
 
 /// State for the module entry form.
@@ -38,6 +39,50 @@ pub struct SummaryState {
     pub transport_mode: TransportMode,
 }
 
+/// The kind of input widget for a configure setting.
+#[derive(Debug, Clone)]
+pub enum SettingKind {
+    Text,
+    Path,
+    Toggle(Vec<String>),
+}
+
+/// A single editable setting in the configure screen.
+#[derive(Debug, Clone)]
+pub struct ConfigSetting {
+    pub label: String,
+    pub key: String,
+    pub value: String,
+    pub kind: SettingKind,
+}
+
+/// State for the vault directory browser popup.
+#[derive(Debug)]
+pub struct BrowserState {
+    pub current_path: String,
+    pub entries: Vec<VaultEntry>,
+    pub selected: usize,
+    pub loading: bool,
+}
+
+/// State for the module configure screen.
+#[derive(Debug)]
+pub struct ConfigureState {
+    pub module_key: String,
+    pub active_field: usize,
+    pub editing: bool,
+    pub edit_buffer: String,
+    /// Saved value before entering edit mode (used to restore on Esc).
+    pub edit_original: String,
+    pub cursor_position: usize,
+    pub browser_open: bool,
+    pub browser_state: Option<BrowserState>,
+    pub dirty: bool,
+    pub settings: Vec<ConfigSetting>,
+    /// Non-fatal status message to show in the footer (e.g. save errors).
+    pub status_message: Option<String>,
+}
+
 /// Central application state, holding config, transport, and all screen state.
 pub struct App {
     pub config: Config,
@@ -50,6 +95,8 @@ pub struct App {
     pub form_state: Option<FormState>,
     /// Summary state, present when `screen == Screen::Summary`.
     pub summary_state: Option<SummaryState>,
+    /// Configure state, present when `screen == Screen::Configure`.
+    pub configure_state: Option<ConfigureState>,
     /// Sorted module keys for deterministic ordering in the dashboard.
     pub module_keys: Vec<String>,
 }
@@ -70,6 +117,7 @@ impl App {
             selected_module: 0,
             form_state: None,
             summary_state: None,
+            configure_state: None,
             module_keys,
         }
     }
@@ -105,6 +153,64 @@ impl App {
             validation_errors: Vec::new(),
             cursor_position: 0,
             dropdown_open: false,
+        })
+    }
+
+    /// Initialize configure state for the given module key.
+    ///
+    /// Builds a settings list from the module's current config values.
+    /// Returns `None` if the module key is not found in config.
+    pub fn init_configure(&self, module_key: &str) -> Option<ConfigureState> {
+        let module = self.config.modules.get(module_key)?;
+
+        let mode_str = match module.mode {
+            WriteMode::Append => "append".to_string(),
+            WriteMode::Create => "create".to_string(),
+        };
+
+        let mut settings = vec![
+            ConfigSetting {
+                label: "Path".to_string(),
+                key: "path".to_string(),
+                value: module.path.clone(),
+                kind: SettingKind::Path,
+            },
+            ConfigSetting {
+                label: "Display Name".to_string(),
+                key: "display_name".to_string(),
+                value: module.display_name.clone().unwrap_or_default(),
+                kind: SettingKind::Text,
+            },
+            ConfigSetting {
+                label: "Mode".to_string(),
+                key: "mode".to_string(),
+                value: mode_str.clone(),
+                kind: SettingKind::Toggle(vec!["append".to_string(), "create".to_string()]),
+            },
+        ];
+
+        // Only show append_under_header when mode is append
+        if mode_str == "append" {
+            settings.push(ConfigSetting {
+                label: "Append Header".to_string(),
+                key: "append_under_header".to_string(),
+                value: module.append_under_header.clone().unwrap_or_default(),
+                kind: SettingKind::Text,
+            });
+        }
+
+        Some(ConfigureState {
+            module_key: module_key.to_string(),
+            active_field: 0,
+            editing: false,
+            edit_buffer: String::new(),
+            edit_original: String::new(),
+            cursor_position: 0,
+            browser_open: false,
+            browser_state: None,
+            dirty: false,
+            settings,
+            status_message: None,
         })
     }
 

@@ -7,6 +7,15 @@ use anyhow::Result;
 use api::ApiClient;
 use fs::FsWriter;
 
+/// A single entry returned by directory listing — either a file or a subdirectory.
+#[derive(Debug, Clone)]
+pub struct VaultEntry {
+    /// Display name: stem for `.md` files, bare name for directories.
+    pub name: String,
+    /// `true` if this entry is a subdirectory.
+    pub is_dir: bool,
+}
+
 /// Which transport backend is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportMode {
@@ -95,6 +104,17 @@ impl Transport {
         match self {
             Transport::Api(client) => client.list_directory(vault_dir_path).await,
             Transport::Fs(writer) => writer.list_directory(vault_dir_path),
+        }
+    }
+
+    /// List directory entries with type information (file vs directory).
+    ///
+    /// Returns entries sorted directories-first, then alphabetically within each group.
+    /// For files, only `.md` files are included and names are returned without extension.
+    pub async fn list_directory_entries(&self, vault_dir_path: &str) -> Result<Vec<VaultEntry>> {
+        match self {
+            Transport::Api(client) => client.list_directory_entries(vault_dir_path).await,
+            Transport::Fs(writer) => writer.list_directory_all(vault_dir_path),
         }
     }
 }

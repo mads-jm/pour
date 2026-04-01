@@ -38,5 +38,6 @@ pub fn render_append_template(template: &str, fields: &HashMap<String, String>) 
         result = result.replace(&placeholder, value);
     }
 
-    result
+    // Evaluate any strftime specifiers (e.g. %H:%M, %Y-%m-%d) left in the template.
+    now.format(&result).to_string()
 }

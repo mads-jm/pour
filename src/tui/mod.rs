@@ -1,3 +1,4 @@
+pub mod configure;
 pub mod dashboard;
 pub mod form;
 pub mod summary;
@@ -16,6 +17,10 @@ pub enum Action {
     Submit,
     /// Navigate to a different screen.
     Navigate(Screen),
+    /// Save the current configure state to disk.
+    Save,
+    /// Fetch a directory listing for the given vault-relative path.
+    Browse(String),
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -24,6 +29,7 @@ pub fn render(app: &App, frame: &mut Frame) {
         Screen::Dashboard => dashboard::render(app, frame),
         Screen::Form => form::render(app, frame),
         Screen::Summary => summary::render(app, frame),
+        Screen::Configure => configure::render(app, frame),
     }
 }
 
@@ -41,6 +47,16 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                     app.screen = Screen::Form;
                 }
                 Action::Navigate(Screen::Form)
+            }
+            dashboard::DashboardAction::ConfigureModule => {
+                let module_key = app.module_keys.get(app.selected_module).cloned();
+                if let Some(key) = module_key {
+                    app.configure_state = app.init_configure(&key);
+                    app.screen = Screen::Configure;
+                    Action::Navigate(Screen::Configure)
+                } else {
+                    Action::None
+                }
             }
             dashboard::DashboardAction::None => Action::None,
         },
@@ -72,6 +88,17 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 Action::Navigate(Screen::Form)
             }
             summary::SummaryAction::None => Action::None,
+        },
+
+        Screen::Configure => match configure::handle_key(app, key) {
+            configure::ConfigureAction::Cancel => {
+                app.configure_state = None;
+                app.screen = Screen::Dashboard;
+                Action::Navigate(Screen::Dashboard)
+            }
+            configure::ConfigureAction::Save => Action::Save,
+            configure::ConfigureAction::BrowseDirectory(path) => Action::Browse(path),
+            configure::ConfigureAction::None => Action::None,
         },
     }
 }

@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 
+use super::VaultEntry;
+
 /// HTTP client for the Obsidian Local REST API.
 ///
 /// Communicates over HTTPS with a self-signed certificate.
@@ -13,9 +15,33 @@ pub struct ApiClient {
 }
 
 /// JSON shape returned by `GET /vault/{dir}/`.
+///
+/// The Obsidian REST API may return either an array of plain strings
+/// or an array of objects with a `path` field. Both are normalised
+/// into `Vec<String>` via `DirectoryEntry`.
 #[derive(Deserialize)]
 struct DirectoryListing {
-    files: Vec<String>,
+    files: Vec<DirectoryEntry>,
+}
+
+/// A single entry in a directory listing.
+///
+/// Handles both `"filename.md"` (plain string) and `{"path": "filename.md"}`
+/// (object with path field) response shapes.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DirectoryEntry {
+    Plain(String),
+    Object { path: String },
+}
+
+impl DirectoryEntry {
+    fn into_path(self) -> String {
+        match self {
+            DirectoryEntry::Plain(s) => s,
+            DirectoryEntry::Object { path } => path,
+        }
+    }
 }
 
 impl ApiClient {
@@ -122,6 +148,73 @@ impl ApiClient {
     /// Returns the raw file list from the API (includes `.md` files and
     /// subdirectory names ending in `/`).
     pub async fn list_directory(&self, vault_dir_path: &str) -> Result<Vec<String>> {
+        let listing = self.fetch_directory_listing(vault_dir_path).await?;
+        Ok(listing
+            .files
+            .into_iter()
+            .map(DirectoryEntry::into_path)
+            .collect())
+    }
+
+    /// List directory entries with type information.
+    ///
+    /// Sends a GET to `/vault/{vault_dir_path}/`. Entries ending in `/` are
+    /// treated as directories. Returns entries sorted directories-first, then
+    /// alphabetically within each group. File names are returned without their
+    /// `.md` extension; non-`.md` files are excluded.
+    pub async fn list_directory_entries(&self, vault_dir_path: &str) -> Result<Vec<VaultEntry>> {
+        let listing = self.fetch_directory_listing(vault_dir_path).await?;
+
+        let mut entries: Vec<VaultEntry> = listing
+            .files
+            .into_iter()
+            .filter_map(|entry| {
+                let raw = entry.into_path();
+                if raw.ends_with('/') {
+                    // Directory: strip trailing slash, use bare name component
+                    let name = raw
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&raw)
+                        .to_string();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(VaultEntry { name, is_dir: true })
+                } else {
+                    // File: only include .md files, strip extension
+                    let stem = if let Some(s) = raw.rsplit('/').next() {
+                        s
+                    } else {
+                        &raw
+                    };
+                    if !stem.ends_with(".md") {
+                        return None;
+                    }
+                    let name = stem.strip_suffix(".md").unwrap_or(stem).to_string();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(VaultEntry {
+                        name,
+                        is_dir: false,
+                    })
+                }
+            })
+            .collect();
+
+        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        });
+
+        Ok(entries)
+    }
+
+    /// Shared helper: fetch and deserialise a directory listing from the API.
+    async fn fetch_directory_listing(&self, vault_dir_path: &str) -> Result<DirectoryListing> {
         let url = format!("{}/vault/{}/", self.base_url, vault_dir_path);
 
         let resp = self
@@ -138,11 +231,8 @@ impl ApiClient {
             anyhow::bail!("API list_directory failed ({}): {}", status, body);
         }
 
-        let listing: DirectoryListing = resp
-            .json()
+        resp.json()
             .await
-            .context("API: failed to parse directory listing JSON")?;
-
-        Ok(listing.files)
+            .context("API: failed to parse directory listing JSON")
     }
 }

@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
+use toml_edit::DocumentMut;
 
 /// Top-level configuration, deserialized from `config.toml`.
 #[derive(Debug, Deserialize)]
@@ -78,6 +79,22 @@ pub enum FieldTarget {
     Body,
 }
 
+/// Partial updates to apply to an existing module in the config file.
+///
+/// Each field is an `Option`; `None` means "leave unchanged".
+/// For optional string fields (`display_name`, `append_under_header`),
+/// `Some(None)` means "remove the key from the config".
+pub struct ModuleUpdates {
+    /// New vault-relative path for the module's output file.
+    pub path: Option<String>,
+    /// New display name. `Some(None)` removes the key.
+    pub display_name: Option<Option<String>>,
+    /// New write mode (`append` or `create`).
+    pub mode: Option<WriteMode>,
+    /// New append-under-header value. `Some(None)` removes the key.
+    pub append_under_header: Option<Option<String>>,
+}
+
 /// Errors that can occur when loading or validating configuration.
 #[derive(Debug)]
 pub enum ConfigError {
@@ -89,6 +106,12 @@ pub enum ConfigError {
     ParseError(toml::de::Error),
     /// One or more validation rules were violated.
     ValidationError(Vec<String>),
+    /// The named module key was not found in the config.
+    ModuleNotFound(String),
+    /// Failed to write the updated config back to disk.
+    WriteError(std::io::Error),
+    /// The config document could not be parsed by the structure-preserving editor.
+    EditParseError(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -109,6 +132,13 @@ impl fmt::Display for ConfigError {
                     writeln!(f, "  - {e}")?;
                 }
                 Ok(())
+            }
+            ConfigError::ModuleNotFound(key) => {
+                write!(f, "module '{key}' not found in config")
+            }
+            ConfigError::WriteError(err) => write!(f, "failed to write config: {err}"),
+            ConfigError::EditParseError(msg) => {
+                write!(f, "failed to parse config for editing: {msg}")
             }
         }
     }
@@ -181,6 +211,85 @@ impl Config {
         } else {
             Err(ConfigError::NotFound(path))
         }
+    }
+
+    /// Update a module's scalar fields in-place on disk, preserving comments and formatting.
+    ///
+    /// Uses `toml_edit` so that comments, whitespace, and unrelated keys are
+    /// left untouched. After writing, the result is re-parsed via `from_toml`
+    /// to validate the new state. If validation fails, the original file
+    /// content is restored before returning the error.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if the resulting config is invalid
+    /// (the original file is restored in this case).
+    pub fn update_module_on_disk(
+        module_key: &str,
+        updates: &ModuleUpdates,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original =
+            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Navigate to doc["modules"][module_key] — error if absent.
+        let module = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
+
+        if let Some(ref path_val) = updates.path {
+            module["path"] = toml_edit::value(path_val.as_str());
+        }
+
+        if let Some(ref display_name_update) = updates.display_name {
+            match display_name_update {
+                Some(v) => {
+                    module["display_name"] = toml_edit::value(v.as_str());
+                }
+                None => {
+                    module.remove("display_name");
+                }
+            }
+        }
+
+        if let Some(ref mode_update) = updates.mode {
+            let mode_str = match mode_update {
+                WriteMode::Append => "append",
+                WriteMode::Create => "create",
+            };
+            module["mode"] = toml_edit::value(mode_str);
+        }
+
+        if let Some(ref header_update) = updates.append_under_header {
+            match header_update {
+                Some(v) => {
+                    module["append_under_header"] = toml_edit::value(v.as_str());
+                }
+                None => {
+                    module.remove("append_under_header");
+                }
+            }
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing — never touch the file if the result is invalid.
+        if let Err(e) = Self::from_toml(&new_content) {
+            return Err(e);
+        }
+
+        std::fs::write(&path, &new_content).map_err(ConfigError::WriteError)?;
+
+        Ok(())
     }
 
     /// Validate the parsed config against business rules.
