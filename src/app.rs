@@ -26,6 +26,8 @@ pub struct FormState {
     pub cursor_position: usize,
     /// Whether the dropdown for the current select field is open.
     pub dropdown_open: bool,
+    /// Whether the textarea editor overlay is open.
+    pub textarea_open: bool,
 }
 
 /// State for the post-write summary screen.
@@ -175,6 +177,7 @@ impl App {
             validation_errors: Vec::new(),
             cursor_position: 0,
             dropdown_open: false,
+            textarea_open: false,
         })
     }
 

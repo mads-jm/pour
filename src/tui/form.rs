@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
 use crate::app::{App, FormState};
@@ -124,16 +124,25 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                     }
                 }
                 FieldType::Textarea => {
-                    if value.is_empty() {
+                    let label = if value.is_empty() {
                         "<enter text>".to_string()
                     } else {
-                        // Show first line with ellipsis if multiline
+                        let line_count = value.lines().count();
                         let first_line = value.lines().next().unwrap_or("");
-                        if value.contains('\n') {
-                            format!("{first_line}...")
+                        if line_count > 1 {
+                            format!("{first_line} [{line_count} lines]")
                         } else {
                             first_line.to_string()
                         }
+                    };
+                    if is_active {
+                        if form_state.textarea_open {
+                            format!("{label} [^]")
+                        } else {
+                            format!("{label} [v]")
+                        }
+                    } else {
+                        label
                     }
                 }
                 _ => {
@@ -155,7 +164,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                 " "
             };
 
-            let indicator = if is_active { ">" } else { " " };
+            let indicator = if is_active { "▸" } else { " " };
 
             let line = Line::from(vec![
                 Span::styled(format!("{indicator} "), prompt_style),
@@ -185,13 +194,13 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     } else {
         Style::default().fg(Color::DarkGray)
     };
-    let submit_indicator = if submit_active { ">" } else { " " };
+    let submit_indicator = if submit_active { "▸" } else { " " };
     items.push(ListItem::new(Line::from(vec![
         Span::raw(""),
     ])));
     items.push(ListItem::new(Line::from(vec![
         Span::styled(
-            format!("{submit_indicator} [ submit ]"),
+            format!("{submit_indicator} [ pour ]"),
             submit_style,
         ),
     ])));
@@ -204,7 +213,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         if let Some(field) = fields.get(form_state.active_field) {
             let is_text_input = matches!(
                 field.field_type,
-                FieldType::Text | FieldType::Textarea | FieldType::Number
+                FieldType::Text | FieldType::Number
             );
             if is_text_input {
                 // prefix: "> " (2) + prompt + required_marker (1) + ": " (2)
@@ -227,6 +236,15 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
             )
         {
             render_select_options(frame, area, field, form_state);
+        }
+    }
+
+    // If active field is a textarea AND the editor is open, render the text editor overlay
+    if form_state.textarea_open {
+        if let Some(field) = fields.get(form_state.active_field)
+            && field.field_type == FieldType::Textarea
+        {
+            render_textarea_editor(frame, area, field, form_state);
         }
     }
 }
@@ -273,7 +291,7 @@ fn render_select_options(
             } else {
                 Style::default().fg(Color::White)
             };
-            let marker = if is_selected { "> " } else { "  " };
+            let marker = if is_selected { "▸ " } else { "  " };
             ListItem::new(Line::from(Span::styled(format!("{marker}{opt}"), style)))
         })
         .collect();
@@ -284,7 +302,71 @@ fn render_select_options(
             .title(" Options ")
             .border_style(Style::default().fg(Color::Yellow)),
     );
+    frame.render_widget(Clear, options_area);
     frame.render_widget(list, options_area);
+}
+
+/// Render a bordered text editor overlay for textarea fields.
+fn render_textarea_editor(
+    frame: &mut Frame,
+    area: Rect,
+    field: &FieldConfig,
+    form_state: &FormState,
+) {
+    let value = form_state
+        .field_values
+        .get(&field.name)
+        .map(|s| s.as_str())
+        .unwrap_or("");
+
+    let lines: Vec<Line> = if value.is_empty() {
+        vec![Line::from("")]
+    } else {
+        value.lines().map(|l| Line::from(l.to_string())).collect()
+    };
+
+    // Position below the active field row, fill available space
+    let y_offset = (form_state.active_field as u16 + 1).min(area.height.saturating_sub(1));
+    let editor_area = Rect {
+        x: area.x + 4,
+        y: area.y + y_offset,
+        width: area.width.saturating_sub(8).min(60),
+        height: area.height.saturating_sub(y_offset).min(10).max(4),
+    };
+
+    if editor_area.height < 3 {
+        return;
+    }
+
+    let editor = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" {} ", field.prompt))
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+    frame.render_widget(Clear, editor_area);
+    frame.render_widget(editor, editor_area);
+
+    // Place cursor inside the editor overlay
+    // Find the line and column from the flat cursor_position
+    let mut remaining = form_state.cursor_position;
+    let mut cursor_line: u16 = 0;
+    let mut cursor_col: u16 = 0;
+    for line in value.split('\n') {
+        if remaining <= line.len() {
+            cursor_col = remaining as u16;
+            break;
+        }
+        remaining -= line.len() + 1; // +1 for the newline
+        cursor_line += 1;
+    }
+
+    // +1 for border
+    let cx = editor_area.x + 1 + cursor_col;
+    let cy = editor_area.y + 1 + cursor_line;
+    if cx < editor_area.x + editor_area.width - 1 && cy < editor_area.y + editor_area.height - 1 {
+        frame.set_cursor_position(Position::new(cx, cy));
+    }
 }
 
 /// Handle a key event while in Form view.
@@ -326,12 +408,15 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
     match key.code {
         // Esc (layered):
-        //   1. dropdown open → close it
+        //   1. overlay open (dropdown/textarea) → close it
         //   2. current field has content → clear it
         //   3. field already empty → cancel form (back to dashboard)
         KeyCode::Esc => {
             if form_state.dropdown_open {
                 form_state.dropdown_open = false;
+                FormAction::None
+            } else if form_state.textarea_open {
+                form_state.textarea_open = false;
                 FormAction::None
             } else if let Some(field) = active_field {
                 let value = form_state
@@ -350,17 +435,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             }
         }
 
-        // Tab: always move forward one field, close dropdown if open
+        // Tab: always move forward one field, close overlays
         KeyCode::Tab => {
             form_state.dropdown_open = false;
+            form_state.textarea_open = false;
             form_state.active_field = (form_state.active_field + 1) % navigable_count;
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
 
-        // Shift+Tab: always move backward one field, close dropdown if open
+        // Shift+Tab: always move backward one field, close overlays
         KeyCode::BackTab => {
             form_state.dropdown_open = false;
+            form_state.textarea_open = false;
             form_state.active_field = if form_state.active_field == 0 {
                 navigable_count - 1
             } else {
@@ -376,8 +463,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 if let Some(field) = active_field {
                     cycle_select(form_state, &field.name, -1);
                 }
+            } else if is_textarea && form_state.textarea_open {
+                // Move cursor up one line inside the editor
+                if let Some(field) = active_field {
+                    let value = form_state
+                        .field_values
+                        .get(&field.name)
+                        .map(|s| s.as_str())
+                        .unwrap_or("");
+                    form_state.cursor_position = move_cursor_vertically(value, form_state.cursor_position, -1);
+                }
             } else {
                 form_state.dropdown_open = false;
+                form_state.textarea_open = false;
                 form_state.active_field = if form_state.active_field == 0 {
                     navigable_count - 1
                 } else {
@@ -394,8 +492,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 if let Some(field) = active_field {
                     cycle_select(form_state, &field.name, 1);
                 }
+            } else if is_textarea && form_state.textarea_open {
+                // Move cursor down one line inside the editor
+                if let Some(field) = active_field {
+                    let value = form_state
+                        .field_values
+                        .get(&field.name)
+                        .map(|s| s.as_str())
+                        .unwrap_or("");
+                    form_state.cursor_position = move_cursor_vertically(value, form_state.cursor_position, 1);
+                }
             } else {
                 form_state.dropdown_open = false;
+                form_state.textarea_open = false;
                 form_state.active_field = (form_state.active_field + 1) % navigable_count;
                 form_state.cursor_position = current_value_len(form_state, module);
             }
@@ -404,8 +513,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
         // Enter:
         //   - submit button: submit the form
-        //   - select field: toggle dropdown open/closed (closing confirms selection)
-        //   - textarea: insert a newline at cursor
+        //   - select field: toggle dropdown open/closed
+        //   - textarea closed: toggle editor open
+        //   - textarea open: insert a newline at cursor
         //   - text/number: advance to next field
         KeyCode::Enter => {
             if on_submit_button {
@@ -414,14 +524,21 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state.dropdown_open = !form_state.dropdown_open;
                 FormAction::None
             } else if is_textarea {
-                if let Some(field) = active_field {
-                    let value = form_state
-                        .field_values
-                        .entry(field.name.clone())
-                        .or_default();
-                    let pos = form_state.cursor_position.min(value.len());
-                    value.insert(pos, '\n');
-                    form_state.cursor_position = pos + 1;
+                if form_state.textarea_open {
+                    // Insert newline inside the editor
+                    if let Some(field) = active_field {
+                        let value = form_state
+                            .field_values
+                            .entry(field.name.clone())
+                            .or_default();
+                        let pos = form_state.cursor_position.min(value.len());
+                        value.insert(pos, '\n');
+                        form_state.cursor_position = pos + 1;
+                    }
+                } else {
+                    // Open the editor overlay
+                    form_state.textarea_open = true;
+                    form_state.cursor_position = current_value_len(form_state, module);
                 }
                 FormAction::None
             } else {
@@ -433,7 +550,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Char(c) => {
-            if on_submit_button || is_select {
+            if on_submit_button || is_select || (is_textarea && !form_state.textarea_open) {
                 return FormAction::None;
             }
             if let Some(field) = active_field {
@@ -459,7 +576,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Backspace => {
-            if on_submit_button || is_select {
+            if on_submit_button || is_select || (is_textarea && !form_state.textarea_open) {
                 return FormAction::None;
             }
             if let Some(field) = active_field {
@@ -547,4 +664,33 @@ fn current_value_len(form_state: &FormState, module: &crate::config::ModuleConfi
         .and_then(|f| form_state.field_values.get(&f.name))
         .map(|v| v.len())
         .unwrap_or(0)
+}
+
+/// Move a flat cursor position up or down by one line within multiline text.
+fn move_cursor_vertically(text: &str, cursor: usize, delta: i32) -> usize {
+    // Find which line and column the cursor is on
+    let mut line_start = 0;
+    let mut current_line = 0;
+    let mut col = cursor;
+    for (i, line) in text.split('\n').enumerate() {
+        if cursor <= line_start + line.len() {
+            current_line = i;
+            col = cursor - line_start;
+            break;
+        }
+        line_start += line.len() + 1;
+    }
+
+    let target_line = (current_line as i32 + delta).max(0) as usize;
+
+    // Walk to the target line and clamp column
+    let mut pos = 0;
+    for (i, line) in text.split('\n').enumerate() {
+        if i == target_line {
+            return pos + col.min(line.len());
+        }
+        pos += line.len() + 1;
+    }
+    // Past end — clamp to end of text
+    text.len()
 }

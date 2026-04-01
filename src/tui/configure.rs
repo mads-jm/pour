@@ -123,7 +123,7 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
                 Style::default().fg(Color::DarkGray)
             };
 
-            let indicator = if is_active { ">" } else { " " };
+            let indicator = if is_active { "▸" } else { " " };
 
             // When editing this field, show the edit buffer instead of the stored value
             let value_display = if is_active && state.editing {
@@ -225,7 +225,7 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             } else {
                 Style::default().fg(Color::White)
             };
-            let ind = if is_sel { "> " } else { "  " };
+            let ind = if is_sel { "▸ " } else { "  " };
             v.push(ListItem::new(Line::from(Span::styled(
                 format!("{ind}.."),
                 style,
@@ -244,7 +244,7 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             } else {
                 Style::default().fg(Color::White)
             };
-            let ind = if is_sel { "> " } else { "  " };
+            let ind = if is_sel { "▸ " } else { "  " };
             v.push(ListItem::new(Line::from(Span::styled(
                 format!("{ind}{name}/"),
                 style,

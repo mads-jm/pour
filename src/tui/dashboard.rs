@@ -68,7 +68,7 @@ pub fn render(app: &App, frame: &mut Frame) {
                     Style::default().fg(Color::White)
                 };
 
-                let indicator = if is_selected { "> " } else { "  " };
+                let indicator = if is_selected { "▸ " } else { "  " };
 
                 // Pad key tag to align display names: "[me]     " vs "[coffee]  "
                 let padded_tag = format!("[{key}]{:pad$}", "", pad = max_key_len - key.len() + 1);
