@@ -6,7 +6,13 @@ use std::collections::HashMap;
 /// For example, `"Journal/%Y/%Y-%m-%d.md"` becomes
 /// `"Journal/2026/2026-03-30.md"` when run on 2026-03-30.
 pub fn render_path(template: &str) -> String {
-    Local::now().format(template).to_string()
+    // Normalize to forward slashes so the API transport receives a consistent
+    // vault-relative path, and PathBuf::join on Windows can handle it cleanly
+    // when the fs transport joins against a backslash-style base path.
+    Local::now()
+        .format(template)
+        .to_string()
+        .replace('\\', "/")
 }
 
 /// Render an append-mode template by replacing `{{field}}` placeholders

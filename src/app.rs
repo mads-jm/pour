@@ -23,6 +23,8 @@ pub struct FormState {
     pub validation_errors: Vec<String>,
     /// Cursor position within the active text/number input.
     pub cursor_position: usize,
+    /// Whether the dropdown for the current select field is open.
+    pub dropdown_open: bool,
 }
 
 /// State for the post-write summary screen.
@@ -102,6 +104,7 @@ impl App {
             active_field: 0,
             validation_errors: Vec::new(),
             cursor_position: 0,
+            dropdown_open: false,
         })
     }
 

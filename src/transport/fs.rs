@@ -20,12 +20,25 @@ impl FsWriter {
         &self.base_path
     }
 
+    /// Resolve a vault-relative path string against the base path.
+    ///
+    /// Normalizes mixed separators: converts all `\` and `/` components
+    /// through `PathBuf` so that a forward-slash relative path joins
+    /// correctly against a backslash-style Windows base path.
+    fn resolve_path(&self, relative_path: &str) -> PathBuf {
+        // Replace backslashes with forward slashes so Path::join treats the
+        // entire string as a sequence of components rather than a single
+        // opaque segment. PathBuf handles the rest on every platform.
+        let normalized = relative_path.replace('\\', "/");
+        self.base_path.join(normalized)
+    }
+
     /// Create a new file at `relative_path` with the given content.
     ///
     /// Parent directories are created automatically.
     /// Returns an error if the file already exists.
     pub fn create_file(&self, relative_path: &str, content: &str) -> Result<()> {
-        let full_path = self.base_path.join(relative_path);
+        let full_path = self.resolve_path(relative_path);
 
         if full_path.exists() {
             anyhow::bail!("FS: file already exists: {}", full_path.display());
@@ -49,7 +62,7 @@ impl FsWriter {
     pub fn append_to_file(&self, relative_path: &str, content: &str) -> Result<()> {
         use std::io::Write;
 
-        let full_path = self.base_path.join(relative_path);
+        let full_path = self.resolve_path(relative_path);
 
         if !full_path.exists() {
             anyhow::bail!("FS: file not found: {}", full_path.display());
@@ -90,7 +103,7 @@ impl FsWriter {
         heading: &str,
         content: &str,
     ) -> Result<()> {
-        let full_path = self.base_path.join(relative_path);
+        let full_path = self.resolve_path(relative_path);
 
         if !full_path.exists() {
             anyhow::bail!("FS: file not found: {}", full_path.display());
@@ -201,7 +214,7 @@ impl FsWriter {
     /// would return `["espresso", "latte"]` (sorted alphabetically).
     /// Non-`.md` files and subdirectories are excluded.
     pub fn list_directory(&self, relative_dir_path: &str) -> Result<Vec<String>> {
-        let full_path = self.base_path.join(relative_dir_path);
+        let full_path = self.resolve_path(relative_dir_path);
 
         if !full_path.is_dir() {
             anyhow::bail!("FS: directory not found: {}", full_path.display());

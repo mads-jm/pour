@@ -95,7 +95,11 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConfigError::NotFound(path) => {
-                write!(f, "config file not found: {}", path.display())
+                write!(
+                    f,
+                    "config file not found: {}\n      run 'pour init' to create one",
+                    path.display()
+                )
             }
             ConfigError::ReadError(err) => write!(f, "failed to read config: {err}"),
             ConfigError::ParseError(err) => write!(f, "failed to parse config: {err}"),
@@ -144,6 +148,18 @@ impl Config {
         config.validate()?;
 
         Ok(config)
+    }
+
+    /// Return the expected config file path without checking if it exists.
+    /// Respects `POUR_CONFIG` env var, otherwise uses the platform config dir.
+    pub(crate) fn default_config_path() -> PathBuf {
+        if let Ok(env_path) = std::env::var("POUR_CONFIG") {
+            return PathBuf::from(env_path);
+        }
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from(".config"))
+            .join("pour")
+            .join("config.toml")
     }
 
     /// Determine the config file path, checking `POUR_CONFIG` env var first.

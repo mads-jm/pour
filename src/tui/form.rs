@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -62,23 +62,27 @@ pub fn render(app: &App, frame: &mut Frame) {
         ))
     } else {
         Line::from(vec![
-            Span::styled(" Tab", Style::default().fg(Color::Yellow)),
-            Span::raw(" next  "),
-            Span::styled("Shift+Tab", Style::default().fg(Color::Yellow)),
-            Span::raw(" prev  "),
+            Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
+            Span::raw("/"),
+            Span::styled("Tab", Style::default().fg(Color::Yellow)),
+            Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" interact  "),
+            Span::styled("Ctrl+Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" submit  "),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" cancel"),
+            Span::raw(" clear/back"),
         ])
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
 }
 
-/// Render the vertical list of form fields.
+/// Render the vertical list of form fields plus a submit button row.
 fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState) {
-    let items: Vec<ListItem> = fields
+    let submit_active = form_state.active_field == fields.len();
+
+    let mut items: Vec<ListItem> = fields
         .iter()
         .enumerate()
         .map(|(i, field)| {
@@ -99,10 +103,20 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
             let value_display = match &field.field_type {
                 FieldType::StaticSelect | FieldType::DynamicSelect => {
-                    if value.is_empty() {
+                    let label = if value.is_empty() {
                         "<select>".to_string()
                     } else {
                         value.to_string()
+                    };
+                    // Show open/closed chevron when the field is active
+                    if is_active {
+                        if form_state.dropdown_open {
+                            format!("{label} [^]")
+                        } else {
+                            format!("{label} [v]")
+                        }
+                    } else {
+                        label
                     }
                 }
                 FieldType::Textarea => {
@@ -119,11 +133,12 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                     }
                 }
                 _ => {
-                    if is_active {
-                        // Show cursor indicator
-                        format!("{value}_")
-                    } else if value.is_empty() {
-                        "<empty>".to_string()
+                    if value.is_empty() {
+                        if is_active {
+                            " ".to_string() // space so the cursor has something to land on
+                        } else {
+                            "<empty>".to_string()
+                        }
                     } else {
                         value.to_string()
                     }
@@ -158,17 +173,57 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         })
         .collect();
 
+    // Submit button row
+    let submit_style = if submit_active {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let submit_indicator = if submit_active { ">" } else { " " };
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw(""),
+    ])));
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled(
+            format!("{submit_indicator} [ Submit ]"),
+            submit_style,
+        ),
+    ])));
+
     let list = List::new(items).block(Block::default().borders(Borders::NONE));
     frame.render_widget(list, area);
 
-    // If active field is a select type, render the options popup below
-    if let Some(field) = fields.get(form_state.active_field)
-        && matches!(
-            field.field_type,
-            FieldType::StaticSelect | FieldType::DynamicSelect
-        )
-    {
-        render_select_options(frame, area, field, form_state);
+    // Place the terminal block cursor for text/textarea/number fields
+    if !submit_active {
+        if let Some(field) = fields.get(form_state.active_field) {
+            let is_text_input = matches!(
+                field.field_type,
+                FieldType::Text | FieldType::Textarea | FieldType::Number
+            );
+            if is_text_input {
+                // prefix: "> " (2) + prompt + required_marker (1) + ": " (2)
+                let prefix_len = 2 + field.prompt.len() + 1 + 2;
+                let cursor_x = area.x + prefix_len as u16 + form_state.cursor_position as u16;
+                let cursor_y = area.y + form_state.active_field as u16;
+                if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
+                    frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+                }
+            }
+        }
+    }
+
+    // If active field is a select type AND the dropdown is open, render the options popup below
+    if form_state.dropdown_open {
+        if let Some(field) = fields.get(form_state.active_field)
+            && matches!(
+                field.field_type,
+                FieldType::StaticSelect | FieldType::DynamicSelect
+            )
+        {
+            render_select_options(frame, area, field, form_state);
+        }
     }
 }
 
@@ -230,9 +285,9 @@ fn render_select_options(
 
 /// Handle a key event while in Form view.
 ///
-/// Returns `true` if the key was consumed, `false` otherwise.
+/// Returns a `FormAction` signalling what the wiring layer should do next.
 pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction {
-    use crossterm::event::KeyCode;
+    use crossterm::event::{KeyCode, KeyModifiers};
 
     let module_key = match app.module_keys.get(app.selected_module) {
         Some(k) => k.clone(),
@@ -242,13 +297,16 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         Some(m) => m,
         None => return FormAction::None,
     };
-    let field_count = module.fields.len();
+    let real_field_count = module.fields.len();
+    // +1 for the virtual submit button at the end
+    let navigable_count = real_field_count + 1;
 
     let form_state = match &mut app.form_state {
         Some(fs) => fs,
         None => return FormAction::None,
     };
 
+    let on_submit_button = form_state.active_field == real_field_count;
     let active_field = module.fields.get(form_state.active_field);
     let is_select = active_field
         .map(|f| {
@@ -258,22 +316,72 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             )
         })
         .unwrap_or(false);
+    let is_textarea = active_field
+        .map(|f| f.field_type == FieldType::Textarea)
+        .unwrap_or(false);
+
+    // Ctrl+Enter — submit from anywhere
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Enter {
+        form_state.dropdown_open = false;
+        return FormAction::Submit;
+    }
 
     match key.code {
-        KeyCode::Esc => FormAction::Cancel,
-
-        KeyCode::Tab => {
-            if field_count > 0 {
-                form_state.active_field = (form_state.active_field + 1) % field_count;
-                form_state.cursor_position = current_value_len(form_state, module);
+        // Esc (layered):
+        //   1. dropdown open → close it
+        //   2. current field has content → clear it
+        //   3. field already empty → cancel form (back to dashboard)
+        KeyCode::Esc => {
+            if form_state.dropdown_open {
+                form_state.dropdown_open = false;
+                FormAction::None
+            } else if let Some(field) = active_field {
+                let value = form_state
+                    .field_values
+                    .entry(field.name.clone())
+                    .or_default();
+                if !value.is_empty() {
+                    value.clear();
+                    form_state.cursor_position = 0;
+                    FormAction::None
+                } else {
+                    FormAction::Cancel
+                }
+            } else {
+                FormAction::Cancel
             }
+        }
+
+        // Tab: always move forward one field, close dropdown if open
+        KeyCode::Tab => {
+            form_state.dropdown_open = false;
+            form_state.active_field = (form_state.active_field + 1) % navigable_count;
+            form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
 
+        // Shift+Tab: always move backward one field, close dropdown if open
         KeyCode::BackTab => {
-            if field_count > 0 {
+            form_state.dropdown_open = false;
+            form_state.active_field = if form_state.active_field == 0 {
+                navigable_count - 1
+            } else {
+                form_state.active_field - 1
+            };
+            form_state.cursor_position = current_value_len(form_state, module);
+            FormAction::None
+        }
+
+        // Up: cycle options when dropdown is open; navigate to previous field otherwise
+        KeyCode::Up => {
+            if is_select && form_state.dropdown_open {
+                if let Some(field) = active_field {
+                    cycle_select(form_state, &field.name, -1);
+                }
+            } else {
+                form_state.dropdown_open = false;
                 form_state.active_field = if form_state.active_field == 0 {
-                    field_count - 1
+                    navigable_count - 1
                 } else {
                     form_state.active_field - 1
                 };
@@ -282,36 +390,57 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             FormAction::None
         }
 
+        // Down: cycle options when dropdown is open; navigate to next field otherwise
+        KeyCode::Down => {
+            if is_select && form_state.dropdown_open {
+                if let Some(field) = active_field {
+                    cycle_select(form_state, &field.name, 1);
+                }
+            } else {
+                form_state.dropdown_open = false;
+                form_state.active_field = (form_state.active_field + 1) % navigable_count;
+                form_state.cursor_position = current_value_len(form_state, module);
+            }
+            FormAction::None
+        }
+
+        // Enter:
+        //   - submit button: submit the form
+        //   - select field: toggle dropdown open/closed (closing confirms selection)
+        //   - textarea: insert a newline at cursor
+        //   - text/number: advance to next field
         KeyCode::Enter => {
-            if is_select {
-                // For selects, Enter confirms the current selection — cycle to next field
-                if field_count > 0 {
-                    form_state.active_field = (form_state.active_field + 1) % field_count;
-                    form_state.cursor_position = current_value_len(form_state, module);
+            if on_submit_button {
+                FormAction::Submit
+            } else if is_select {
+                form_state.dropdown_open = !form_state.dropdown_open;
+                FormAction::None
+            } else if is_textarea {
+                if let Some(field) = active_field {
+                    let value = form_state
+                        .field_values
+                        .entry(field.name.clone())
+                        .or_default();
+                    let pos = form_state.cursor_position.min(value.len());
+                    value.insert(pos, '\n');
+                    form_state.cursor_position = pos + 1;
                 }
                 FormAction::None
             } else {
-                FormAction::Submit
+                // text / number fields: advance to next field (like Tab)
+                form_state.active_field = (form_state.active_field + 1) % navigable_count;
+                form_state.cursor_position = current_value_len(form_state, module);
+                FormAction::None
             }
-        }
-
-        KeyCode::Up if is_select => {
-            if let Some(field) = active_field {
-                cycle_select(form_state, &field.name, -1);
-            }
-            FormAction::None
-        }
-
-        KeyCode::Down if is_select => {
-            if let Some(field) = active_field {
-                cycle_select(form_state, &field.name, 1);
-            }
-            FormAction::None
         }
 
         KeyCode::Char(c) => {
+            if on_submit_button || is_select {
+                return FormAction::None;
+            }
             if let Some(field) = active_field {
-                // For number fields, only allow digits and decimal point
+
+                // For number fields, only allow digits, decimal point, and leading minus
                 if field.field_type == FieldType::Number
                     && !c.is_ascii_digit()
                     && c != '.'
@@ -332,7 +461,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Backspace => {
+            if on_submit_button || is_select {
+                return FormAction::None;
+            }
             if let Some(field) = active_field {
+
                 let value = form_state
                     .field_values
                     .entry(field.name.clone())

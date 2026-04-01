@@ -14,6 +14,19 @@ use pour::tui;
 async fn main() {
     // Parse CLI args: `pour` = dashboard, `pour <module>` = fast path
     let args: Vec<String> = std::env::args().collect();
+
+    // Handle `pour init` before config loading
+    if args.get(1).map(|s| s.as_str()) == Some("init") {
+        let force = args.iter().any(|a| a == "--force");
+        match pour::init::run(pour::init::InitOptions { force }) {
+            Ok(_) => process::exit(0),
+            Err(e) => {
+                eprintln!("pour init: {e}");
+                process::exit(1);
+            }
+        }
+    }
+
     let fast_path_module = args.get(1).cloned();
 
     // Load config — exit with user-friendly error on failure
