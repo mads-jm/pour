@@ -35,9 +35,9 @@ pub fn render(app: &App, frame: &mut Frame) {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
     let header_text = if summary.file_path.is_some() {
-        " Success "
+        " ▽ saved "
     } else {
-        " Error "
+        " ! error "
     };
     let header = Paragraph::new(Line::from(Span::styled(header_text, header_style)))
         .block(Block::default().borders(Borders::BOTTOM));
@@ -55,14 +55,14 @@ pub fn render(app: &App, frame: &mut Frame) {
     if let Some(path) = &summary.file_path {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-            Span::styled("  File: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  path: ", Style::default().fg(Color::DarkGray)),
             Span::styled(path.clone(), Style::default().fg(Color::Cyan)),
         ]));
     }
 
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
-        Span::styled("  Transport: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("  transport: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             format!("{}", summary.transport_mode),
             Style::default().fg(Color::Yellow),

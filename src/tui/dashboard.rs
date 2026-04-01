@@ -25,7 +25,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     let mode = app.transport.mode();
     let header = Paragraph::new(Line::from(vec![
         Span::styled(
-            " Pour ",
+            " ▽ pour ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -39,7 +39,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Module list (or empty message)
     if app.module_keys.is_empty() {
         let empty_msg = Paragraph::new(Line::from(Span::styled(
-            " No modules configured. Add modules to your config.toml.",
+            " no modules configured. add modules to config.toml.",
             Style::default().fg(Color::DarkGray),
         )));
         frame.render_widget(empty_msg, chunks[1]);

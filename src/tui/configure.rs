@@ -37,16 +37,9 @@ pub fn render(app: &App, frame: &mut Frame) {
         .split(area);
 
     // Header
-    let display_name = app
-        .config
-        .modules
-        .get(&state.module_key)
-        .and_then(|m| m.display_name.as_deref())
-        .unwrap_or(state.module_key.as_str());
-
     let header = Paragraph::new(Line::from(vec![
         Span::styled(
-            format!(" Configure: {} — {} ", state.module_key, display_name),
+            format!(" ▽ configure {} ", state.module_key),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -199,7 +192,7 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         None => {
             // Browser open but state not yet populated — show loading
             let loading = Paragraph::new(Line::from(Span::styled(
-                " Loading...",
+                " loading...",
                 Style::default().fg(Color::DarkGray),
             )));
             frame.render_widget(loading, area);
@@ -268,7 +261,7 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         v
     };
 
-    let title = format!(" Browsing: {} ", browser.current_path);
+    let title = format!(" browse: {} ", browser.current_path);
     let list = List::new(items)
         .block(
             Block::default()

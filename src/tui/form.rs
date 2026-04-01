@@ -43,7 +43,7 @@ pub fn render(app: &App, frame: &mut Frame) {
         .unwrap_or(module_key.as_str());
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
-            format!(" pour {module_key}"),
+            format!(" ▽ pour {module_key}"),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -191,7 +191,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     ])));
     items.push(ListItem::new(Line::from(vec![
         Span::styled(
-            format!("{submit_indicator} [ Submit ]"),
+            format!("{submit_indicator} [ submit ]"),
             submit_style,
         ),
     ])));
