@@ -9,82 +9,7 @@ pub struct InitOptions {
     pub force: bool,
 }
 
-const DEFAULT_CONFIG_TEMPLATE: &str = r####"# Pour — config.toml
-# https://github.com/mads-jm/pour
-#
-# This file defines your Obsidian vault connection and capture modules.
-# Each [modules.<name>] block becomes a `pour <name>` command.
-#
-# Edit this file to add new modules or customize existing ones.
-
-# ─── Vault Connection ───────────────────────────────────────────────
-[vault]
-# Absolute path to your Obsidian vault root directory
-base_path = "{{vault_path}}"
-
-# Obsidian Local REST API (optional — Pour falls back to direct filesystem writes)
-# api_port = 27124
-# api_key = "your-api-key"  # or set POUR_API_KEY env var
-
-# ─── Modules ────────────────────────────────────────────────────────
-# Each module defines a capture form. Two modes:
-#   "append" — adds content under a heading in an existing note
-#   "create" — generates a new note file per entry
-#
-# Path supports strftime tokens: %Y, %m, %d, %H, %M, %S
-# Field types: text, textarea, number, static_select, dynamic_select
-
-# ── Journal / Thought Capture ───────────────────────────────────────
-# Usage: `pour me`
-# Appends timestamped thoughts to your daily note.
-[modules.me]
-mode = "append"
-path = "Journal/%Y/%Y-%m-%d.md"
-append_under_header = "## Log"
-append_template = "> [!note] {{time}}\n> {{body}}"
-display_name = "Journal"
-
-[[modules.me.fields]]
-name = "body"
-field_type = "textarea"
-prompt = "What's on your mind?"
-required = true
-target = "body"
-
-# ── Coffee Brew Log ─────────────────────────────────────────────────
-# Usage: `pour coffee`
-# Creates a new note for each brew with YAML frontmatter.
-[modules.coffee]
-mode = "create"
-path = "Coffee/%Y/%Y-%m-%d-%H%M%S.md"
-display_name = "Coffee"
-
-[[modules.coffee.fields]]
-name = "brew_method"
-field_type = "static_select"
-prompt = "Brew method"
-required = true
-options = ["V60", "AeroPress", "Espresso", "French Press"]
-target = "frontmatter"
-
-[[modules.coffee.fields]]
-name = "bean"
-field_type = "dynamic_select"
-prompt = "Bean"
-source = "Coffee/Beans"
-
-[[modules.coffee.fields]]
-name = "rating"
-field_type = "number"
-prompt = "Rating (1-5)"
-default = "3"
-
-[[modules.coffee.fields]]
-name = "notes"
-field_type = "textarea"
-prompt = "Tasting notes"
-target = "body"
-"####;
+const DEFAULT_CONFIG_TEMPLATE: &str = include_str!("../resources/default_config.toml");
 
 /// Escape a string for use inside a TOML basic string (double-quoted).
 /// Handles all characters that TOML requires escaping: \, ", \n, \t, \r,
@@ -112,7 +37,7 @@ fn escape_toml_string(s: &str) -> String {
 /// All TOML basic-string special characters in the path are escaped.
 pub fn generate_config(vault_path: &str) -> String {
     let escaped = escape_toml_string(vault_path);
-    DEFAULT_CONFIG_TEMPLATE.replace("{{vault_path}}", &escaped)
+    DEFAULT_CONFIG_TEMPLATE.replace("VAULT_PATH_PLACEHOLDER", &escaped)
 }
 
 /// Run the init flow: detect/prompt vault, write config, validate.

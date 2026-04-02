@@ -1,0 +1,12 @@
+
+
+# Build / dist
+/target
+/target*
+
+# AI - Manual stage what you want to share
+/.claude
+/.codex
+
+# local / temp docs
+/notes
