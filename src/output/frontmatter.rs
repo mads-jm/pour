@@ -1,3 +1,5 @@
+use crate::config::{SubFieldConfig, SubFieldType};
+use crate::output::FrontmatterComposite;
 use chrono::Local;
 
 /// Characters that require a YAML value to be quoted.
@@ -9,7 +11,7 @@ const YAML_SPECIAL: &[char] = &[
 /// Characters that only require quoting when they appear at the start of a value.
 const YAML_SPECIAL_START: &[char] = &['-'];
 
-/// Generate YAML frontmatter from a list of key-value pairs.
+/// Generate YAML frontmatter from scalar key-value pairs and composite fields.
 ///
 /// Rules:
 /// - Empty values are skipped.
@@ -17,7 +19,11 @@ const YAML_SPECIAL_START: &[char] = &['-'];
 ///   present, and is always placed first.
 /// - Values containing YAML-special characters are double-quoted.
 /// - Comma-separated values (e.g. `"a, b, c"`) are emitted as a YAML list.
-pub fn generate_frontmatter(fields: &[(String, String)]) -> String {
+/// - Composite fields are emitted as YAML sequence-of-mappings.
+pub fn generate_frontmatter(
+    fields: &[(String, String)],
+    composites: &[FrontmatterComposite<'_>],
+) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     // Check whether the caller already supplied a date field.
@@ -56,10 +62,18 @@ pub fn generate_frontmatter(fields: &[(String, String)]) -> String {
         }
     }
 
+    // Composite fields → YAML sequence-of-mappings
+    for (key, sub_fields, rows) in composites {
+        if rows.is_empty() {
+            continue;
+        }
+        lines.push(format!("{key}:"));
+        for row in rows {
+            format_composite_row(sub_fields, row, &mut lines);
+        }
+    }
+
     if lines.is_empty() {
-        // Even with no fields we still get the date injected, so this is
-        // only reachable if something very unexpected happens. Return empty
-        // frontmatter block anyway.
         return String::from("---\n---\n");
     }
 
@@ -70,6 +84,37 @@ pub fn generate_frontmatter(fields: &[(String, String)]) -> String {
     }
     out.push_str("---\n");
     out
+}
+
+/// Format a single composite row as YAML sequence item with mappings.
+///
+/// The first sub-field gets `  - key: val`, subsequent get `    key: val`.
+fn format_composite_row(sub_fields: &[SubFieldConfig], row: &[String], lines: &mut Vec<String>) {
+    for (i, sub) in sub_fields.iter().enumerate() {
+        let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
+        if cell.is_empty() {
+            continue;
+        }
+
+        let formatted = if sub.field_type == SubFieldType::Number {
+            // Emit numbers unquoted if they parse cleanly
+            if cell.trim().parse::<f64>().is_ok() {
+                cell.trim().to_string()
+            } else {
+                format_scalar(cell)
+            }
+        } else {
+            format_scalar(cell)
+        };
+
+        if i == 0 || lines.last().is_none_or(|l| !l.starts_with("  - ") && !l.starts_with("    ")) {
+            // First field in row: sequence item prefix
+            lines.push(format!("  - {}: {formatted}", sub.name));
+        } else {
+            // Continuation fields: indented mapping
+            lines.push(format!("    {}: {formatted}", sub.name));
+        }
+    }
 }
 
 /// Format a single scalar value, quoting if necessary.

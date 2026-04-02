@@ -1,10 +1,13 @@
 pub mod frontmatter;
 pub mod template;
 
-use crate::config::{FieldTarget, FieldType, ModuleConfig, WriteMode};
+use crate::config::{FieldTarget, FieldType, ModuleConfig, SubFieldConfig, WriteMode};
 use crate::transport::Transport;
 use anyhow::{Result, bail};
 use std::collections::HashMap;
+
+/// Composite field data: field_name → rows of cell values.
+pub type CompositeData = HashMap<String, Vec<Vec<String>>>;
 
 /// Execute a **create** write: generate a new Markdown file with YAML
 /// frontmatter and an optional body, then write it via the transport.
@@ -14,14 +17,16 @@ pub async fn write_create(
     transport: &Transport,
     module: &ModuleConfig,
     field_values: &HashMap<String, String>,
+    composite_data: &CompositeData,
+    date_format: Option<&str>,
 ) -> Result<String> {
     if module.mode != WriteMode::Create {
         bail!("write_create called on a non-create module");
     }
 
-    let (fm_fields, body_parts) = partition_fields(module, field_values);
+    let (fm_fields, fm_composites, body_parts) = partition_fields(module, field_values, composite_data);
 
-    let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields);
+    let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
 
     let body = body_parts.join("\n\n");
 
@@ -32,7 +37,23 @@ pub async fn write_create(
         content.push('\n');
     }
 
-    let vault_path = template::render_path(&module.path);
+    let mut vault_path = template::render_path(&module.path, field_values, date_format);
+
+    // If the resolved path has no file extension, treat it as a directory
+    // and auto-generate a timestamped filename for uniqueness.
+    if !vault_path.contains('.') {
+        let now = chrono::Local::now();
+        let date_fmt = date_format.unwrap_or("%Y%m%d");
+        let date_str = now.format(date_fmt).to_string();
+        let time_str = now.format("%H-%M-%S").to_string();
+        vault_path = format!(
+            "{}/{} {}.md",
+            vault_path.trim_end_matches('/'),
+            date_str,
+            time_str
+        );
+    }
+
     transport.create_file(&vault_path, &content).await?;
 
     Ok(vault_path)
@@ -46,6 +67,8 @@ pub async fn write_append(
     transport: &Transport,
     module: &ModuleConfig,
     field_values: &HashMap<String, String>,
+    composite_data: &CompositeData,
+    date_format: Option<&str>,
 ) -> Result<String> {
     if module.mode != WriteMode::Append {
         bail!("write_append called on a non-append module");
@@ -54,15 +77,15 @@ pub async fn write_append(
     let heading = module.append_under_header.as_deref().unwrap_or("## Log");
 
     let content = match &module.append_template {
-        Some(tmpl) => template::render_append_template(tmpl, field_values),
+        Some(tmpl) => template::render_append_template(tmpl, field_values, module, composite_data),
         None => {
             // Fallback: join all body-target fields with newlines.
-            let (_, body_parts) = partition_fields(module, field_values);
+            let (_, _, body_parts) = partition_fields(module, field_values, composite_data);
             body_parts.join("\n")
         }
     };
 
-    let vault_path = template::render_path(&module.path);
+    let vault_path = template::render_path(&module.path, field_values, date_format);
     transport
         .append_under_heading(&vault_path, heading, &content)
         .await?;
@@ -70,20 +93,56 @@ pub async fn write_append(
     Ok(vault_path)
 }
 
-/// Partition field values into frontmatter pairs and body strings.
+/// A composite field destined for frontmatter: name, sub-field configs, and row data.
+pub type FrontmatterComposite<'a> = (String, &'a [SubFieldConfig], Vec<Vec<String>>);
+
+/// Partition field values into frontmatter pairs, composite frontmatter, and body strings.
 ///
 /// Routing rules:
 /// - If the field config has an explicit `target`, use it.
 /// - Otherwise, `textarea` defaults to body; everything else defaults to
 ///   frontmatter.
-fn partition_fields(
-    module: &ModuleConfig,
+/// - `composite_array` fields default to frontmatter.
+fn partition_fields<'a>(
+    module: &'a ModuleConfig,
     field_values: &HashMap<String, String>,
-) -> (Vec<(String, String)>, Vec<String>) {
+    composite_data: &CompositeData,
+) -> (Vec<(String, String)>, Vec<FrontmatterComposite<'a>>, Vec<String>) {
     let mut fm_fields: Vec<(String, String)> = Vec::new();
+    let mut fm_composites: Vec<FrontmatterComposite<'a>> = Vec::new();
     let mut body_parts: Vec<String> = Vec::new();
 
     for field_cfg in &module.fields {
+        // Composite array fields
+        if field_cfg.field_type == FieldType::CompositeArray {
+            if let (Some(subs), Some(rows)) = (&field_cfg.sub_fields, composite_data.get(&field_cfg.name)) {
+                // Strip empty rows
+                let non_empty: Vec<Vec<String>> = rows
+                    .iter()
+                    .filter(|row| row.iter().any(|cell| !cell.trim().is_empty()))
+                    .cloned()
+                    .collect();
+
+                if !non_empty.is_empty() {
+                    // composite_array defaults to frontmatter
+                    let target = field_cfg.target.as_ref().cloned().unwrap_or(FieldTarget::Frontmatter);
+                    match target {
+                        FieldTarget::Frontmatter => {
+                            fm_composites.push((field_cfg.name.clone(), subs, non_empty));
+                        }
+                        FieldTarget::Body => {
+                            // Render as markdown table for body target
+                            let table = render_composite_table(subs, &non_empty);
+                            if !table.is_empty() {
+                                body_parts.push(table);
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
         let value = match field_values.get(&field_cfg.name) {
             Some(v) => v.clone(),
             None => continue,
@@ -109,5 +168,52 @@ fn partition_fields(
         }
     }
 
-    (fm_fields, body_parts)
+    (fm_fields, fm_composites, body_parts)
+}
+
+/// Render composite rows as a markdown table.
+pub fn render_composite_table(sub_fields: &[SubFieldConfig], rows: &[Vec<String>]) -> String {
+    if rows.is_empty() || sub_fields.is_empty() {
+        return String::new();
+    }
+
+    let headers: Vec<&str> = sub_fields.iter().map(|s| s.prompt.as_str()).collect();
+
+    // Calculate column widths (minimum: header length)
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+    }
+
+    let mut out = String::new();
+
+    // Header row
+    out.push('|');
+    for (i, header) in headers.iter().enumerate() {
+        out.push_str(&format!(" {:width$} |", header, width = widths[i]));
+    }
+    out.push('\n');
+
+    // Separator row
+    out.push('|');
+    for width in &widths {
+        out.push_str(&format!("-{}-|", "-".repeat(*width)));
+    }
+    out.push('\n');
+
+    // Data rows
+    for row in rows {
+        out.push('|');
+        for (i, width) in widths.iter().enumerate() {
+            let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
+            out.push_str(&format!(" {:width$} |", cell, width = width));
+        }
+        out.push('\n');
+    }
+
+    out.trim_end().to_string()
 }
