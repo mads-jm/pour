@@ -1,9 +1,9 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Position},
+    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 
 use crate::app::{App, ConfigSetting, ConfigureLevel, ConfigureState, PendingConfirm, SettingKind};
@@ -53,6 +53,140 @@ fn sync_scroll_offset(state: &mut ConfigureState, term_cols: u16) {
     }
 }
 
+/// Preview a path template by expanding only date/time tokens and strftime
+/// specifiers, leaving `{{field}}` placeholders visible so the user can see
+/// which parts are dynamic.
+fn preview_path_template(template: &str, date_format: Option<&str>) -> String {
+    let now = chrono::Local::now();
+    let mut result = template.to_string();
+    let date_fmt = date_format.unwrap_or("%Y%m%d");
+    result = result.replace("{{date}}", &now.format(date_fmt).to_string());
+    result = result.replace("{{time}}", &now.format("%H:%M").to_string());
+    // Temporarily replace {{…}} placeholders so strftime doesn't mangle them.
+    let mut placeholders: Vec<String> = Vec::new();
+    while let Some(start) = result.find("{{") {
+        if let Some(end) = result[start..].find("}}") {
+            let token = result[start..start + end + 2].to_string();
+            let marker = format!("\x00PH{}\x00", placeholders.len());
+            result = result.replacen(&token, &marker, 1);
+            placeholders.push(token);
+        } else {
+            break;
+        }
+    }
+    // Use write! to catch fmt::Error from invalid partial strftime specifiers
+    // (e.g. a trailing `%` mid-edit). Fall back to the un-expanded string.
+    use std::fmt::Write;
+    let mut buf = String::new();
+    match write!(buf, "{}", now.format(&result)) {
+        Ok(()) => result = buf,
+        Err(_) => {} // leave result as-is with unexpanded specifiers
+    }
+    // Restore {{…}} placeholders.
+    for (i, token) in placeholders.iter().enumerate() {
+        let marker = format!("\x00PH{}\x00", i);
+        result = result.replace(&marker, token);
+    }
+    result
+}
+
+/// Return a centered `Rect` of the given width and height within `area`.
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect {
+        x,
+        y,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    }
+}
+
+/// Render the path placeholder help overlay.
+fn render_path_help_overlay(app: &App, frame: &mut Frame, area: Rect) {
+    let state = match &app.configure_state {
+        Some(s) => s,
+        None => return,
+    };
+
+    let key_style = Style::default().fg(Color::Yellow);
+    let desc_style = Style::default().fg(Color::White);
+    let dim = Style::default().fg(Color::DarkGray);
+    let section = Style::default().fg(Color::Cyan);
+
+    let mut lines: Vec<Line> = vec![Line::from("")];
+
+    // Module-specific field placeholders first (most contextual).
+    let fields: Vec<_> = app
+        .config
+        .modules
+        .get(&state.module_key)
+        .map(|m| m.fields.iter().collect())
+        .unwrap_or_default();
+
+    if !fields.is_empty() {
+        lines.push(Line::from(Span::styled("  Fields", section)));
+        for f in &fields {
+            let placeholder = format!("  {{{{{}}}}}  ", f.name);
+            let padded = format!("{:14}", placeholder);
+            lines.push(Line::from(vec![
+                Span::styled(padded, key_style),
+                Span::styled(&f.prompt, desc_style),
+            ]));
+        }
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled("  Tokens", section)));
+    lines.push(Line::from(vec![
+        Span::styled("  {{date}}    ", key_style),
+        Span::styled("current date (vault format)", desc_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  {{time}}    ", key_style),
+        Span::styled("current time HH:MM", desc_style),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("  Strftime", section)));
+    lines.push(Line::from(vec![
+        Span::styled("  %Y %m %d   ", key_style),
+        Span::styled("year / month / day", desc_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  %H %M      ", key_style),
+        Span::styled("hour / minute", desc_style),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  ?/Esc       ", dim),
+        Span::styled("close", dim),
+    ]));
+
+    let total_content = lines.len();
+    let overlay_height = (total_content as u16 + 2).min(area.height.saturating_sub(2));
+    let overlay_width = 44u16.min(area.width);
+    let overlay_area = centered_rect(overlay_width, overlay_height, area);
+
+    frame.render_widget(Clear, overlay_area);
+
+    let overlay = Paragraph::new(lines).block(
+        Block::default()
+            .title(" Path Placeholders ")
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
+
+    frame.render_widget(overlay, overlay_area);
+    let inner = Rect {
+        x: overlay_area.x + 1,
+        y: overlay_area.y + 1,
+        width: overlay_area.width.saturating_sub(2),
+        height: overlay_area.height.saturating_sub(2),
+    };
+    super::render_overflow_hints(frame, inner, total_content, 0);
+}
+
 /// Actions the configure screen can signal to the wiring layer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConfigureAction {
@@ -71,6 +205,12 @@ pub enum ConfigureAction {
     DeleteModule,
     /// Save the new module being configured to disk (Phase 4c stub).
     SaveNewModule,
+    /// Add a new default sub-field to the current composite_array field.
+    AddSubField(usize),
+    /// Remove the sub-field at the given indices (field_index, sub_field_index).
+    RemoveSubField(usize, usize),
+    /// Swap two sub-field indices (field_index, a, b).
+    ReorderSubFields(usize, usize, usize),
 }
 
 /// Render the configure screen.
@@ -105,6 +245,26 @@ pub fn render(app: &App, frame: &mut Frame) {
                 .unwrap_or("?");
             format!(" ▽ configure {} — {} ", state.module_key, field_name)
         }
+        ConfigureLevel::SubFieldList(field_idx) => {
+            let field_name = app
+                .config
+                .modules
+                .get(&state.module_key)
+                .and_then(|m| m.fields.get(*field_idx))
+                .map(|f| f.name.as_str())
+                .unwrap_or("?");
+            format!(" ▽ configure {} — {} — columns ", state.module_key, field_name)
+        }
+        ConfigureLevel::SubFieldEditor(field_idx, _sub_idx) => {
+            let field_name = app
+                .config
+                .modules
+                .get(&state.module_key)
+                .and_then(|m| m.fields.get(*field_idx))
+                .map(|f| f.name.as_str())
+                .unwrap_or("?");
+            format!(" ▽ configure {} — {} — edit column ", state.module_key, field_name)
+        }
         ConfigureLevel::VaultSettings => " ▽ vault settings ".to_string(),
         // Stub — full implementation in Phase 4c.
         ConfigureLevel::NewModule => " ▽ new module ".to_string(),
@@ -125,11 +285,13 @@ pub fn render(app: &App, frame: &mut Frame) {
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, chunks[0]);
 
-    // Body: confirmation dialog, browser, list editor, field list, or settings list
+    // Body: confirmation dialog, browser, list editor, field list, sub-field list, or settings list
     if state.confirm.is_some() {
         // Render the underlying view first, then overlay the confirm dialog
         if state.level == ConfigureLevel::FieldList {
             render_field_list(app, frame, chunks[1]);
+        } else if matches!(state.level, ConfigureLevel::SubFieldList(_)) {
+            render_sub_field_list(app, frame, chunks[1]);
         } else {
             render_settings(app, frame, chunks[1]);
         }
@@ -140,8 +302,15 @@ pub fn render(app: &App, frame: &mut Frame) {
         render_list_editor(app, frame, chunks[1]);
     } else if state.level == ConfigureLevel::FieldList {
         render_field_list(app, frame, chunks[1]);
+    } else if matches!(state.level, ConfigureLevel::SubFieldList(_)) {
+        render_sub_field_list(app, frame, chunks[1]);
     } else {
         render_settings(app, frame, chunks[1]);
+    }
+
+    // Path help overlay (on top of body)
+    if state.help_overlay_open {
+        render_path_help_overlay(app, frame, chunks[1]);
     }
 
     // Footer
@@ -189,8 +358,8 @@ pub fn render(app: &App, frame: &mut Frame) {
                 Span::raw(" confirm  "),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" cancel  "),
-                Span::styled("tokens: ", Style::default().fg(Color::DarkGray)),
-                Span::styled("{{date}} {{field}} %Y %m %d", Style::default().fg(Color::DarkGray)),
+                Span::styled("?", Style::default().fg(Color::Yellow)),
+                Span::raw(" placeholders"),
             ])
         } else {
             Line::from(vec![
@@ -214,6 +383,32 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" reorder  "),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
             Span::raw(" back"),
+        ])
+    } else if matches!(state.level, ConfigureLevel::SubFieldList(_)) {
+        Line::from(vec![
+            Span::styled(" Up/Down", Style::default().fg(Color::Yellow)),
+            Span::raw(" navigate  "),
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" open  "),
+            Span::styled("n", Style::default().fg(Color::Yellow)),
+            Span::raw(" new  "),
+            Span::styled("d", Style::default().fg(Color::Yellow)),
+            Span::raw(" delete  "),
+            Span::styled("Ctrl+↑↓", Style::default().fg(Color::Yellow)),
+            Span::raw(" reorder  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" back"),
+        ])
+    } else if matches!(state.level, ConfigureLevel::SubFieldEditor(_, _)) {
+        Line::from(vec![
+            Span::styled(" Up/Down", Style::default().fg(Color::Yellow)),
+            Span::raw(" navigate  "),
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" edit  "),
+            Span::styled("s", Style::default().fg(Color::Yellow)),
+            Span::raw(" save  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" back to columns"),
         ])
     } else if matches!(state.level, ConfigureLevel::FieldEditor(_)) {
         Line::from(vec![
@@ -251,7 +446,12 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" key format"),
         ])
     } else {
-        Line::from(vec![
+        let on_path = state
+            .settings
+            .get(state.active_field)
+            .map(|s| matches!(s.kind, SettingKind::Path))
+            .unwrap_or(false);
+        let mut spans = vec![
             Span::styled(" Up/Down", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
@@ -262,7 +462,13 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" delete  "),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
             Span::raw(" back"),
-        ])
+        ];
+        if on_path {
+            spans.push(Span::raw("  "));
+            spans.push(Span::styled("?", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" placeholders"));
+        }
+        Line::from(spans)
     };
 
     let footer = Paragraph::new(footer_line).block(Block::default().borders(Borders::TOP));
@@ -276,115 +482,132 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         None => return,
     };
 
-    let items: Vec<ListItem> = state
-        .settings
-        .iter()
-        .enumerate()
-        .map(|(i, setting)| {
-            let is_active = i == state.active_field;
+    let date_format = app.config.vault.date_format.as_deref();
 
-            let label_style = if is_active {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+    let mut items: Vec<ListItem> = Vec::new();
+    // Map each setting index to its visual row in the list (accounting for
+    // preview lines that occupy extra rows).
+    let mut visual_row_for: Vec<usize> = Vec::new();
+    let mut visual_row: usize = 0;
+
+    for (i, setting) in state.settings.iter().enumerate() {
+        visual_row_for.push(visual_row);
+
+        let is_active = i == state.active_field;
+
+        let label_style = if is_active {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let indicator = if is_active { "▸" } else { " " };
+
+        // When editing this field, show the edit buffer instead of the stored value
+        let raw_value = if is_active && state.editing {
+            state.edit_buffer.clone()
+        } else if matches!(setting.kind, SettingKind::ListEditor) {
+            // Show comma-separated summary for list values
+            let list_items: Vec<&str> = setting.value.lines().filter(|l| !l.is_empty()).collect();
+            if list_items.is_empty() {
+                String::new()
             } else {
-                Style::default().fg(Color::DarkGray)
-            };
+                list_items.join(", ")
+            }
+        } else {
+            setting.value.clone()
+        };
 
-            let indicator = if is_active { "▸" } else { " " };
+        // Suffix for path fields
+        let kind_hint = match &setting.kind {
+            SettingKind::Path => " [Browse]",
+            SettingKind::Toggle(_) => " [toggle]",
+            SettingKind::Text => "",
+            SettingKind::NavLink => " >",
+            SettingKind::ListEditor => " [Edit list]",
+            SettingKind::Identifier => "",
+        };
 
-            // When editing this field, show the edit buffer instead of the stored value
-            let raw_value = if is_active && state.editing {
-                state.edit_buffer.clone()
-            } else if matches!(setting.kind, SettingKind::ListEditor) {
-                // Show comma-separated summary for list values
-                let items: Vec<&str> = setting.value.lines().filter(|l| !l.is_empty()).collect();
-                if items.is_empty() {
-                    String::new()
-                } else {
-                    items.join(", ")
-                }
-            } else {
-                setting.value.clone()
-            };
+        // Horizontal scroll viewport when editing this row.
+        // prefix = "▸ " (2) + label + ":  " (3)
+        let prefix_len = 2usize + setting.label.len() + 3;
+        let hint_len = kind_hint.len();
+        let avail = (area.width as usize).saturating_sub(prefix_len + hint_len);
 
-            // Suffix for path fields
-            let kind_hint = match &setting.kind {
-                SettingKind::Path => " [Browse]",
-                SettingKind::Toggle(_) => " [toggle]",
-                SettingKind::Text => "",
-                SettingKind::NavLink => " >",
-                SettingKind::ListEditor => " [Edit list]",
-                // Stub — full implementation in Phase 4c.
-                SettingKind::Identifier => "",
-            };
+        let (value_display, left_clipped, right_clipped) = if is_active && state.editing && avail > 0 {
+            let char_count = raw_value.chars().count();
+            let scroll = state.scroll_offset;
+            let view_end = scroll + avail;
+            let left = scroll > 0;
+            let right = char_count > view_end;
+            let content_start = scroll;
+            let content_take = avail.saturating_sub(left as usize + right as usize);
+            let slice: String = raw_value.chars().skip(content_start).take(content_take).collect();
+            (slice, left, right)
+        } else {
+            (raw_value.clone(), false, false)
+        };
 
-            // Horizontal scroll viewport when editing this row.
-            // prefix = "▸ " (2) + label + ":  " (3)
-            let prefix_len = 2usize + setting.label.len() + 3;
-            let hint_len = kind_hint.len();
-            let avail = (area.width as usize).saturating_sub(prefix_len + hint_len);
-
-            let (value_display, left_clipped, right_clipped) = if is_active && state.editing && avail > 0 {
-                let char_count = raw_value.chars().count();
-                let scroll = state.scroll_offset;
-                // avail already accounts for the indicator chars we'll add
-                let view_end = scroll + avail;
-                let left = scroll > 0;
-                let right = char_count > view_end;
-                // Shrink the content window by the number of indicator chars shown
-                let content_start = scroll;
-                let content_take = avail.saturating_sub(left as usize + right as usize);
-                let slice: String = raw_value.chars().skip(content_start).take(content_take).collect();
-                (slice, left, right)
-            } else {
-                (raw_value.clone(), false, false)
-            };
-
-            let display_text = if !is_active || !state.editing {
-                if value_display.is_empty() {
-                    "<empty>".to_string()
-                } else {
-                    value_display.clone()
-                }
+        let display_text = if !is_active || !state.editing {
+            if value_display.is_empty() {
+                "<empty>".to_string()
             } else {
                 value_display.clone()
-            };
-
-            let mut value_spans: Vec<Span> = Vec::new();
-            if left_clipped {
-                value_spans.push(Span::styled("◂", Style::default().fg(Color::DarkGray)));
             }
-            value_spans.push(Span::styled(
-                if display_text.is_empty() && !(is_active && state.editing) {
-                    "<empty>".to_string()
-                } else {
-                    display_text
-                },
-                if is_active {
-                    Style::default().fg(Color::White)
-                } else {
-                    Style::default().fg(Color::Gray)
-                },
-            ));
-            if right_clipped {
-                value_spans.push(Span::styled("▸", Style::default().fg(Color::DarkGray)));
+        } else {
+            value_display.clone()
+        };
+
+        let mut value_spans: Vec<Span> = Vec::new();
+        if left_clipped {
+            value_spans.push(Span::styled("◂", Style::default().fg(Color::DarkGray)));
+        }
+        value_spans.push(Span::styled(
+            if display_text.is_empty() && !(is_active && state.editing) {
+                "<empty>".to_string()
+            } else {
+                display_text
+            },
+            if is_active {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default().fg(Color::Gray)
+            },
+        ));
+        if right_clipped {
+            value_spans.push(Span::styled("▸", Style::default().fg(Color::DarkGray)));
+        }
+
+        let mut spans = vec![
+            Span::styled(format!("{indicator} "), label_style),
+            Span::styled(format!("{}:  ", setting.label), label_style),
+        ];
+        spans.extend(value_spans);
+        spans.push(Span::styled(kind_hint, Style::default().fg(Color::DarkGray)));
+
+        items.push(ListItem::new(Line::from(spans)));
+        visual_row += 1;
+
+        // Path preview line: show the resolved template below the path value.
+        if matches!(setting.kind, SettingKind::Path) && !raw_value.is_empty() {
+            let preview = preview_path_template(&raw_value, date_format);
+            if preview != raw_value {
+                let preview_line = Line::from(Span::styled(
+                    format!("     → {preview}"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                items.push(ListItem::new(preview_line));
+                visual_row += 1;
             }
+        }
+    }
 
-            let mut spans = vec![
-                Span::styled(format!("{indicator} "), label_style),
-                Span::styled(format!("{}:  ", setting.label), label_style),
-            ];
-            spans.extend(value_spans);
-            spans.push(Span::styled(kind_hint, Style::default().fg(Color::DarkGray)));
-            let line = Line::from(spans);
-
-            ListItem::new(line)
-        })
-        .collect();
-
+    let total_visual_rows = visual_row;
     let list = List::new(items).block(Block::default().borders(Borders::NONE));
     frame.render_widget(list, area);
+    super::render_overflow_hints(frame, area, total_visual_rows, 0);
 
     // Cursor placement when editing a text/path field
     if state.editing
@@ -396,7 +619,7 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         let left_indicator: u16 = if state.scroll_offset > 0 { 1 } else { 0 };
         let viewport_col = state.cursor_position.saturating_sub(state.scroll_offset) as u16;
         let cursor_x = area.x + prefix_len as u16 + left_indicator + viewport_col;
-        let cursor_y = area.y + state.active_field as u16;
+        let cursor_y = area.y + visual_row_for.get(state.active_field).copied().unwrap_or(state.active_field) as u16;
         if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
             frame.set_cursor_position(Position::new(cursor_x, cursor_y));
         }
@@ -422,6 +645,9 @@ fn render_confirm_dialog(app: &App, frame: &mut Frame, area: ratatui::layout::Re
         }
         PendingConfirm::DeleteModule { module_key } => {
             format!("Delete module '{module_key}'?")
+        }
+        PendingConfirm::DeleteSubField { sub_field_name, .. } => {
+            format!("Delete column '{sub_field_name}'?")
         }
     };
 
@@ -554,8 +780,97 @@ fn render_field_list(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) 
         ))));
     }
 
+    let item_count = items.len();
     let list = List::new(items).block(Block::default().borders(Borders::NONE));
     frame.render_widget(list, area);
+    super::render_overflow_hints(frame, area, item_count, 0);
+}
+
+/// Render the sub-field list for a composite_array field.
+fn render_sub_field_list(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
+    let state = match &app.configure_state {
+        Some(s) => s,
+        None => return,
+    };
+
+    let field_idx = match state.level {
+        ConfigureLevel::SubFieldList(idx) => idx,
+        _ => return,
+    };
+
+    let sub_fields = app
+        .config
+        .modules
+        .get(&state.module_key)
+        .and_then(|m| m.fields.get(field_idx))
+        .and_then(|f| f.sub_fields.as_ref());
+
+    let mut items: Vec<ListItem> = Vec::new();
+
+    // "< Back" row at index 0
+    let back_active = state.active_field == 0;
+    let back_style = if back_active {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let back_ind = if back_active { "▸" } else { " " };
+    items.push(ListItem::new(Line::from(Span::styled(
+        format!("{back_ind} ‹ Back to field"),
+        back_style,
+    ))));
+
+    // One row per sub-field
+    if let Some(subs) = sub_fields {
+        for (i, sf) in subs.iter().enumerate() {
+            let idx = i + 1; // offset by 1 for "< Back"
+            let is_active = state.active_field == idx;
+
+            let label_style = if is_active {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+
+            let indicator = if is_active { "▸" } else { " " };
+
+            let type_str = match sf.field_type {
+                crate::config::SubFieldType::Text => "text",
+                crate::config::SubFieldType::Number => "number",
+                crate::config::SubFieldType::StaticSelect => "static_select",
+            };
+
+            items.push(ListItem::new(Line::from(vec![
+                Span::styled(format!("{indicator} "), label_style),
+                Span::styled(&sf.name, label_style),
+                Span::styled(
+                    format!("  ({type_str})"),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ])));
+        }
+
+        if subs.is_empty() {
+            items.push(ListItem::new(Line::from(Span::styled(
+                "  (no columns)",
+                Style::default().fg(Color::DarkGray),
+            ))));
+        }
+    } else {
+        items.push(ListItem::new(Line::from(Span::styled(
+            "  (no columns)",
+            Style::default().fg(Color::DarkGray),
+        ))));
+    }
+
+    let item_count = items.len();
+    let list = List::new(items).block(Block::default().borders(Borders::NONE));
+    frame.render_widget(list, area);
+    super::render_overflow_hints(frame, area, item_count, 0);
 }
 
 /// Render the vault browser overlay.
@@ -649,6 +964,17 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         .highlight_style(Style::default()); // selection styling is already inline
     let mut list_state = ListState::default().with_selected(Some(browser.selected));
     frame.render_stateful_widget(list, area, &mut list_state);
+    // Inner area excludes borders (1 on each side)
+    let inner = Rect {
+        x: area.x + 1,
+        y: area.y + 1,
+        width: area.width.saturating_sub(2),
+        height: area.height.saturating_sub(2),
+    };
+    // ListState scrolls internally; estimate offset from selection.
+    let visible = inner.height as usize;
+    let scroll = browser.selected.saturating_sub(visible.saturating_sub(1));
+    super::render_overflow_hints(frame, inner, total_entries, scroll);
 }
 
 /// Handle a key event on the configure screen.
@@ -674,6 +1000,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                     PendingConfirm::DeleteModule { .. } => {
                         return ConfigureAction::DeleteModule;
                     }
+                    PendingConfirm::DeleteSubField { field_index, sub_field_index, .. } => {
+                        return ConfigureAction::RemoveSubField(*field_index, *sub_field_index);
+                    }
                 }
             }
             KeyCode::Char('n') | KeyCode::Esc => {
@@ -682,6 +1011,17 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
             _ => return ConfigureAction::None,
         }
+    }
+
+    // --- Path help overlay mode ---
+    if state.help_overlay_open {
+        match key.code {
+            KeyCode::Char('?') | KeyCode::Esc => {
+                state.help_overlay_open = false;
+            }
+            _ => {}
+        }
+        return ConfigureAction::None;
     }
 
     // --- Browser mode ---
@@ -788,35 +1128,20 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                     .map(|s| s.key.clone())
                     .unwrap_or_default();
                 let level = state.level.clone();
-                let module_key = state.module_key.clone();
 
-                // For append-mode module paths, auto-append /{date_format}.md
-                // so the browser (which can only select directories) produces a
-                // valid file path with a date token.
+                // Auto-append /{date_format}.md when the browser selects a
+                // directory for a module path, so the user starts with a
+                // sensible date-based filename template to tweak.
                 let chosen_path = if active_setting_key == "path"
                     && matches!(level, ConfigureLevel::ModuleSettings)
                 {
-                    let is_append = app
-                        .config
-                        .modules
-                        .get(&module_key)
-                        .map(|m| m.mode == crate::config::WriteMode::Append)
-                        .unwrap_or(false);
-
                     let date_fmt = app
                         .config
                         .vault
                         .date_format
                         .as_deref()
                         .unwrap_or("%Y%m%d");
-
-                    if is_append {
-                        format!("{}/{}.md", chosen_dir.trim_end_matches('/'), date_fmt)
-                    } else {
-                        // Create mode: auto-append a date-based filename template
-                        // so each entry gets a unique file.
-                        format!("{}/{}.md", chosen_dir.trim_end_matches('/'), date_fmt)
-                    }
+                    format!("{}/{}.md", chosen_dir.trim_end_matches('/'), date_fmt)
                 } else {
                     chosen_dir
                 };
@@ -1029,6 +1354,14 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 return ConfigureAction::None;
             }
             KeyCode::Char(c) => {
+                // '?' on Path fields opens the placeholder help overlay
+                if c == '?' && matches!(
+                    state.settings.get(state.active_field).map(|s| &s.kind),
+                    Some(SettingKind::Path)
+                ) {
+                    state.help_overlay_open = true;
+                    return ConfigureAction::None;
+                }
                 // Identifier fields: reject characters that aren't TOML-key-safe
                 if matches!(
                     state.settings.get(state.active_field).map(|s| &s.kind),
@@ -1191,6 +1524,135 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
             _ => ConfigureAction::None,
         }
+    // --- Sub-field list navigation mode ---
+    } else if let ConfigureLevel::SubFieldList(field_idx) = state.level {
+        use crossterm::event::KeyModifiers;
+
+        // Ctrl+Up / Ctrl+Down: reorder sub-fields
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            let sub_count = app
+                .config
+                .modules
+                .get(&state.module_key)
+                .and_then(|m| m.fields.get(field_idx))
+                .and_then(|f| f.sub_fields.as_ref())
+                .map(|s| s.len())
+                .unwrap_or(0);
+
+            match key.code {
+                KeyCode::Up => {
+                    if state.active_field > 1 {
+                        let a = state.active_field - 2;
+                        let b = state.active_field - 1;
+                        state.active_field -= 1;
+                        return ConfigureAction::ReorderSubFields(field_idx, a, b);
+                    }
+                    return ConfigureAction::None;
+                }
+                KeyCode::Down => {
+                    if state.active_field > 0 && state.active_field < sub_count {
+                        let a = state.active_field - 1;
+                        let b = state.active_field;
+                        state.active_field += 1;
+                        return ConfigureAction::ReorderSubFields(field_idx, a, b);
+                    }
+                    return ConfigureAction::None;
+                }
+                _ => return ConfigureAction::None,
+            }
+        }
+
+        let sub_count = app
+            .config
+            .modules
+            .get(&state.module_key)
+            .and_then(|m| m.fields.get(field_idx))
+            .and_then(|f| f.sub_fields.as_ref())
+            .map(|s| s.len())
+            .unwrap_or(0);
+        let total = 1 + sub_count;
+
+        match key.code {
+            KeyCode::Esc => {
+                // Back to field editor
+                if let Some(field) = app
+                    .config
+                    .modules
+                    .get(&state.module_key)
+                    .and_then(|m| m.fields.get(field_idx))
+                {
+                    state.settings = crate::app::App::build_field_settings(field);
+                }
+                state.level = ConfigureLevel::FieldEditor(field_idx);
+                state.active_field = 0;
+                ConfigureAction::None
+            }
+            KeyCode::Up => {
+                if state.active_field > 0 {
+                    state.active_field -= 1;
+                }
+                ConfigureAction::None
+            }
+            KeyCode::Down => {
+                if state.active_field + 1 < total {
+                    state.active_field += 1;
+                }
+                ConfigureAction::None
+            }
+            KeyCode::Enter => {
+                if state.active_field == 0 {
+                    // "< Back" row — go back to field editor
+                    if let Some(field) = app
+                        .config
+                        .modules
+                        .get(&state.module_key)
+                        .and_then(|m| m.fields.get(field_idx))
+                    {
+                        state.settings = crate::app::App::build_field_settings(field);
+                    }
+                    state.level = ConfigureLevel::FieldEditor(field_idx);
+                    state.active_field = 0;
+                } else {
+                    // Select a sub-field — transition to SubFieldEditor
+                    let sub_idx = state.active_field - 1;
+                    if let Some(sub) = app
+                        .config
+                        .modules
+                        .get(&state.module_key)
+                        .and_then(|m| m.fields.get(field_idx))
+                        .and_then(|f| f.sub_fields.as_ref())
+                        .and_then(|s| s.get(sub_idx))
+                    {
+                        state.settings = crate::app::App::build_sub_field_settings(sub);
+                        state.level = ConfigureLevel::SubFieldEditor(field_idx, sub_idx);
+                        state.active_field = 0;
+                    }
+                }
+                ConfigureAction::None
+            }
+            KeyCode::Char('n') => ConfigureAction::AddSubField(field_idx),
+            KeyCode::Char('d') => {
+                if state.active_field > 0 {
+                    let sub_idx = state.active_field - 1;
+                    let sub_name = app
+                        .config
+                        .modules
+                        .get(&state.module_key)
+                        .and_then(|m| m.fields.get(field_idx))
+                        .and_then(|f| f.sub_fields.as_ref())
+                        .and_then(|s| s.get(sub_idx))
+                        .map(|sf| sf.name.clone())
+                        .unwrap_or_else(|| "?".to_string());
+                    state.confirm = Some(PendingConfirm::DeleteSubField {
+                        field_index: field_idx,
+                        sub_field_index: sub_idx,
+                        sub_field_name: sub_name,
+                    });
+                }
+                ConfigureAction::None
+            }
+            _ => ConfigureAction::None,
+        }
     } else {
     // --- Settings navigation mode ---
     use crossterm::event::KeyModifiers;
@@ -1230,7 +1692,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
 
     match key.code {
         KeyCode::Esc => {
-            if let ConfigureLevel::FieldEditor(_) = state.level {
+            if let ConfigureLevel::SubFieldEditor(field_idx, _) = state.level {
+                // Back to sub-field list — no settings rebuild needed, SubFieldList reads from config
+                state.level = ConfigureLevel::SubFieldList(field_idx);
+                state.active_field = 0;
+                ConfigureAction::None
+            } else if let ConfigureLevel::FieldEditor(_) = state.level {
                 // Back to field list, restore module-level settings
                 state.level = ConfigureLevel::FieldList;
                 state.active_field = 0;
@@ -1313,6 +1780,16 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             ConfigureAction::None
         }
 
+        KeyCode::Char('?') => {
+            // '?' on Path fields opens the placeholder help overlay
+            if let Some(setting) = state.settings.get(state.active_field) {
+                if matches!(setting.kind, SettingKind::Path) {
+                    state.help_overlay_open = true;
+                }
+            }
+            ConfigureAction::None
+        }
+
         KeyCode::Char('e') => {
             // 'e' on any field starts freetext editing (including Path and Identifier)
             if let Some(setting) = state.settings.get(state.active_field) {
@@ -1370,23 +1847,43 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
 
                             // Dynamically add/remove type-specific settings in field editor
                             if key == "field_type" {
-                                // Remove existing type-conditional settings
-                                state.settings.retain(|s| s.key != "options" && s.key != "source");
+                                if matches!(state.level, ConfigureLevel::SubFieldEditor(_, _)) {
+                                    // Sub-field editor: only options for static_select
+                                    state.settings.retain(|s| s.key != "options");
+                                    if next == "static_select" {
+                                        state.settings.push(ConfigSetting {
+                                            label: "Options".to_string(),
+                                            key: "options".to_string(),
+                                            value: String::new(),
+                                            kind: SettingKind::ListEditor,
+                                        });
+                                    }
+                                } else {
+                                    // Field editor: remove all type-conditional settings
+                                    state.settings.retain(|s| s.key != "options" && s.key != "source" && s.key != "sub_fields");
 
-                                if next == "static_select" {
-                                    state.settings.push(ConfigSetting {
-                                        label: "Options".to_string(),
-                                        key: "options".to_string(),
-                                        value: String::new(),
-                                        kind: SettingKind::ListEditor,
-                                    });
-                                } else if next == "dynamic_select" {
-                                    state.settings.push(ConfigSetting {
-                                        label: "Source".to_string(),
-                                        key: "source".to_string(),
-                                        value: String::new(),
-                                        kind: SettingKind::Path,
-                                    });
+                                    if next == "static_select" {
+                                        state.settings.push(ConfigSetting {
+                                            label: "Options".to_string(),
+                                            key: "options".to_string(),
+                                            value: String::new(),
+                                            kind: SettingKind::ListEditor,
+                                        });
+                                    } else if next == "dynamic_select" {
+                                        state.settings.push(ConfigSetting {
+                                            label: "Source".to_string(),
+                                            key: "source".to_string(),
+                                            value: String::new(),
+                                            kind: SettingKind::Path,
+                                        });
+                                    } else if next == "composite_array" {
+                                        state.settings.push(ConfigSetting {
+                                            label: "Sub-fields".to_string(),
+                                            key: "sub_fields".to_string(),
+                                            value: "0 columns".to_string(),
+                                            kind: SettingKind::NavLink,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -1397,6 +1894,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                         if key == "fields" {
                             state.level = ConfigureLevel::FieldList;
                             state.active_field = 0;
+                        } else if key == "sub_fields" {
+                            if let ConfigureLevel::FieldEditor(field_idx) = state.level {
+                                state.level = ConfigureLevel::SubFieldList(field_idx);
+                                state.active_field = 0;
+                            }
                         }
                     }
                     SettingKind::ListEditor => {

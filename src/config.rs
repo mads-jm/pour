@@ -174,6 +174,17 @@ pub struct FieldUpdates {
     pub target: Option<Option<FieldTarget>>,
 }
 
+/// Partial updates to apply to a single sub-field within a composite_array field.
+///
+/// Each field is an `Option`; `None` means "leave unchanged".
+/// For `options`, `Some(None)` removes the key.
+pub struct SubFieldUpdates {
+    pub name: Option<String>,
+    pub field_type: Option<SubFieldType>,
+    pub prompt: Option<String>,
+    pub options: Option<Option<Vec<String>>>,
+}
+
 /// Errors that can occur when loading or validating configuration.
 #[derive(Debug)]
 pub enum ConfigError {
@@ -564,7 +575,29 @@ impl Config {
             new_table["target"] = toml_edit::value(target_str);
         }
 
-        // sub_fields skipped — composite_array is Phase 5.
+        if let Some(ref subs) = field.sub_fields {
+            let mut arr = toml_edit::ArrayOfTables::new();
+            for sf in subs {
+                let mut t = toml_edit::Table::new();
+                let sf_type_str = match sf.field_type {
+                    SubFieldType::Text => "text",
+                    SubFieldType::Number => "number",
+                    SubFieldType::StaticSelect => "static_select",
+                };
+                t["name"] = toml_edit::value(sf.name.as_str());
+                t["field_type"] = toml_edit::value(sf_type_str);
+                t["prompt"] = toml_edit::value(sf.prompt.as_str());
+                if let Some(ref opts) = sf.options {
+                    let mut a = toml_edit::Array::new();
+                    for opt in opts {
+                        a.push(opt.as_str());
+                    }
+                    t["options"] = toml_edit::value(a);
+                }
+                arr.push(t);
+            }
+            new_table["sub_fields"] = toml_edit::Item::ArrayOfTables(arr);
+        }
 
         // Navigate to the fields array-of-tables and push the new entry.
         // If the key doesn't exist yet, create it.
@@ -833,7 +866,29 @@ impl Config {
                 ft["target"] = toml_edit::value(target_str);
             }
 
-            // sub_fields skipped — composite_array is Phase 5.
+            if let Some(ref subs) = field.sub_fields {
+                let mut sub_arr = toml_edit::ArrayOfTables::new();
+                for sf in subs {
+                    let mut t = toml_edit::Table::new();
+                    let sf_type_str = match sf.field_type {
+                        SubFieldType::Text => "text",
+                        SubFieldType::Number => "number",
+                        SubFieldType::StaticSelect => "static_select",
+                    };
+                    t["name"] = toml_edit::value(sf.name.as_str());
+                    t["field_type"] = toml_edit::value(sf_type_str);
+                    t["prompt"] = toml_edit::value(sf.prompt.as_str());
+                    if let Some(ref opts) = sf.options {
+                        let mut a = toml_edit::Array::new();
+                        for opt in opts {
+                            a.push(opt.as_str());
+                        }
+                        t["options"] = toml_edit::value(a);
+                    }
+                    sub_arr.push(t);
+                }
+                ft["sub_fields"] = toml_edit::Item::ArrayOfTables(sub_arr);
+            }
 
             fields_aot.push(ft);
         }
@@ -1148,6 +1203,325 @@ impl Config {
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
         atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
+        Ok(())
+    }
+
+    /// Add a new sub-field to a composite_array field on disk.
+    ///
+    /// Navigates to `doc["modules"][module_key]["fields"][field_index]["sub_fields"]`
+    /// and appends the new sub-field table. Creates the `sub_fields` ArrayOfTables
+    /// if it doesn't exist yet. Uses atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if `field_index` is out of range.
+    pub fn add_sub_field_on_disk(
+        module_key: &str,
+        field_index: usize,
+        sub_field: &SubFieldConfig,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Verify field index is in range before building the new table.
+        let field_count = doc
+            .get("modules")
+            .and_then(|m| m.as_table())
+            .and_then(|t| t.get(module_key))
+            .and_then(|v| v.as_table())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get("fields")
+            .and_then(|f| f.as_array_of_tables())
+            .map(|arr| arr.len())
+            .unwrap_or(0);
+
+        if field_index >= field_count {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "field index {field_index} out of range for module '{module_key}'"
+            )]));
+        }
+
+        let sf_type_str = match sub_field.field_type {
+            SubFieldType::Text => "text",
+            SubFieldType::Number => "number",
+            SubFieldType::StaticSelect => "static_select",
+        };
+
+        let mut new_t = toml_edit::Table::new();
+        new_t["name"] = toml_edit::value(sub_field.name.as_str());
+        new_t["field_type"] = toml_edit::value(sf_type_str);
+        new_t["prompt"] = toml_edit::value(sub_field.prompt.as_str());
+        if let Some(ref opts) = sub_field.options {
+            let mut a = toml_edit::Array::new();
+            for opt in opts {
+                a.push(opt.as_str());
+            }
+            new_t["options"] = toml_edit::value(a);
+        }
+
+        // Navigate to the field and push the sub-field.
+        let field = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .expect("module existence already verified above")
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )])
+            })?;
+
+        if !field.contains_array_of_tables("sub_fields") {
+            field["sub_fields"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+        }
+
+        field["sub_fields"]
+            .as_array_of_tables_mut()
+            .expect("sub_fields is an array of tables")
+            .push(new_t);
+
+        let new_content = doc.to_string();
+        Self::from_toml(&new_content)?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Ok(())
+    }
+
+    /// Remove a sub-field at `sub_field_index` from a composite_array field on disk.
+    ///
+    /// Uses atomic write. Validates the result before writing.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if indices are out of range or if
+    /// removing the sub-field would leave the field with zero sub-fields.
+    pub fn remove_sub_field_on_disk(
+        module_key: &str,
+        field_index: usize,
+        sub_field_index: usize,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let field = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )])
+            })?;
+
+        let subs = field
+            .get_mut("sub_fields")
+            .and_then(|sf| sf.as_array_of_tables_mut())
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field {field_index} in module '{module_key}': no sub_fields array found"
+                )])
+            })?;
+
+        if sub_field_index >= subs.len() {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "sub_field index {sub_field_index} out of range"
+            )]));
+        }
+
+        if subs.len() == 1 {
+            return Err(ConfigError::ValidationError(vec![
+                "composite_array field must have at least one sub-field".to_string(),
+            ]));
+        }
+
+        subs.remove(sub_field_index);
+
+        let new_content = doc.to_string();
+        Self::from_toml(&new_content)?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Ok(())
+    }
+
+    /// Swap two sub-fields within a composite_array field on disk.
+    ///
+    /// Uses the same position-swap technique as `reorder_fields_on_disk`.
+    /// Uses atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationError` if either index is out of range.
+    pub fn swap_sub_fields_on_disk(
+        module_key: &str,
+        field_index: usize,
+        a: usize,
+        b: usize,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let field = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )])
+            })?;
+
+        let subs = field
+            .get_mut("sub_fields")
+            .and_then(|sf| sf.as_array_of_tables_mut())
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field {field_index} in module '{module_key}': no sub_fields array found"
+                )])
+            })?;
+
+        let sub_count = subs.len();
+
+        if a >= sub_count || b >= sub_count {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "sub_field indices {a} or {b} out of range (count {sub_count})"
+            )]));
+        }
+
+        // Swap positions using the same technique as reorder_fields_on_disk.
+        let pos_a = subs
+            .get(a)
+            .and_then(|t| t.position())
+            .ok_or_else(|| ConfigError::EditParseError("sub_field has no position".to_string()))?;
+        let pos_b = subs
+            .get(b)
+            .and_then(|t| t.position())
+            .ok_or_else(|| ConfigError::EditParseError("sub_field has no position".to_string()))?;
+
+        subs.get_mut(a)
+            .ok_or_else(|| ConfigError::EditParseError("sub_field index a invalid".to_string()))?
+            .set_position(pos_b);
+        subs.get_mut(b)
+            .ok_or_else(|| ConfigError::EditParseError("sub_field index b invalid".to_string()))?
+            .set_position(pos_a);
+
+        let new_content = doc.to_string();
+        Self::from_toml(&new_content)?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Ok(())
+    }
+
+    /// Apply partial updates to a single sub-field within a composite_array field.
+    ///
+    /// Navigates to `doc["modules"][module_key]["fields"][field_index]["sub_fields"][sub_field_index]`.
+    /// Uses atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if indices are out of range.
+    pub fn update_sub_field_on_disk(
+        module_key: &str,
+        field_index: usize,
+        sub_field_index: usize,
+        updates: &SubFieldUpdates,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let field = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )])
+            })?;
+
+        let sub = field
+            .get_mut("sub_fields")
+            .and_then(|sf| sf.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(sub_field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "sub_field index {sub_field_index} out of range"
+                )])
+            })?;
+
+        if let Some(ref name) = updates.name {
+            sub["name"] = toml_edit::value(name.as_str());
+        }
+
+        if let Some(ref ft) = updates.field_type {
+            let type_str = match ft {
+                SubFieldType::Text => "text",
+                SubFieldType::Number => "number",
+                SubFieldType::StaticSelect => "static_select",
+            };
+            sub["field_type"] = toml_edit::value(type_str);
+        }
+
+        if let Some(ref prompt) = updates.prompt {
+            sub["prompt"] = toml_edit::value(prompt.as_str());
+        }
+
+        if let Some(ref opts_update) = updates.options {
+            match opts_update {
+                Some(opts) => {
+                    let mut a = toml_edit::Array::new();
+                    for opt in opts {
+                        a.push(opt.as_str());
+                    }
+                    sub["options"] = toml_edit::value(a);
+                }
+                None => {
+                    sub.remove("options");
+                }
+            }
+        }
+
+        let new_content = doc.to_string();
+        Self::from_toml(&new_content)?;
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
         Ok(())
     }
 

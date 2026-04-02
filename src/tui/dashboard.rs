@@ -167,8 +167,10 @@ pub fn render(app: &App, frame: &mut Frame) {
             })
             .collect();
 
+        let item_count = items.len();
         let list = List::new(items).block(Block::default().borders(Borders::NONE));
         frame.render_widget(list, chunks[2]);
+        super::render_overflow_hints(frame, chunks[2], item_count, 0);
     }
 
     // ── Recent activity + Gaps ──

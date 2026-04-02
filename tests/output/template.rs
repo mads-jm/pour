@@ -1,10 +1,37 @@
 use chrono::Local;
+use pour::config::Config;
+use pour::output::CompositeData;
 use pour::output::template::{render_append_template, render_path};
 use std::collections::HashMap;
 
+/// Minimal module config for template tests that don't use composite fields.
+fn dummy_module() -> pour::config::ModuleConfig {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.t]
+mode = "append"
+path = "t.md"
+append_under_header = "## Log"
+
+[[modules.t.fields]]
+name = "body"
+field_type = "text"
+prompt = "Body"
+"####;
+    let config = Config::from_toml(toml).unwrap();
+    config.modules.into_values().next().unwrap()
+}
+
+fn no_composites() -> CompositeData {
+    CompositeData::new()
+}
+
 #[test]
 fn render_path_substitutes_date_tokens() {
-    let result = render_path("Journal/%Y/%Y-%m-%d.md");
+    let fields = HashMap::new();
+    let result = render_path("Journal/%Y/%Y-%m-%d.md", &fields, None);
     let today = Local::now().format("%Y-%m-%d").to_string();
     let year = Local::now().format("%Y").to_string();
 
@@ -21,8 +48,41 @@ fn render_path_substitutes_date_tokens() {
 
 #[test]
 fn render_path_no_tokens_passes_through() {
-    let result = render_path("static/path.md");
+    let fields = HashMap::new();
+    let result = render_path("static/path.md", &fields, None);
     assert_eq!(result, "static/path.md");
+}
+
+#[test]
+fn render_path_substitutes_field_placeholders() {
+    let mut fields = HashMap::new();
+    fields.insert("bean".to_string(), "Ethiopian".to_string());
+    let result = render_path("Coffee/{{bean}} %Y%m%d.md", &fields, None);
+    let today = Local::now().format("%Y%m%d").to_string();
+    assert_eq!(result, format!("Coffee/Ethiopian {today}.md"));
+}
+
+#[test]
+fn render_path_date_token_uses_vault_format() {
+    let fields = HashMap::new();
+    let result = render_path("Daily/{{date}}.md", &fields, Some("%Y-%m-%d"));
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    assert_eq!(result, format!("Daily/{today}.md"));
+}
+
+#[test]
+fn render_path_date_token_uses_default_without_vault_format() {
+    let fields = HashMap::new();
+    let result = render_path("Daily/{{date}}.md", &fields, None);
+    let today = Local::now().format("%Y%m%d").to_string();
+    assert_eq!(result, format!("Daily/{today}.md"));
+}
+
+#[test]
+fn render_path_strips_unresolved_placeholders() {
+    let fields = HashMap::new();
+    let result = render_path("Coffee/{{unknown}}.md", &fields, None);
+    assert_eq!(result, "Coffee/.md");
 }
 
 #[test]
@@ -31,14 +91,16 @@ fn render_append_template_replaces_fields() {
     fields.insert("body".to_string(), "Hello world".to_string());
     fields.insert("mood".to_string(), "happy".to_string());
 
-    let result = render_append_template("Mood: {{mood}} | {{body}}", &fields);
+    let m = dummy_module();
+    let result = render_append_template("Mood: {{mood}} | {{body}}", &fields, &m, &no_composites());
     assert_eq!(result, "Mood: happy | Hello world");
 }
 
 #[test]
 fn render_append_template_special_time_token() {
     let fields = HashMap::new();
-    let result = render_append_template("> [!note] {{time}}", &fields);
+    let m = dummy_module();
+    let result = render_append_template("> [!note] {{time}}", &fields, &m, &no_composites());
     let now = Local::now().format("%H:%M").to_string();
     assert!(
         result.contains(&now),
@@ -49,7 +111,8 @@ fn render_append_template_special_time_token() {
 #[test]
 fn render_append_template_special_date_token() {
     let fields = HashMap::new();
-    let result = render_append_template("Date: {{date}}", &fields);
+    let m = dummy_module();
+    let result = render_append_template("Date: {{date}}", &fields, &m, &no_composites());
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Date: {today}"));
 }
@@ -57,7 +120,8 @@ fn render_append_template_special_date_token() {
 #[test]
 fn render_append_template_missing_field_left_as_is() {
     let fields = HashMap::new();
-    let result = render_append_template("Value: {{unknown}}", &fields);
+    let m = dummy_module();
+    let result = render_append_template("Value: {{unknown}}", &fields, &m, &no_composites());
     assert_eq!(result, "Value: {{unknown}}");
 }
 
@@ -66,7 +130,8 @@ fn render_append_template_mixed_known_and_unknown() {
     let mut fields = HashMap::new();
     fields.insert("name".to_string(), "Alice".to_string());
 
-    let result = render_append_template("{{name}} said {{quote}}", &fields);
+    let m = dummy_module();
+    let result = render_append_template("{{name}} said {{quote}}", &fields, &m, &no_composites());
     assert_eq!(result, "Alice said {{quote}}");
 }
 
@@ -75,8 +140,9 @@ fn render_append_template_realistic_journal() {
     let mut fields = HashMap::new();
     fields.insert("body".to_string(), "Felt productive today.".to_string());
 
+    let m = dummy_module();
     let template = "> [!note] {{time}}\n> {{body}}";
-    let result = render_append_template(template, &fields);
+    let result = render_append_template(template, &fields, &m, &no_composites());
 
     let now = Local::now().format("%H:%M").to_string();
     assert!(result.contains(&now), "should have time");
@@ -84,4 +150,70 @@ fn render_append_template_realistic_journal() {
         result.contains("Felt productive today."),
         "should have body"
     );
+}
+
+fn composite_module() -> pour::config::ModuleConfig {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.c]
+mode = "append"
+path = "c.md"
+append_under_header = "## Brews"
+append_template = "Bean: {{bean}}\n{{recipe}}"
+
+[[modules.c.fields]]
+name = "bean"
+field_type = "text"
+prompt = "Bean"
+
+[[modules.c.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Brew stages"
+
+[[modules.c.fields.sub_fields]]
+name = "pour"
+field_type = "number"
+prompt = "Pour (g)"
+
+[[modules.c.fields.sub_fields]]
+name = "time"
+field_type = "number"
+prompt = "Time (s)"
+
+[[modules.c.fields.sub_fields]]
+name = "technique"
+field_type = "static_select"
+prompt = "Technique"
+options = ["Bloom", "Spiral"]
+"####;
+    let config = Config::from_toml(toml).unwrap();
+    config.modules.into_values().next().unwrap()
+}
+
+#[test]
+fn render_append_template_composite_as_markdown_table() {
+    let mut fields = HashMap::new();
+    fields.insert("bean".to_string(), "Ethiopian".to_string());
+
+    let mut composites = CompositeData::new();
+    composites.insert(
+        "recipe".to_string(),
+        vec![
+            vec!["50".to_string(), "30".to_string(), "Bloom".to_string()],
+            vec!["100".to_string(), "45".to_string(), "Spiral".to_string()],
+        ],
+    );
+
+    let m = composite_module();
+    let result = render_append_template("Bean: {{bean}}\n{{recipe}}", &fields, &m, &composites);
+
+    assert!(result.contains("Bean: Ethiopian"), "scalar field replaced");
+    assert!(result.contains("| Pour (g)"), "table header");
+    assert!(result.contains("| Time (s)"), "table header");
+    assert!(result.contains("| Technique |"), "table header");
+    assert!(result.contains("| 50"), "first row data");
+    assert!(result.contains("| 100"), "second row data");
 }

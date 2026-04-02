@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use pour::app::{App, BrowserState, ConfigureLevel, Screen, SummaryState};
-use pour::config::{Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig, VaultUpdates, WriteMode};
+use pour::config::{Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig, SubFieldConfig, SubFieldType, SubFieldUpdates, VaultUpdates, WriteMode};
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
 use pour::data::history::History;
@@ -215,6 +215,18 @@ async fn run_loop(
                     handle_save_new_module(app);
                 }
 
+                tui::Action::AddSubField(field_idx) => {
+                    handle_add_sub_field(app, field_idx);
+                }
+
+                tui::Action::RemoveSubField(fi, si) => {
+                    handle_remove_sub_field(app, fi, si);
+                }
+
+                tui::Action::ReorderSubFields(fi, a, b) => {
+                    handle_reorder_sub_fields(app, fi, a, b);
+                }
+
                 tui::Action::None => {}
             }
         }
@@ -311,6 +323,10 @@ async fn handle_save(app: &mut App) {
             let updates = build_field_updates(state);
             Config::update_field_on_disk(&module_key, field_idx, &updates)
         }
+        ConfigureLevel::SubFieldEditor(field_idx, sub_idx) => {
+            let updates = build_sub_field_updates(state);
+            Config::update_sub_field_on_disk(&module_key, field_idx, sub_idx, &updates)
+        }
         ConfigureLevel::VaultSettings => {
             // Pre-validate vault settings before attempting disk write
             if let Err(msg) = validate_vault_settings(state) {
@@ -344,6 +360,20 @@ async fn handle_save(app: &mut App) {
                     && let Some(ref mut s) = app.configure_state
                 {
                     s.settings = App::build_field_settings(field);
+                }
+
+                // Rebuild sub-field settings from the fresh config
+                if let ConfigureLevel::SubFieldEditor(fi, si) = level
+                    && let Some(sub) = app
+                        .config
+                        .modules
+                        .get(&module_key)
+                        .and_then(|m| m.fields.get(fi))
+                        .and_then(|f| f.sub_fields.as_ref())
+                        .and_then(|s| s.get(si))
+                    && let Some(ref mut state) = app.configure_state
+                {
+                    state.settings = App::build_sub_field_settings(sub);
                 }
 
                 // Rebuild vault settings from the fresh config
@@ -758,6 +788,184 @@ fn handle_save_new_module(app: &mut App) {
                 s.status_message = Some(format!("Create failed: {e}"));
             }
         }
+    }
+}
+
+/// Add a new default sub-field to a composite_array field and open its editor.
+fn handle_add_sub_field(app: &mut App, field_index: usize) {
+    let module_key = match &app.configure_state {
+        Some(s) => s.module_key.clone(),
+        None => return,
+    };
+
+    let new_sub = SubFieldConfig {
+        name: "new_column".to_string(),
+        field_type: SubFieldType::Text,
+        prompt: "New column".to_string(),
+        options: None,
+    };
+
+    match Config::add_sub_field_on_disk(&module_key, field_index, &new_sub) {
+        Ok(()) => match Config::load() {
+            Ok(new_config) => {
+                app.config = new_config;
+
+                // Find the index of the newly added sub-field (last in the list)
+                let sub_idx = app
+                    .config
+                    .modules
+                    .get(&module_key)
+                    .and_then(|m| m.fields.get(field_index))
+                    .and_then(|f| f.sub_fields.as_ref())
+                    .map(|s| s.len().saturating_sub(1))
+                    .unwrap_or(0);
+
+                // Open the sub-field editor for the new sub-field
+                if let Some(sub) = app
+                    .config
+                    .modules
+                    .get(&module_key)
+                    .and_then(|m| m.fields.get(field_index))
+                    .and_then(|f| f.sub_fields.as_ref())
+                    .and_then(|s| s.get(sub_idx))
+                    && let Some(ref mut s) = app.configure_state
+                {
+                    s.settings = App::build_sub_field_settings(sub);
+                    s.level = ConfigureLevel::SubFieldEditor(field_index, sub_idx);
+                    s.active_field = 0;
+                    s.status_message = None;
+                }
+            }
+            Err(e) => {
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = Some(format!("Reload failed: {e}"));
+                }
+            }
+        },
+        Err(e) => {
+            if let Some(ref mut s) = app.configure_state {
+                s.status_message = Some(format!("Add failed: {e}"));
+            }
+        }
+    }
+}
+
+/// Remove a sub-field at the given indices from a composite_array field.
+fn handle_remove_sub_field(app: &mut App, field_index: usize, sub_field_index: usize) {
+    let module_key = match &app.configure_state {
+        Some(s) => s.module_key.clone(),
+        None => return,
+    };
+
+    match Config::remove_sub_field_on_disk(&module_key, field_index, sub_field_index) {
+        Ok(()) => match Config::load() {
+            Ok(new_config) => {
+                app.config = new_config;
+
+                // Stay on the sub-field list; clamp active_field if the last item was removed
+                if let Some(ref mut s) = app.configure_state {
+                    let new_sub_count = app
+                        .config
+                        .modules
+                        .get(&module_key)
+                        .and_then(|m| m.fields.get(field_index))
+                        .and_then(|f| f.sub_fields.as_ref())
+                        .map(|sf| sf.len())
+                        .unwrap_or(0);
+                    // index 0 is "< Back", sub-fields start at 1
+                    let max_idx = new_sub_count;
+                    if s.active_field > max_idx {
+                        s.active_field = max_idx;
+                    }
+                    s.status_message = None;
+                }
+            }
+            Err(e) => {
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = Some(format!("Reload failed: {e}"));
+                }
+            }
+        },
+        Err(ConfigError::ValidationError(errs)) => {
+            if let Some(ref mut s) = app.configure_state {
+                s.status_message = Some(format!("Cannot delete: {}", errs.join("; ")));
+            }
+        }
+        Err(e) => {
+            if let Some(ref mut s) = app.configure_state {
+                s.status_message = Some(format!("Delete failed: {e}"));
+            }
+        }
+    }
+}
+
+/// Swap two sub-fields (at indices a and b) within a composite_array field and persist to disk.
+fn handle_reorder_sub_fields(app: &mut App, field_index: usize, a: usize, b: usize) {
+    let (module_key, original_active) = match &app.configure_state {
+        Some(s) => (s.module_key.clone(), s.active_field),
+        None => return,
+    };
+
+    match Config::swap_sub_fields_on_disk(&module_key, field_index, a, b) {
+        Ok(()) => match Config::load() {
+            Ok(new_config) => {
+                app.config = new_config;
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = None;
+                }
+            }
+            Err(e) => {
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = Some(format!("Reload failed: {e}"));
+                }
+            }
+        },
+        Err(e) => {
+            if let Some(ref mut s) = app.configure_state {
+                // Restore cursor to its pre-reorder position
+                s.active_field = original_active;
+                s.status_message = Some(format!("Reorder failed: {e}"));
+            }
+        }
+    }
+}
+
+/// Extract SubFieldUpdates from the current sub-field editor settings.
+fn build_sub_field_updates(state: &pour::app::ConfigureState) -> SubFieldUpdates {
+    let mut name: Option<String> = None;
+    let mut field_type: Option<SubFieldType> = None;
+    let mut prompt: Option<String> = None;
+    let mut options: Option<Option<Vec<String>>> = None;
+
+    for setting in &state.settings {
+        match setting.key.as_str() {
+            "name" => name = Some(setting.value.clone()),
+            "prompt" => prompt = Some(setting.value.clone()),
+            "field_type" => {
+                field_type = Some(match setting.value.as_str() {
+                    "number" => SubFieldType::Number,
+                    "static_select" => SubFieldType::StaticSelect,
+                    _ => SubFieldType::Text,
+                });
+            }
+            "options" => {
+                let items: Vec<String> = setting
+                    .value
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| l.to_string())
+                    .collect();
+                options = Some(if items.is_empty() { None } else { Some(items) });
+            }
+            _ => {}
+        }
+    }
+
+    SubFieldUpdates {
+        name,
+        field_type,
+        prompt,
+        options,
     }
 }
 

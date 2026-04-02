@@ -5,6 +5,55 @@ pub mod summary;
 
 use crate::app::{App, Screen};
 use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
+use ratatui::widgets::Paragraph;
+
+/// Render overflow arrow hints on top of a list area.
+///
+/// Call this after rendering a `List` widget. It paints a small `▲` or `▼`
+/// indicator in the top-right or bottom-right corner when the list has more
+/// items than visible rows.
+///
+/// - `total_rows`: the total number of visual rows in the list (items count,
+///   including any extra preview rows).
+/// - `scroll_offset`: the first visible row index (0 if not scrollable).
+pub fn render_overflow_hints(
+    frame: &mut Frame,
+    area: Rect,
+    total_rows: usize,
+    scroll_offset: usize,
+) {
+    let visible = area.height as usize;
+    if total_rows <= visible {
+        return;
+    }
+
+    let hint_style = Style::default().fg(Color::DarkGray);
+
+    // Top hint: there are rows above the viewport
+    if scroll_offset > 0 && area.width > 0 && area.height > 0 {
+        let hint_area = Rect {
+            x: area.x + area.width.saturating_sub(2),
+            y: area.y,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(Span::styled("▲", hint_style)), hint_area);
+    }
+
+    // Bottom hint: there are rows below the viewport
+    if scroll_offset + visible < total_rows && area.height > 0 {
+        let hint_area = Rect {
+            x: area.x + area.width.saturating_sub(2),
+            y: area.y + area.height - 1,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(Span::styled("▼", hint_style)), hint_area);
+    }
+}
 
 /// Top-level action returned by event handling.
 #[derive(Debug, PartialEq, Eq)]
@@ -35,6 +84,12 @@ pub enum Action {
     NewModule,
     /// Save the new module being configured to disk.
     SaveNewModule,
+    /// Add a new default sub-field to a composite_array field (field_index).
+    AddSubField(usize),
+    /// Remove a sub-field at (field_index, sub_field_index).
+    RemoveSubField(usize, usize),
+    /// Swap two sub-fields at (field_index, a, b).
+    ReorderSubFields(usize, usize, usize),
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -126,6 +181,9 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             configure::ConfigureAction::ReorderFields(a, b) => Action::ReorderFields(a, b),
             configure::ConfigureAction::DeleteModule => Action::DeleteModule,
             configure::ConfigureAction::SaveNewModule => Action::SaveNewModule,
+            configure::ConfigureAction::AddSubField(fi) => Action::AddSubField(fi),
+            configure::ConfigureAction::RemoveSubField(fi, si) => Action::RemoveSubField(fi, si),
+            configure::ConfigureAction::ReorderSubFields(fi, a, b) => Action::ReorderSubFields(fi, a, b),
             configure::ConfigureAction::None => Action::None,
         },
     }

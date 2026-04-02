@@ -62,6 +62,10 @@ pub enum ConfigureLevel {
     FieldList,
     /// Editing a specific field's properties (by index into module.fields).
     FieldEditor(usize),
+    /// Browsing the list of sub-fields within a composite_array field.
+    SubFieldList(usize),
+    /// Editing a specific sub-field's properties (field_idx, sub_field_idx).
+    SubFieldEditor(usize, usize),
     /// Editing vault-level settings (base_path, api_port, api_key).
     VaultSettings,
     /// Creating a new module (key, display name, mode, path).
@@ -107,6 +111,8 @@ pub enum PendingConfirm {
     DeleteField { field_index: usize, field_name: String },
     /// Delete the entire module.
     DeleteModule { module_key: String },
+    /// Delete the sub-field at the given index within a composite_array field.
+    DeleteSubField { field_index: usize, sub_field_index: usize, sub_field_name: String },
 }
 
 /// State for the module configure screen.
@@ -139,6 +145,8 @@ pub struct ConfigureState {
     pub settings: Vec<ConfigSetting>,
     /// Non-fatal status message to show in the footer (e.g. save errors).
     pub status_message: Option<String>,
+    /// Whether the path placeholder help overlay is visible.
+    pub help_overlay_open: bool,
 }
 
 /// Central application state, holding config, transport, and all screen state.
@@ -329,6 +337,7 @@ impl App {
             dirty: false,
             settings,
             status_message: None,
+            help_overlay_open: false,
         })
     }
 
@@ -431,6 +440,68 @@ impl App {
             });
         }
 
+        if field.field_type == FieldType::CompositeArray {
+            let sub_count = field.sub_fields.as_ref().map(|s| s.len()).unwrap_or(0);
+            settings.push(ConfigSetting {
+                label: "Sub-fields".to_string(),
+                key: "sub_fields".to_string(),
+                value: format!("{sub_count} column{}", if sub_count == 1 { "" } else { "s" }),
+                kind: SettingKind::NavLink,
+            });
+        }
+
+        settings
+    }
+
+    /// Build settings list for editing a specific sub-field's properties.
+    pub fn build_sub_field_settings(sub_field: &crate::config::SubFieldConfig) -> Vec<ConfigSetting> {
+        use crate::config::SubFieldType;
+
+        let type_str = match sub_field.field_type {
+            SubFieldType::Text => "text",
+            SubFieldType::Number => "number",
+            SubFieldType::StaticSelect => "static_select",
+        };
+
+        let mut settings = vec![
+            ConfigSetting {
+                label: "Name".to_string(),
+                key: "name".to_string(),
+                value: sub_field.name.clone(),
+                kind: SettingKind::Text,
+            },
+            ConfigSetting {
+                label: "Prompt".to_string(),
+                key: "prompt".to_string(),
+                value: sub_field.prompt.clone(),
+                kind: SettingKind::Text,
+            },
+            ConfigSetting {
+                label: "Type".to_string(),
+                key: "field_type".to_string(),
+                value: type_str.to_string(),
+                kind: SettingKind::Toggle(vec![
+                    "text".to_string(),
+                    "number".to_string(),
+                    "static_select".to_string(),
+                ]),
+            },
+        ];
+
+        if sub_field.field_type == SubFieldType::StaticSelect {
+            let opts_display = sub_field
+                .options
+                .as_ref()
+                .map(|o| o.join("\n"))
+                .unwrap_or_default();
+            settings.push(ConfigSetting {
+                label: "Options".to_string(),
+                key: "options".to_string(),
+                value: opts_display,
+                kind: SettingKind::ListEditor,
+            });
+        }
+
         settings
     }
 
@@ -507,6 +578,7 @@ impl App {
             dirty: false,
             settings,
             status_message: None,
+            help_overlay_open: false,
         }
     }
 
@@ -561,6 +633,7 @@ impl App {
             dirty: false,
             settings,
             status_message: None,
+            help_overlay_open: false,
         }
     }
 

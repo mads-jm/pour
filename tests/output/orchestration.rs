@@ -1,5 +1,5 @@
 use pour::config::Config;
-use pour::output::{write_append, write_create};
+use pour::output::{write_append, write_create, CompositeData};
 use pour::transport::Transport;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -79,7 +79,7 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
     fields.insert("rating".to_string(), "4".to_string());
     fields.insert("notes".to_string(), "Fruity and bright.".to_string());
 
-    let path = write_create(&transport, module, &fields)
+    let path = write_create(&transport, module, &fields, &CompositeData::new(), None)
         .await
         .expect("write_create should succeed");
 
@@ -132,7 +132,7 @@ async fn write_create_rejects_append_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_create(&transport, module, &fields).await;
+    let result = write_create(&transport, module, &fields, &CompositeData::new(), None).await;
     assert!(result.is_err(), "write_create on append module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-create"),
@@ -157,7 +157,7 @@ async fn write_append_inserts_rendered_template() {
     let mut fields = HashMap::new();
     fields.insert("body".to_string(), "Had a great morning.".to_string());
 
-    let path = write_append(&transport, module, &fields)
+    let path = write_append(&transport, module, &fields, &CompositeData::new(), None)
         .await
         .expect("write_append should succeed");
 
@@ -180,7 +180,7 @@ async fn write_append_rejects_create_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_append(&transport, module, &fields).await;
+    let result = write_append(&transport, module, &fields, &CompositeData::new(), None).await;
     assert!(result.is_err(), "write_append on create module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-append"),
@@ -204,7 +204,7 @@ async fn write_create_skips_empty_body_section() {
     fields.insert("brew_method".to_string(), "AeroPress".to_string());
     fields.insert("rating".to_string(), "3".to_string());
 
-    let _path = write_create(&transport, module, &fields)
+    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None)
         .await
         .expect("write_create should succeed");
 

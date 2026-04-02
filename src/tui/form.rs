@@ -226,8 +226,10 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         ),
     ])));
 
+    let item_count = items.len();
     let list = List::new(items).block(Block::default().borders(Borders::NONE));
     frame.render_widget(list, area);
+    super::render_overflow_hints(frame, area, item_count, 0);
 
     // Place the terminal block cursor for text/textarea/number fields
     if !submit_active
@@ -330,6 +332,16 @@ fn render_select_options(
     );
     frame.render_widget(Clear, options_area);
     frame.render_widget(list, options_area);
+    // Inner area excludes borders
+    let inner = Rect {
+        x: options_area.x + 1,
+        y: options_area.y + 1,
+        width: options_area.width.saturating_sub(2),
+        height: options_area.height.saturating_sub(2),
+    };
+    let selected_idx = options.iter().position(|o| o == current_value).unwrap_or(0);
+    let scroll = selected_idx.saturating_sub(inner.height as usize - 1);
+    super::render_overflow_hints(frame, inner, options.len(), scroll);
 }
 
 /// Render a bordered text editor overlay for textarea fields.

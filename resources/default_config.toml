@@ -5,7 +5,7 @@
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
-module_order = ["me", "coffee", "recipe"]
+module_order = ["me", "coffee"]
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
@@ -81,6 +81,31 @@ prompt = "Dose (g)"
 default = "18"
 target = "frontmatter"
 
+# composite_array renders a spreadsheet-like table. Each row is one sub-field set.
+# sub_fields supports: text, number, static_select
+# Standard V60/pour-over stages: bloom → first pour → second pour → draw down.
+[[modules.coffee.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Brew Recipe"
+target = "frontmatter"
+
+[[modules.coffee.fields.sub_fields]]
+name = "stage"
+field_type = "static_select"
+prompt = "Stage"
+options = ["Bloom", "First Pour", "Second Pour", "Third Pour", "Draw Down"]
+
+[[modules.coffee.fields.sub_fields]]
+name = "weight_g"
+field_type = "number"
+prompt = "Weight (g)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "duration_s"
+field_type = "number"
+prompt = "Duration (s)"
+
 [[modules.coffee.fields]]
 name = "rating"
 field_type = "number"
@@ -94,61 +119,3 @@ field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
 
-# ── recipe ───────────────────────────────────────────────────────────────────
-# Usage: `pour recipe`
-# Creates a structured recipe note. Demonstrates composite_array for tabular data.
-[modules.recipe]
-mode = "create"
-path = "Recipes/%Y/%Y-%m-%d-{title}.md"
-display_name = "Recipe"
-
-[[modules.recipe.fields]]
-name = "title"
-field_type = "text"
-prompt = "Recipe title"
-required = true
-target = "frontmatter"
-
-[[modules.recipe.fields]]
-name = "cuisine"
-field_type = "static_select"
-prompt = "Cuisine"
-options = ["Italian", "Japanese", "Mexican", "American", "French", "Other"]
-target = "frontmatter"
-
-[[modules.recipe.fields]]
-name = "servings"
-field_type = "number"
-prompt = "Servings"
-default = "2"
-target = "frontmatter"
-
-# composite_array renders a spreadsheet-like table. Each row is one sub-field set.
-# sub_fields supports: text, number, static_select
-[[modules.recipe.fields]]
-name = "ingredients"
-field_type = "composite_array"
-prompt = "Ingredients"
-target = "body"
-
-[[modules.recipe.fields.sub_fields]]
-name = "ingredient"
-field_type = "text"
-prompt = "Ingredient"
-
-[[modules.recipe.fields.sub_fields]]
-name = "amount"
-field_type = "number"
-prompt = "Amount"
-
-[[modules.recipe.fields.sub_fields]]
-name = "unit"
-field_type = "static_select"
-prompt = "Unit"
-options = ["g", "ml", "tsp", "tbsp", "cup", "oz", "whole"]
-
-[[modules.recipe.fields]]
-name = "instructions"
-field_type = "textarea"
-prompt = "Instructions"
-target = "body"
