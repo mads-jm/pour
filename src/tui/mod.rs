@@ -84,6 +84,8 @@ pub enum Action {
     NewModule,
     /// Save the new module being configured to disk.
     SaveNewModule,
+    /// Re-attempt the API connection.
+    RefreshTransport,
     /// Add a new default sub-field to a composite_array field (field_index).
     AddSubField(usize),
     /// Remove a sub-field at (field_index, sub_field_index).
@@ -134,6 +136,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             }
             dashboard::DashboardAction::ReorderModule(dir) => Action::ReorderModules(dir),
             dashboard::DashboardAction::NewModule => Action::NewModule,
+            dashboard::DashboardAction::RefreshTransport => Action::RefreshTransport,
             dashboard::DashboardAction::None => Action::None,
         },
 

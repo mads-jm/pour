@@ -10,6 +10,9 @@ pub struct HistoryEntry {
     pub module_key: String,
     pub timestamp: DateTime<Utc>,
     pub vault_path: String,
+    /// Value of the first field at capture time (for dashboard display).
+    #[serde(default)]
+    pub first_field: Option<String>,
 }
 
 /// On-disk schema for the history file.
@@ -45,11 +48,12 @@ impl History {
     }
 
     /// Record a successful capture and persist to disk.
-    pub fn record(&mut self, module_key: &str, vault_path: &str) {
+    pub fn record(&mut self, module_key: &str, vault_path: &str, first_field: Option<&str>) {
         self.data.entries.push(HistoryEntry {
             module_key: module_key.to_owned(),
             timestamp: Utc::now(),
             vault_path: vault_path.to_owned(),
+            first_field: first_field.map(|s| s.to_owned()),
         });
         let _ = self.save();
     }

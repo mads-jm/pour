@@ -18,6 +18,7 @@ fn entry(module: &str, hours_ago: i64) -> HistoryEntry {
         module_key: module.to_string(),
         timestamp: Utc::now() - Duration::hours(hours_ago),
         vault_path: format!("test/{module}.md"),
+        first_field: None,
     }
 }
 
@@ -26,6 +27,7 @@ fn entry_days_ago(module: &str, days: i64) -> HistoryEntry {
         module_key: module.to_string(),
         timestamp: Utc::now() - Duration::days(days),
         vault_path: format!("test/{module}.md"),
+        first_field: None,
     }
 }
 
@@ -133,7 +135,7 @@ fn record_persists_to_disk() {
     let mut h = History::load_from(path.clone());
 
     assert_eq!(h.today_count(), 0);
-    h.record("coffee", "Coffee/2026/test.md");
+    h.record("coffee", "Coffee/2026/test.md", Some("Ethiopia Yirg"));
     assert_eq!(h.today_count(), 1);
 
     // Reload from disk

@@ -229,6 +229,11 @@ async fn run_loop(
                     handle_reorder_sub_fields(app, fi, a, b);
                 }
 
+                tui::Action::RefreshTransport => {
+                    app.transport =
+                        pour::transport::Transport::connect(&app.config).await;
+                }
+
                 tui::Action::None => {}
             }
         }
@@ -306,7 +311,12 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     match write_result {
         Ok(vault_path) => {
             // Record successful capture in history
-            app.history.record(&module_key, &vault_path);
+            let first_field = module
+                .fields
+                .first()
+                .and_then(|f| field_values.get(&f.name))
+                .map(|v| v.as_str());
+            app.history.record(&module_key, &vault_path, first_field);
 
             app.summary_state = Some(SummaryState {
                 message: "Entry saved successfully.".to_string(),
@@ -399,7 +409,7 @@ async fn handle_save(app: &mut App) {
                     state.settings = App::build_sub_field_settings(sub);
                 }
 
-                // Rebuild vault settings from the fresh config
+                // Rebuild vault settings from the fresh config and reconnect transport
                 if level == ConfigureLevel::VaultSettings {
                     let vault = &app.config.vault;
                     if let Some(ref mut s) = app.configure_state {
@@ -424,6 +434,9 @@ async fn handle_save(app: &mut App) {
                             },
                         ];
                     }
+                    // Reconnect transport with updated vault settings
+                    app.transport =
+                        pour::transport::Transport::connect(&app.config).await;
                 }
 
                 if let Some(ref mut s) = app.configure_state {

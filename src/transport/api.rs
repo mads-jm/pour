@@ -4,6 +4,13 @@ use serde::Deserialize;
 
 use super::VaultEntry;
 
+/// JSON shape returned by `GET /vault/{path}` with
+/// `Accept: application/vnd.olrapi.document-map+json`.
+#[derive(Deserialize)]
+struct DocumentMap {
+    headings: Vec<String>,
+}
+
 /// HTTP client for the Obsidian Local REST API.
 ///
 /// Communicates over HTTPS with a self-signed certificate.
@@ -106,18 +113,77 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch the document map for a vault file and resolve the full
+    /// `::` delimited heading path that ends with the given heading text.
+    ///
+    /// The Obsidian REST API requires heading targets to include their
+    /// full ancestor path (e.g. `Parent::Child`) rather than just the
+    /// leaf heading text. This method fetches the document map via
+    /// `Accept: application/vnd.olrapi.document-map+json` and finds
+    /// the first heading path whose final segment matches `heading_text`.
+    async fn resolve_heading_target(
+        &self,
+        vault_path: &str,
+        heading_text: &str,
+    ) -> Result<String> {
+        let url = format!("{}/vault/{}", self.base_url, vault_path);
+
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .header("Accept", "application/vnd.olrapi.document-map+json")
+            .send()
+            .await
+            .context("API: failed to fetch document map")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("API: failed to fetch document map ({}): {}", status, body);
+        }
+
+        let doc_map: DocumentMap = resp
+            .json()
+            .await
+            .context("API: failed to parse document map JSON")?;
+
+        // Find the first heading path whose leaf segment matches.
+        doc_map
+            .headings
+            .into_iter()
+            .find(|h| {
+                let leaf = h.rsplit("::").next().unwrap_or(h);
+                leaf == heading_text
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "API: heading {:?} not found in document map for {}",
+                    heading_text,
+                    vault_path
+                )
+            })
+    }
+
     /// Append content under a heading in an existing note.
     ///
-    /// Sends a PATCH to `/vault/{vault_path}` using the v3 header-based API:
-    /// - `Operation: append`
-    /// - `Target-Type: heading`
-    /// - `Target: {heading}`
+    /// The `heading` parameter is the raw config value (e.g. `"## Journal"`).
+    /// The `##` prefix is stripped to obtain the heading text, then the full
+    /// `::` delimited heading path is resolved via the document map before
+    /// sending the PATCH request.
     pub async fn append_under_heading(
         &self,
         vault_path: &str,
         heading: &str,
         content: &str,
     ) -> Result<()> {
+        // Strip the markdown heading prefix ("## " → heading text).
+        let heading_text = heading.trim_start_matches('#').trim();
+
+        let target = self
+            .resolve_heading_target(vault_path, heading_text)
+            .await?;
+
         let url = format!("{}/vault/{}", self.base_url, vault_path);
 
         let resp = self
@@ -127,8 +193,8 @@ impl ApiClient {
             .header("Content-Type", "text/markdown")
             .header("Operation", "append")
             .header("Target-Type", "heading")
-            .header("Target", heading)
-            .body(content.to_owned())
+            .header("Target", &target)
+            .body(format!("\n{content}\n"))
             .send()
             .await
             .context("API: failed to send append_under_heading request")?;

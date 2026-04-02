@@ -71,6 +71,11 @@ pub fn render(app: &App, frame: &mut Frame) {
         .split(area);
 
     // ── Header ──
+    let mode = app.transport.mode();
+    let mode_color = match mode {
+        crate::transport::TransportMode::Api => Color::Green,
+        crate::transport::TransportMode::FileSystem => Color::Yellow,
+    };
     let header = Paragraph::new(Line::from(vec![Span::styled(
         " ▽ pour",
         Style::default()
@@ -80,8 +85,23 @@ pub fn render(app: &App, frame: &mut Frame) {
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, chunks[0]);
 
+    // Transport mode — right-aligned on the header row
+    let mode_text = format!("[{mode}] ");
+    let mode_widget = Paragraph::new(Line::from(Span::styled(
+        mode_text,
+        Style::default().fg(mode_color),
+    )))
+    .alignment(Alignment::Right);
+    // Render on the first row of the header area (above the border)
+    let mode_area = Rect {
+        x: chunks[0].x,
+        y: chunks[0].y,
+        width: chunks[0].width,
+        height: 1,
+    };
+    frame.render_widget(mode_widget, mode_area);
+
     // ── Ambient stats row ──
-    let mode = app.transport.mode();
     let last_text = match app.history.last_pour() {
         Some(e) => format_relative(e.timestamp),
         None => "never".to_string(),
@@ -105,11 +125,6 @@ pub fn render(app: &App, frame: &mut Frame) {
         stats_spans.push(Span::styled("   streak: ", dim));
         stats_spans.push(Span::styled(format!("{streak}d"), val));
     }
-    stats_spans.push(Span::styled("   ", dim));
-    stats_spans.push(Span::styled(
-        format!("[{mode}]"),
-        Style::default().fg(Color::Green),
-    ));
 
     let stats_row = Paragraph::new(Line::from(stats_spans));
     frame.render_widget(stats_row, chunks[1]);
@@ -192,13 +207,34 @@ pub fn render(app: &App, frame: &mut Frame) {
         )));
         for entry in &recent_entries {
             let time_str = format_relative(entry.timestamp);
-            bottom_lines.push(Line::from(vec![
-                Span::styled(
-                    format!("   {:<12}", entry.module_key),
-                    Style::default().fg(Color::White),
-                ),
-                Span::styled(time_str, Style::default().fg(Color::DarkGray)),
-            ]));
+            let time_width = time_str.len();
+            // "   " prefix (3) + module + " - " (3) + label + "  " (2) + time
+            let prefix_width = 3 + entry.module_key.len();
+            let mut spans = vec![Span::styled(
+                format!("   {}", entry.module_key),
+                Style::default().fg(Color::White),
+            )];
+            if let Some(label) = entry.first_field.as_deref() {
+                if !label.is_empty() {
+                    // Available space for label: total width minus fixed parts
+                    let avail = (area.width as usize)
+                        .saturating_sub(prefix_width + 3 + 2 + time_width);
+                    let trimmed = if label.len() > avail && avail > 0 {
+                        format!("{}..", &label[..avail.saturating_sub(2)])
+                    } else {
+                        label.to_string()
+                    };
+                    spans.push(Span::styled(
+                        format!(" - {trimmed}"),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+            }
+            spans.push(Span::styled(
+                format!("  {time_str}"),
+                Style::default().fg(Color::DarkGray),
+            ));
+            bottom_lines.push(Line::from(spans));
         }
     }
 
@@ -228,16 +264,21 @@ pub fn render(app: &App, frame: &mut Frame) {
     frame.render_widget(bottom_section, chunks[3]);
 
     // ── Footer ──
-    let footer = Paragraph::new(Line::from(vec![
+    let mut footer_spans = vec![
         Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
         Span::raw(" navigate  "),
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(" select  "),
-        Span::styled("?", Style::default().fg(Color::Yellow)),
-        Span::raw(" help  "),
-        Span::styled("q", Style::default().fg(Color::Yellow)),
-        Span::raw(" quit"),
-    ]))
+    ];
+    if mode != crate::transport::TransportMode::Api {
+        footer_spans.push(Span::styled("r", Style::default().fg(Color::Yellow)));
+        footer_spans.push(Span::raw(" refresh  "));
+    }
+    footer_spans.push(Span::styled("?", Style::default().fg(Color::Yellow)));
+    footer_spans.push(Span::raw(" help  "));
+    footer_spans.push(Span::styled("q", Style::default().fg(Color::Yellow)));
+    footer_spans.push(Span::raw(" quit"));
+    let footer = Paragraph::new(Line::from(footer_spans))
     .block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[4]);
 
@@ -285,6 +326,10 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from(vec![
             Span::styled("  Ctrl+↑↓   ", key_style),
             Span::styled("reorder modules", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  r         ", key_style),
+            Span::styled("refresh API connection", desc_style),
         ]),
         Line::from(""),
         Line::from(vec![
@@ -378,6 +423,8 @@ pub enum DashboardAction {
     ReorderModule(MoveDirection),
     /// Open the new module creation screen.
     NewModule,
+    /// Re-attempt the API connection.
+    RefreshTransport,
 }
 
 /// Handle a key event while on the dashboard.
@@ -455,6 +502,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> DashboardAc
         KeyCode::Char('v') => DashboardAction::ConfigureVault,
         // n — create a new module
         KeyCode::Char('n') => DashboardAction::NewModule,
+        // r — retry API connection
+        KeyCode::Char('r') => DashboardAction::RefreshTransport,
 
         KeyCode::Up => {
             if !app.module_keys.is_empty() {
