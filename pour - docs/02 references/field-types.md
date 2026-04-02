@@ -26,6 +26,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `source` | string | conditional | Required for `dynamic_select`; vault-relative directory path |
 | `target` | string | no | `"frontmatter"` or `"body"` — overrides the default routing |
 | `sub_fields` | array | conditional | Required for `composite_array`; column definitions |
+| `callout` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). When set on a `textarea` field targeting body, the output is wrapped in `> [!type]` blockquote syntax. |
 
 ## Output Target Defaults
 
@@ -70,6 +71,24 @@ target = "body"
 
 __TUI__: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
 __Output__: Defaults to Markdown body. Can be overridden to frontmatter.
+__Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax:
+
+```toml
+[[modules.me.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "tip"
+```
+
+Produces:
+```markdown
+> [!tip]
+> First line of content
+> Second line
+```
+
+Available callout types: `note`, `info`, `todo`, `tip`, `success`, `question`, `warning`, `failure`, `danger`, `bug`, `example`, `quote`.
 
 ## `number`
 
@@ -186,7 +205,8 @@ These keys are set on the module itself, not on individual fields:
 | `fields` | array | yes | At least one field definition |
 | `display_name` | string | no | Human-readable name shown in the dashboard (defaults to module key) |
 | `append_under_header` | string | conditional | Required when `mode = "append"`. The Markdown heading to append under |
-| `append_template` | string | no | Template for append-mode content. Supports `{{time}}` and field name placeholders |
+| `append_template` | string | no | Template for append-mode content. Supports `{{time}}`, `{{date}}`, `{{callout}}`, and field name placeholders |
+| `callout_type` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). Resolved as `{{callout}}` in `append_template` |
 
 ## Top-Level Config Keys
 

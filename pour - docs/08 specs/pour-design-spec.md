@@ -91,7 +91,7 @@ The following are explicitly __in scope__ for v0.1:
 - `pour coffee` (create mode with frontmatter generation)
 - Hybrid transport layer (API → filesystem fallback)
 - Dynamic data fetching (API → disk scan → cache → freetext)
-- Configurable append templates (callout default)
+- Configurable append templates with `{{callout}}` placeholder resolved from module-level `callout_type`; field-level `callout` wraps textarea body output in `> [!type]` blockquote syntax
 - Configurable theme (accent color, border style) *[Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]*
 - Post-execution summary view
 - `required` field validation
