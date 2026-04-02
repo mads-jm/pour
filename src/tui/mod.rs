@@ -21,6 +21,20 @@ pub enum Action {
     Save,
     /// Fetch a directory listing for the given vault-relative path.
     Browse(String),
+    /// Add a new default field to the current module.
+    AddField,
+    /// Remove a field at the given index from the current module.
+    RemoveField(usize),
+    /// Swap two fields at the given indices in the current module.
+    ReorderFields(usize, usize),
+    /// Delete the current module entirely.
+    DeleteModule,
+    /// Reorder modules: swap selected module in the given direction, then persist.
+    ReorderModules(dashboard::MoveDirection),
+    /// Open the new module creation screen.
+    NewModule,
+    /// Save the new module being configured to disk.
+    SaveNewModule,
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -58,6 +72,15 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                     Action::None
                 }
             }
+            dashboard::DashboardAction::ConfigureVault => {
+                app.configure_state = Some(app.init_vault_configure());
+                app.screen = Screen::Configure;
+                Action::Navigate(Screen::Configure)
+            }
+            dashboard::DashboardAction::ReorderModule(dir) => {
+                Action::ReorderModules(dir)
+            }
+            dashboard::DashboardAction::NewModule => Action::NewModule,
             dashboard::DashboardAction::None => Action::None,
         },
 
@@ -98,6 +121,11 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             }
             configure::ConfigureAction::Save => Action::Save,
             configure::ConfigureAction::BrowseDirectory(path) => Action::Browse(path),
+            configure::ConfigureAction::AddField => Action::AddField,
+            configure::ConfigureAction::RemoveField(idx) => Action::RemoveField(idx),
+            configure::ConfigureAction::ReorderFields(a, b) => Action::ReorderFields(a, b),
+            configure::ConfigureAction::DeleteModule => Action::DeleteModule,
+            configure::ConfigureAction::SaveNewModule => Action::SaveNewModule,
             configure::ConfigureAction::None => Action::None,
         },
     }
