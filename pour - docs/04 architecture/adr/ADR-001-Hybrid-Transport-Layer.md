@@ -4,7 +4,7 @@ tags:
   - adr
   - transport
 date created: Tuesday, March 31st 2026, 10:02:51 pm
-date modified: Thursday, April 2nd 2026, 8:17:09 am
+date modified: Thursday, April 2nd 2026, 9:18:41 am
 ---
 
 # ADR 001: Hybrid Transport Layer (API with FS Fallback)
@@ -25,5 +25,6 @@ __Consequences:__
 * __Negative:__ Feature asymmetry. The API backend returns raw filenames (for example, `latte.md`) while the FS backend returns file stems (`latte`). This requires normalization in [[The-3-Tier-Data-Fallback]].
 
 See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[sprint-2-transport-report]].
+
 
 

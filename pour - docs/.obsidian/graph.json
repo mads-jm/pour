@@ -1,12 +1,97 @@
 {
-  "collapse-filter": true,
+  "collapse-filter": false,
   "search": "",
   "showTags": false,
-  "showAttachments": false,
+  "showAttachments": true,
   "hideUnresolved": false,
   "showOrphans": true,
-  "collapse-color-groups": true,
-  "colorGroups": [],
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:\"00 index\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 5435043
+      }
+    },
+    {
+      "query": "path:\"01 concepts\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 5366249
+      }
+    },
+    {
+      "query": "path:\"02 references\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 5551864
+      }
+    },
+    {
+      "query": "path:\"03 guides\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 4422899
+      }
+    },
+    {
+      "query": "path:\"04 architecture\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 9717496
+      }
+    },
+    {
+      "query": "path:\"05 notes\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 13193965
+      }
+    },
+    {
+      "query": "path:\"06 reports\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 15028123
+      }
+    },
+    {
+      "query": "path:\"07 stories\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 13839162
+      }
+    },
+    {
+      "query": "path:\"08 specs\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 14822460
+      }
+    },
+    {
+      "query": "path:\"09 milestones\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 14434379
+      }
+    },
+    {
+      "query": "file:\"index\"",
+      "color": {
+        "a": 1,
+        "rgb": 16776365
+      }
+    },
+    {
+      "query": "file:\"README\"",
+      "color": {
+        "a": 1,
+        "rgb": 16775219
+      }
+    }
+  ],
   "collapse-display": true,
   "showArrow": false,
   "textFadeMultiplier": 0,
@@ -17,6 +102,6 @@
   "repelStrength": 10,
   "linkStrength": 1,
   "linkDistance": 250,
-  "scale": 1,
+  "scale": 1.0000000000000002,
   "close": false
 }

@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Thursday, April 2nd 2026, 8:17:03 am
+date modified: Thursday, April 2nd 2026, 9:18:47 am
 ---
 
 # Field Types Reference

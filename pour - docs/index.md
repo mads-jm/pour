@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, March 31st 2026, 12:12:23 am
-date modified: Thursday, April 2nd 2026, 8:17:02 am
+date modified: Thursday, April 2nd 2026, 9:18:47 am
 ---
 
 # Pour Documentation
@@ -87,6 +87,7 @@ API query -> disk scan -> `~/.cache/pour/state.json` cache -> freetext input
 
 __Last Updated__: 2026-03-31
 __Documentation Version__: v0.1.0
+
 
 
 

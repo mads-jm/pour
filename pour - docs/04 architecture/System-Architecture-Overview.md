@@ -3,7 +3,7 @@ tags:
   - architecture
   - overview
 date created: Tuesday, March 31st 2026, 10:04:14 pm
-date modified: Thursday, April 2nd 2026, 8:17:02 am
+date modified: Thursday, April 2nd 2026, 9:18:48 am
 ---
 
 # System Architecture Overview
@@ -20,6 +20,7 @@ The codebase strictly separates concerns to isolate terminal drawing from data l
 * `src/transport/`: Network/disk boundary. Hides the complexity of API vs filesystem from the rest of the application. Related: [[ADR-001-Hybrid-Transport-Layer]].
 
 For the integrated event loop and subsystem wiring, see [[sprint-6-integration-report]].
+
 
 
 
