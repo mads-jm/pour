@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, FormState};
-use crate::config::{FieldConfig, FieldType};
+use crate::config::{FieldConfig, FieldType, SubFieldType};
 
 /// Render the form view for the currently selected module.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -145,6 +145,27 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                         label
                     }
                 }
+                FieldType::CompositeArray => {
+                    let rows = form_state
+                        .composite_values
+                        .get(&field.name)
+                        .map(|r| r.len())
+                        .unwrap_or(0);
+                    let label = if rows == 0 {
+                        "add rows".to_string()
+                    } else {
+                        format!("{rows} row{}", if rows == 1 { "" } else { "s" })
+                    };
+                    if is_active {
+                        if form_state.composite_open {
+                            format!("{label} [^]")
+                        } else {
+                            format!("{label} [v]")
+                        }
+                    } else {
+                        label
+                    }
+                }
                 _ => {
                     if value.is_empty() {
                         if is_active {
@@ -209,8 +230,8 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     frame.render_widget(list, area);
 
     // Place the terminal block cursor for text/textarea/number fields
-    if !submit_active {
-        if let Some(field) = fields.get(form_state.active_field) {
+    if !submit_active
+        && let Some(field) = fields.get(form_state.active_field) {
             let is_text_input = matches!(
                 field.field_type,
                 FieldType::Text | FieldType::Number
@@ -225,11 +246,10 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                 }
             }
         }
-    }
 
     // If active field is a select type AND the dropdown is open, render the options popup below
-    if form_state.dropdown_open {
-        if let Some(field) = fields.get(form_state.active_field)
+    if form_state.dropdown_open
+        && let Some(field) = fields.get(form_state.active_field)
             && matches!(
                 field.field_type,
                 FieldType::StaticSelect | FieldType::DynamicSelect
@@ -237,16 +257,22 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         {
             render_select_options(frame, area, field, form_state);
         }
-    }
 
     // If active field is a textarea AND the editor is open, render the text editor overlay
-    if form_state.textarea_open {
-        if let Some(field) = fields.get(form_state.active_field)
+    if form_state.textarea_open
+        && let Some(field) = fields.get(form_state.active_field)
             && field.field_type == FieldType::Textarea
         {
             render_textarea_editor(frame, area, field, form_state);
         }
-    }
+
+    // If active field is a composite_array AND the overlay is open, render the table editor
+    if form_state.composite_open
+        && let Some(field) = fields.get(form_state.active_field)
+            && field.field_type == FieldType::CompositeArray
+        {
+            render_composite_editor(frame, area, field, form_state);
+        }
 }
 
 /// Render a scrollable options list for select fields.
@@ -319,24 +345,63 @@ fn render_textarea_editor(
         .map(|s| s.as_str())
         .unwrap_or("");
 
-    let lines: Vec<Line> = if value.is_empty() {
-        vec![Line::from("")]
-    } else {
-        value.lines().map(|l| Line::from(l.to_string())).collect()
-    };
-
     // Position below the active field row, fill available space
     let y_offset = (form_state.active_field as u16 + 1).min(area.height.saturating_sub(1));
     let editor_area = Rect {
         x: area.x + 4,
         y: area.y + y_offset,
         width: area.width.saturating_sub(8).min(60),
-        height: area.height.saturating_sub(y_offset).min(10).max(4),
+        height: area.height.saturating_sub(y_offset).clamp(4, 10),
     };
 
     if editor_area.height < 3 {
         return;
     }
+
+    // Find the line and column from the flat cursor_position
+    let mut remaining = form_state.cursor_position;
+    let mut cursor_line: u16 = 0;
+    let mut cursor_col: usize = 0;
+    for line in value.split('\n') {
+        if remaining <= line.len() {
+            cursor_col = remaining;
+            break;
+        }
+        remaining -= line.len() + 1; // +1 for the newline
+        cursor_line += 1;
+    }
+
+    // Horizontal scroll: inner editor width minus borders
+    let avail = editor_area.width.saturating_sub(2) as usize;
+    let scroll = form_state.textarea_scroll_offset;
+
+    // Render all lines with the same horizontal scroll offset applied
+    let raw_lines: Vec<&str> = if value.is_empty() {
+        vec![""]
+    } else {
+        value.split('\n').collect()
+    };
+
+    let lines: Vec<Line> = raw_lines
+        .iter()
+        .map(|l| {
+            let char_count = l.chars().count();
+            let left_clipped = scroll > 0 && char_count > 0;
+            let right_clipped = char_count > scroll + avail;
+            let content_take = avail.saturating_sub(left_clipped as usize + right_clipped as usize);
+            let slice: String = l.chars().skip(scroll).take(content_take).collect();
+
+            let mut spans: Vec<Span> = Vec::new();
+            if left_clipped {
+                spans.push(Span::styled("◂", Style::default().fg(Color::DarkGray)));
+            }
+            spans.push(Span::raw(slice));
+            if right_clipped {
+                spans.push(Span::styled("▸", Style::default().fg(Color::DarkGray)));
+            }
+            Line::from(spans)
+        })
+        .collect();
 
     let editor = Paragraph::new(lines).block(
         Block::default()
@@ -347,26 +412,179 @@ fn render_textarea_editor(
     frame.render_widget(Clear, editor_area);
     frame.render_widget(editor, editor_area);
 
-    // Place cursor inside the editor overlay
-    // Find the line and column from the flat cursor_position
-    let mut remaining = form_state.cursor_position;
-    let mut cursor_line: u16 = 0;
-    let mut cursor_col: u16 = 0;
-    for line in value.split('\n') {
-        if remaining <= line.len() {
-            cursor_col = remaining as u16;
-            break;
-        }
-        remaining -= line.len() + 1; // +1 for the newline
-        cursor_line += 1;
-    }
-
-    // +1 for border
-    let cx = editor_area.x + 1 + cursor_col;
+    // Place cursor: +1 for border, cursor_col adjusted by scroll, +1 if left indicator shown
+    let left_indicator: u16 = if scroll > 0 { 1 } else { 0 };
+    let viewport_col = cursor_col.saturating_sub(scroll) as u16;
+    let cx = editor_area.x + 1 + left_indicator + viewport_col;
     let cy = editor_area.y + 1 + cursor_line;
     if cx < editor_area.x + editor_area.width - 1 && cy < editor_area.y + editor_area.height - 1 {
         frame.set_cursor_position(Position::new(cx, cy));
     }
+}
+
+/// Render a bordered table editor overlay for composite_array fields.
+fn render_composite_editor(
+    frame: &mut Frame,
+    area: Rect,
+    field: &FieldConfig,
+    form_state: &FormState,
+) {
+    let sub_fields = match &field.sub_fields {
+        Some(subs) if !subs.is_empty() => subs,
+        _ => return,
+    };
+
+    let rows = form_state
+        .composite_values
+        .get(&field.name)
+        .cloned()
+        .unwrap_or_default();
+
+    // Position below the active field row, fill available space
+    let y_offset = (form_state.active_field as u16 + 1).min(area.height.saturating_sub(1));
+    let editor_area = Rect {
+        x: area.x + 2,
+        y: area.y + y_offset,
+        width: area.width.saturating_sub(4).min(70),
+        height: area.height.saturating_sub(y_offset).clamp(5, 14),
+    };
+
+    if editor_area.height < 4 {
+        return;
+    }
+
+    // Build lines: header row, then data rows
+    let col_count = sub_fields.len();
+
+    // Calculate column widths: max of header and cell widths, with minimum 6
+    let mut widths: Vec<usize> = sub_fields.iter().map(|s| s.prompt.len().max(6)).collect();
+    for row in &rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = widths[i].max(cell.len().max(1));
+            }
+        }
+    }
+
+    // Clamp total width to fit editor area (inner width = editor_area.width - 2 for borders)
+    let inner_width = editor_area.width.saturating_sub(2) as usize;
+    let total: usize = widths.iter().sum::<usize>() + (col_count * 3) + 1; // " | " separators
+    if total > inner_width && inner_width > col_count * 4 {
+        let scale = inner_width as f64 / total as f64;
+        for w in &mut widths {
+            *w = (*w as f64 * scale).max(3.0) as usize;
+        }
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Header line
+    let mut header_spans = Vec::new();
+    for (i, sub) in sub_fields.iter().enumerate() {
+        let w = widths.get(i).copied().unwrap_or(6);
+        if i > 0 {
+            header_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+        }
+        header_spans.push(Span::styled(
+            format!("{:width$}", sub.prompt, width = w),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    lines.push(Line::from(header_spans));
+
+    // Separator line
+    let sep: String = widths
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            let dashes = "─".repeat(*w);
+            if i > 0 {
+                format!("─┼─{dashes}")
+            } else {
+                dashes
+            }
+        })
+        .collect();
+    lines.push(Line::from(Span::styled(sep, Style::default().fg(Color::DarkGray))));
+
+    // Data rows
+    if rows.is_empty() {
+        lines.push(Line::from(Span::styled(
+            " (empty — press Enter to add a row)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (row_idx, row) in rows.iter().enumerate() {
+            let is_active_row = row_idx == form_state.composite_row;
+            let mut row_spans = Vec::new();
+
+            for (col_idx, _sub) in sub_fields.iter().enumerate() {
+                let w = widths.get(col_idx).copied().unwrap_or(6);
+                let cell = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
+                let is_active_cell = is_active_row && col_idx == form_state.composite_col;
+
+                if col_idx > 0 {
+                    row_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+                }
+
+                let style = if is_active_cell {
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
+                        .bg(Color::DarkGray)
+                } else if is_active_row {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+
+                let display = if cell.is_empty() && is_active_cell {
+                    "_".to_string()
+                } else {
+                    format!("{:width$}", cell, width = w)
+                };
+
+                row_spans.push(Span::styled(display, style));
+            }
+
+            // Row indicator
+            let indicator = if is_active_row { "▸" } else { " " };
+            let mut full_spans = vec![Span::styled(
+                format!("{indicator} "),
+                if is_active_row {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                },
+            )];
+            full_spans.extend(row_spans);
+            lines.push(Line::from(full_spans));
+        }
+    }
+
+    // Hint line
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(" Tab", Style::default().fg(Color::Yellow)),
+        Span::raw(" next  "),
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(" add row  "),
+        Span::styled("Del", Style::default().fg(Color::Yellow)),
+        Span::raw(" remove  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" close"),
+    ]));
+
+    let editor = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" {} ", field.prompt))
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+    frame.render_widget(Clear, editor_area);
+    frame.render_widget(editor, editor_area);
 }
 
 /// Handle a key event while in Form view.
@@ -405,6 +623,14 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     let is_textarea = active_field
         .map(|f| f.field_type == FieldType::Textarea)
         .unwrap_or(false);
+    let is_composite = active_field
+        .map(|f| f.field_type == FieldType::CompositeArray)
+        .unwrap_or(false);
+
+    // Composite overlay has its own key handling
+    if is_composite && form_state.composite_open {
+        return handle_composite_key(form_state, active_field.unwrap(), key);
+    }
 
     match key.code {
         // Esc (layered):
@@ -417,6 +643,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 FormAction::None
             } else if form_state.textarea_open {
                 form_state.textarea_open = false;
+                form_state.textarea_scroll_offset = 0;
+                FormAction::None
+            } else if form_state.composite_open {
+                form_state.composite_open = false;
                 FormAction::None
             } else if let Some(field) = active_field {
                 let value = form_state
@@ -439,6 +669,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Tab => {
             form_state.dropdown_open = false;
             form_state.textarea_open = false;
+            form_state.textarea_scroll_offset = 0;
+            form_state.composite_open = false;
             form_state.active_field = (form_state.active_field + 1) % navigable_count;
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
@@ -448,6 +680,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::BackTab => {
             form_state.dropdown_open = false;
             form_state.textarea_open = false;
+            form_state.textarea_scroll_offset = 0;
+            form_state.composite_open = false;
             form_state.active_field = if form_state.active_field == 0 {
                 navigable_count - 1
             } else {
@@ -476,6 +710,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             } else {
                 form_state.dropdown_open = false;
                 form_state.textarea_open = false;
+                form_state.textarea_scroll_offset = 0;
+                form_state.composite_open = false;
                 form_state.active_field = if form_state.active_field == 0 {
                     navigable_count - 1
                 } else {
@@ -505,6 +741,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             } else {
                 form_state.dropdown_open = false;
                 form_state.textarea_open = false;
+                form_state.textarea_scroll_offset = 0;
+                form_state.composite_open = false;
                 form_state.active_field = (form_state.active_field + 1) % navigable_count;
                 form_state.cursor_position = current_value_len(form_state, module);
             }
@@ -523,6 +761,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             } else if is_select {
                 form_state.dropdown_open = !form_state.dropdown_open;
                 FormAction::None
+            } else if is_composite {
+                form_state.composite_open = true;
+                form_state.composite_row = 0;
+                form_state.composite_col = 0;
+                FormAction::None
             } else if is_textarea {
                 if form_state.textarea_open {
                     // Insert newline inside the editor
@@ -534,6 +777,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                         let pos = form_state.cursor_position.min(value.len());
                         value.insert(pos, '\n');
                         form_state.cursor_position = pos + 1;
+                        // After a newline, cursor_col resets to 0 on the new line
+                        form_state.textarea_scroll_offset = 0;
                     }
                 } else {
                     // Open the editor overlay
@@ -550,7 +795,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Char(c) => {
-            if on_submit_button || is_select || (is_textarea && !form_state.textarea_open) {
+            if on_submit_button || is_select || is_composite || (is_textarea && !form_state.textarea_open) {
                 return FormAction::None;
             }
             if let Some(field) = active_field {
@@ -571,12 +816,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 let pos = form_state.cursor_position.min(value.len());
                 value.insert(pos, c);
                 form_state.cursor_position = pos + 1;
+
+                if is_textarea && form_state.textarea_open {
+                    let value_snap = form_state.field_values.get(&field.name).map(|s| s.clone()).unwrap_or_default();
+                    let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+                    let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
+                    sync_textarea_scroll(form_state, &value_snap, avail);
+                }
             }
             FormAction::None
         }
 
         KeyCode::Backspace => {
-            if on_submit_button || is_select || (is_textarea && !form_state.textarea_open) {
+            if on_submit_button || is_select || is_composite || (is_textarea && !form_state.textarea_open) {
                 return FormAction::None;
             }
             if let Some(field) = active_field {
@@ -590,6 +842,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     value.remove(pos - 1);
                     form_state.cursor_position = pos - 1;
                 }
+
+                if is_textarea && form_state.textarea_open {
+                    let value_snap = form_state.field_values.get(&field.name).map(|s| s.clone()).unwrap_or_default();
+                    let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+                    let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
+                    sync_textarea_scroll(form_state, &value_snap, avail);
+                }
             }
             FormAction::None
         }
@@ -597,6 +856,14 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Left => {
             if form_state.cursor_position > 0 {
                 form_state.cursor_position -= 1;
+            }
+            if is_textarea && form_state.textarea_open {
+                if let Some(field) = active_field {
+                    let value_snap = form_state.field_values.get(&field.name).map(|s| s.clone()).unwrap_or_default();
+                    let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+                    let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
+                    sync_textarea_scroll(form_state, &value_snap, avail);
+                }
             }
             FormAction::None
         }
@@ -610,6 +877,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     .unwrap_or(0);
                 if form_state.cursor_position < len {
                     form_state.cursor_position += 1;
+                }
+                if is_textarea && form_state.textarea_open {
+                    let value_snap = form_state.field_values.get(&field.name).map(|s| s.clone()).unwrap_or_default();
+                    let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+                    let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
+                    sync_textarea_scroll(form_state, &value_snap, avail);
                 }
             }
             FormAction::None
@@ -664,6 +937,276 @@ fn current_value_len(form_state: &FormState, module: &crate::config::ModuleConfi
         .and_then(|f| form_state.field_values.get(&f.name))
         .map(|v| v.len())
         .unwrap_or(0)
+}
+
+const TEXTAREA_SCROLL_MARGIN: usize = 2;
+
+/// Recompute `textarea_scroll_offset` so the cursor column stays in the
+/// horizontal viewport of the textarea editor.
+///
+/// `value` is the full textarea string; `cursor_pos` is the flat byte offset.
+/// `avail_width` is the inner editor width (editor_area.width - 2 borders).
+fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u16) {
+    if avail_width == 0 {
+        return;
+    }
+    let avail = avail_width as usize;
+
+    // Compute cursor_col on the active line
+    let mut remaining = form_state.cursor_position;
+    let mut cursor_col: usize = 0;
+    for line in value.split('\n') {
+        if remaining <= line.len() {
+            cursor_col = remaining;
+            break;
+        }
+        remaining -= line.len() + 1;
+    }
+
+    let scroll = form_state.textarea_scroll_offset;
+
+    // Scroll right: cursor near/past right edge
+    let right_edge = scroll + avail.saturating_sub(TEXTAREA_SCROLL_MARGIN + 1);
+    if cursor_col >= right_edge {
+        form_state.textarea_scroll_offset = cursor_col.saturating_sub(avail.saturating_sub(TEXTAREA_SCROLL_MARGIN + 1));
+    }
+
+    // Scroll left: cursor near/before left edge
+    if cursor_col < scroll + TEXTAREA_SCROLL_MARGIN && scroll > 0 {
+        form_state.textarea_scroll_offset = cursor_col.saturating_sub(TEXTAREA_SCROLL_MARGIN);
+    }
+
+    if form_state.textarea_scroll_offset > cursor_col {
+        form_state.textarea_scroll_offset = 0;
+    }
+}
+
+/// Handle key events inside the composite array overlay.
+///
+/// Uses local row/col indices to avoid split-borrow issues with `FormState`.
+fn handle_composite_key(
+    form_state: &mut FormState,
+    field: &FieldConfig,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crossterm::event::KeyCode;
+
+    let sub_fields = match &field.sub_fields {
+        Some(subs) if !subs.is_empty() => subs,
+        _ => return FormAction::None,
+    };
+    let col_count = sub_fields.len();
+    let field_name = field.name.clone();
+
+    // Snapshot navigation state to avoid borrow issues
+    let row = form_state.composite_row;
+    let col = form_state.composite_col;
+
+    match key.code {
+        KeyCode::Esc => {
+            form_state.composite_open = false;
+        }
+
+        KeyCode::Enter => {
+            let rows = form_state.composite_values.entry(field_name).or_default();
+            let new_row = vec![String::new(); col_count];
+            if rows.is_empty() {
+                rows.push(new_row);
+                form_state.composite_row = 0;
+            } else {
+                let insert_at = (row + 1).min(rows.len());
+                rows.insert(insert_at, new_row);
+                form_state.composite_row = insert_at;
+            }
+            form_state.composite_col = 0;
+            form_state.cursor_position = 0;
+        }
+
+        KeyCode::Delete => {
+            let rows = form_state.composite_values.entry(field_name).or_default();
+            if !rows.is_empty() {
+                let idx = row.min(rows.len() - 1);
+                rows.remove(idx);
+                if rows.is_empty() {
+                    form_state.composite_row = 0;
+                } else {
+                    form_state.composite_row = row.min(rows.len() - 1);
+                }
+                form_state.cursor_position = 0;
+            }
+        }
+
+        KeyCode::Tab => {
+            let rows = form_state.composite_values.get(&field_name);
+            let row_count = rows.map(|r| r.len()).unwrap_or(0);
+            if row_count == 0 {
+                return FormAction::None;
+            }
+            let mut new_col = col + 1;
+            let mut new_row = row;
+            if new_col >= col_count {
+                new_col = 0;
+                new_row = (row + 1).min(row_count - 1);
+            }
+            form_state.composite_col = new_col;
+            form_state.composite_row = new_row;
+            form_state.cursor_position = composite_cell_len(form_state, &field_name);
+        }
+
+        KeyCode::BackTab => {
+            let rows = form_state.composite_values.get(&field_name);
+            if rows.map(|r| r.len()).unwrap_or(0) == 0 {
+                return FormAction::None;
+            }
+            if col == 0 {
+                if row > 0 {
+                    form_state.composite_row = row - 1;
+                    form_state.composite_col = col_count - 1;
+                }
+            } else {
+                form_state.composite_col = col - 1;
+            }
+            form_state.cursor_position = composite_cell_len(form_state, &field_name);
+        }
+
+        KeyCode::Up => {
+            let row_count = form_state.composite_values.get(&field_name).map(|r| r.len()).unwrap_or(0);
+            if row_count > 0 && row > 0 {
+                form_state.composite_row = row - 1;
+            }
+            form_state.cursor_position = composite_cell_len(form_state, &field_name);
+        }
+
+        KeyCode::Down => {
+            let row_count = form_state.composite_values.get(&field_name).map(|r| r.len()).unwrap_or(0);
+            if row_count > 0 && row < row_count - 1 {
+                form_state.composite_row = row + 1;
+            }
+            form_state.cursor_position = composite_cell_len(form_state, &field_name);
+        }
+
+        KeyCode::Left => {
+            if let Some(sub) = sub_fields.get(col) {
+                if sub.field_type == SubFieldType::StaticSelect {
+                    cycle_composite_select_in(form_state, &field_name, sub, -1);
+                } else if form_state.cursor_position > 0 {
+                    form_state.cursor_position -= 1;
+                }
+            }
+        }
+
+        KeyCode::Right => {
+            if let Some(sub) = sub_fields.get(col) {
+                if sub.field_type == SubFieldType::StaticSelect {
+                    cycle_composite_select_in(form_state, &field_name, sub, 1);
+                } else {
+                    let len = composite_cell_len(form_state, &field_name);
+                    if form_state.cursor_position < len {
+                        form_state.cursor_position += 1;
+                    }
+                }
+            }
+        }
+
+        KeyCode::Char(' ') => {
+            if let Some(sub) = sub_fields.get(col)
+                && sub.field_type == SubFieldType::StaticSelect {
+                    cycle_composite_select_in(form_state, &field_name, sub, 1);
+                    return FormAction::None;
+                }
+            insert_composite_char_in(form_state, &field_name, sub_fields, ' ');
+        }
+
+        KeyCode::Char(c) => {
+            insert_composite_char_in(form_state, &field_name, sub_fields, c);
+        }
+
+        KeyCode::Backspace => {
+            let r = form_state.composite_row;
+            let c = form_state.composite_col;
+            if let Some(rows) = form_state.composite_values.get_mut(&field_name)
+                && let Some(row) = rows.get_mut(r)
+                    && let Some(cell) = row.get_mut(c)
+                        && form_state.cursor_position > 0 && !cell.is_empty() {
+                            let pos = form_state.cursor_position.min(cell.len());
+                            cell.remove(pos - 1);
+                            form_state.cursor_position = pos - 1;
+                        }
+        }
+
+        _ => {}
+    }
+
+    FormAction::None
+}
+
+/// Get the length of the current composite cell value.
+fn composite_cell_len(form_state: &FormState, field_name: &str) -> usize {
+    form_state
+        .composite_values
+        .get(field_name)
+        .and_then(|rows| rows.get(form_state.composite_row))
+        .and_then(|row| row.get(form_state.composite_col))
+        .map(|v| v.len())
+        .unwrap_or(0)
+}
+
+/// Insert a character into the active composite cell.
+fn insert_composite_char_in(
+    form_state: &mut FormState,
+    field_name: &str,
+    sub_fields: &[crate::config::SubFieldConfig],
+    c: char,
+) {
+    if let Some(sub) = sub_fields.get(form_state.composite_col) {
+        if sub.field_type == SubFieldType::StaticSelect {
+            return;
+        }
+        if sub.field_type == SubFieldType::Number && !c.is_ascii_digit() && c != '.' && c != '-' {
+            return;
+        }
+    }
+
+    let r = form_state.composite_row;
+    let col = form_state.composite_col;
+    if let Some(rows) = form_state.composite_values.get_mut(field_name)
+        && let Some(row) = rows.get_mut(r)
+            && let Some(cell) = row.get_mut(col) {
+                let pos = form_state.cursor_position.min(cell.len());
+                cell.insert(pos, c);
+                form_state.cursor_position = pos + 1;
+            }
+}
+
+/// Cycle through options for a static_select sub-field in a composite row.
+fn cycle_composite_select_in(
+    form_state: &mut FormState,
+    field_name: &str,
+    sub: &crate::config::SubFieldConfig,
+    delta: i32,
+) {
+    let options = match &sub.options {
+        Some(opts) if !opts.is_empty() => opts,
+        _ => return,
+    };
+
+    let r = form_state.composite_row;
+    let c = form_state.composite_col;
+    if let Some(rows) = form_state.composite_values.get_mut(field_name)
+        && let Some(row) = rows.get_mut(r)
+            && let Some(cell) = row.get_mut(c) {
+                let current_idx = options.iter().position(|o| o == cell);
+                let new_idx = match current_idx {
+                    Some(idx) => {
+                        let len = options.len() as i32;
+                        ((idx as i32 + delta).rem_euclid(len)) as usize
+                    }
+                    None => 0,
+                };
+                if let Some(new_value) = options.get(new_idx) {
+                    *cell = new_value.clone();
+                }
+            }
 }
 
 /// Move a flat cursor position up or down by one line within multiline text.
