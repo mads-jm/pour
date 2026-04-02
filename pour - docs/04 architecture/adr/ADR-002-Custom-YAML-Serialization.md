@@ -4,7 +4,7 @@ tags:
   - adr
   - output
 date created: Tuesday, March 31st 2026, 10:03:09 pm
-date modified: Tuesday, March 31st 2026, 10:34:06 pm
+date modified: Thursday, April 2nd 2026, 8:17:09 am
 ---
 
 # ADR 002: Custom YAML Frontmatter Generation
@@ -25,4 +25,5 @@ __Consequences:__
 Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.
 
 See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[sprint-3-output-pipeline-report]].
+
 

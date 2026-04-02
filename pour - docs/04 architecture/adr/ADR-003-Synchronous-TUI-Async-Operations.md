@@ -4,7 +4,7 @@ tags:
   - adr
   - tui
 date created: Tuesday, March 31st 2026, 10:03:30 pm
-date modified: Tuesday, March 31st 2026, 10:34:07 pm
+date modified: Thursday, April 2nd 2026, 8:17:08 am
 ---
 
 # ADR 003: Blocking UI During Async Transport
@@ -22,4 +22,5 @@ __Consequences:__
 Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.
 
 See also [[System-Architecture-Overview]], [[ratatui]], and [[sprint-6-integration-report]].
+
 

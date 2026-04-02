@@ -7,7 +7,7 @@ aliases:
   - obsidian-local-rest-api
   - obsidian rest api
 date created: Tuesday, March 31st 2026, 12:14:49 am
-date modified: Tuesday, March 31st 2026, 10:34:09 pm
+date modified: Thursday, April 2nd 2026, 8:17:07 am
 ---
 
 # Obsidian Local REST API - Reference
@@ -287,6 +287,7 @@ Based on the [[pour-design-spec|project spec]], these are the most relevant endp
 3. __`PATCH /vault/{filename}`__ - Append under headers (journal entries)
 4. __`GET /vault/{dirpath}/`__ - List files in directory (populate dynamic dropdowns)
 5. __`POST /search/`__ - Dataview queries for dynamic selects by tag
+
 
 
 

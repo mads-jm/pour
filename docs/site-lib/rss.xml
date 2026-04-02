@@ -1,7 +1,21 @@
-<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[pour docs]]></title><description><![CDATA[Obsidian digital garden]]></description><link>http://github.com/dylang/node-rss</link><image><url>site-lib/media/favicon.png</url><title>pour docs</title><link/></image><generator>Webpage HTML Export plugin for Obsidian</generator><lastBuildDate>Tue, 31 Mar 2026 22:34:11 GMT</lastBuildDate><atom:link href="site-lib/rss.xml" rel="self" type="application/rss+xml"/><pubDate>Tue, 31 Mar 2026 22:34:05 GMT</pubDate><ttl>60</ttl><dc:creator/><item><title><![CDATA[index]]></title><description><![CDATA[
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[pour docs]]></title><description><![CDATA[Obsidian digital garden]]></description><link>http://github.com/dylang/node-rss</link><image><url>site-lib/media/favicon.png</url><title>pour docs</title><link/></image><generator>Webpage HTML Export plugin for Obsidian</generator><lastBuildDate>Thu, 02 Apr 2026 08:17:09 GMT</lastBuildDate><atom:link href="site-lib/rss.xml" rel="self" type="application/rss+xml"/><pubDate>Thu, 02 Apr 2026 08:17:01 GMT</pubDate><ttl>60</ttl><dc:creator/><item><title><![CDATA[v1-implementation-plan]]></title><description><![CDATA[
+Config first, transport second, TUI last — each layer is testable independently
+No task depends on unverified prior work — the inspector must sign off before dependents start
+Atomic tasks — each can be implemented and tested in isolation
+Cargo.toml -&gt; Config parsing -&gt; Transport (API + FS) -&gt; Output pipeline -&gt; Data fetching -&gt; TUI (form -&gt; dashboard -&gt; summary) -&gt; CLI routing (main.rs)
+See the Project State maintained by the Governor agent for current status of each task.]]></description><link>04-architecture/v1-implementation-plan.html</link><guid isPermaLink="false">04 architecture/v1-implementation-plan.md</guid><pubDate>Thu, 02 Apr 2026 08:17:01 GMT</pubDate></item><item><title><![CDATA[System-Architecture-Overview]]></title><description><![CDATA[The codebase strictly separates concerns to isolate terminal drawing from data logic. This note is the short-form companion to <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>.
+<br>src/main.rs: Entry point. Owns CLI parsing, config load, terminal lifecycle, event loop polling, and orchestrates submit/cache persistence. See also <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
+src/init.rs: First-run setup. Implements the pour init flow — generates a starter config.toml with interactive vault path selection and example modules.
+<br>src/tui/: Presentation layer. Routes events to screen handlers (dashboard.rs, form.rs, summary.rs, configure.rs) and dispatches Action enums. The dashboard acts as an ambient capture surface — showing recent activity, capture rhythm stats, and module gaps rather than a simple launcher. Built with <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> and <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>.
+src/tui/configure.rs: In-app configurator. Provides a TUI form for editing module scalar fields (path, mode, display_name, append_under_header) with a vault directory browser for path selection. Also hosts vault-level settings (ConfigureLevel::VaultSettings) accessible via Ctrl+V from the dashboard.
+src/app.rs: State management. Owns FormState, ConfigureState, BrowserState, active field indices, and input validation.
+<br>src/output/: Write execution. Orchestrates frontmatter.rs generation and template.rs path rendering. Related: <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
+<br>src/data/: Fetch, cache, and history tier. cache.rs backs dynamic select dropdowns; history.rs tracks capture events (timestamp, module, vault path) persisted at ~/.cache/pour/history.json and surfaces ambient stats on the dashboard (last pour, today/week counts, streak, per-module activity, gaps). Related: <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
+<br>src/transport/: Network/disk boundary. Hides the complexity of API vs filesystem from the rest of the application. Related: <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
+<br>For the integrated event loop and subsystem wiring, see <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/system-architecture-overview.html</link><guid isPermaLink="false">04 architecture/System-Architecture-Overview.md</guid><pubDate>Thu, 02 Apr 2026 08:16:30 GMT</pubDate></item><item><title><![CDATA[index]]></title><description><![CDATA[
 For LLMs: Start here. Navigate to a directory index for scoped exploration, or jump directly to a core document below. For Humans: See above… but use the graph to guide your exploration!
 We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely..obsidian/ is vault configuration and snippet state, not part of the documentation corpus.
-<a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (source of truth)
+<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (source of truth)
 <br><a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour
 <br><a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> — Concise subsystem map
 <br><a data-href="v1.0.0-Release" href="09-milestones/v1.0.0-release.html" class="internal-link" target="_self" rel="noopener nofollow">v1.0.0-Release</a> — Current release milestone
@@ -17,187 +31,593 @@ cargo test # run all tests
 cargo clippy # lint
 cargo fmt # format
 Pour writes to Obsidian via a hybrid transport layer:
-<br>API — HTTP via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (http://127.0.0.1:27124)
+<br>API — HTTPS via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs)
 File System — Direct std::fs fallback if API unavailable
 API query -&gt; disk scan -&gt; ~/.cache/pour/state.json cache -&gt; freetext inputLast Updated: 2026-03-31
-Documentation Version: v0.1.0]]></description><link>index.html</link><guid isPermaLink="false">index.md</guid><pubDate>Tue, 31 Mar 2026 22:34:05 GMT</pubDate></item><item><title><![CDATA[v1.0.0-Release]]></title><description><![CDATA[The core capture loop is complete.Features:
-Dashboard &amp; Fast Paths: Launch the UI via pour or bypass directly to a workflow via pour &lt;module_key&gt;.
+Documentation Version: v0.1.0]]></description><link>index.html</link><guid isPermaLink="false">index.md</guid><pubDate>Thu, 02 Apr 2026 08:16:28 GMT</pubDate></item><item><title><![CDATA[v1.0.0-Release]]></title><description><![CDATA[The core capture loop is complete.Features:
+Ambient Dashboard: The homepage displays capture rhythm stats (last pour, today/week counts, streak), per-module activity counts, recent capture history, and gap indicators for neglected modules. Launch via pour or bypass directly to a workflow via pour &lt;module_key&gt;.
 Resilient Transport: Seamlessly shifts between the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian REST API</a> and direct filesystem writes if the vault is closed. See <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
 Dynamic Form Rendering: Parses ~/.config/pour/config.toml to dynamically construct UI forms.
 <br>Smart Data Fetching: dynamic_select fields automatically query vault directories for options, backed by an atomic local JSON cache (~/.cache/pour/state.json). See <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
+Capture History: Every successful write is logged to ~/.cache/pour/history.json, powering the dashboard's ambient stats and enabling behavioral feedback loops.
 <br>Obsidian-Native Output: Custom YAML generation ensures compatibility with Obsidian Properties. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
+In-App Configuration: Module settings (Ctrl+E) and vault settings (Ctrl+V) editable from the dashboard without leaving the TUI. Uses toml_edit for comment-preserving atomic writes.
 Known Limitations (v1):
-Asymmetric appending: filesystem fallback cannot append under specific Markdown headers in the same way as the API backend.
 <br>Network operations block the UI thread momentarily. See <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
-<br>Release context: <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a> and <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>.]]></description><link>09-milestones/v1.0.0-release.html</link><guid isPermaLink="false">09 milestones/v1.0.0-Release.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[ADR-001-Hybrid-Transport-Layer]]></title><description><![CDATA[Date: 2026-03-31
-Status: AcceptedContext:
-The core ethos of pour is killing friction. Relying solely on the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> means data entry fails if the Obsidian Electron client is closed. Relying solely on the filesystem means missing out on advanced API features when the vault is open.Decision:
-Implement a dual-pronged Transport dispatcher.
-<br>Attempt an HTTP connection to the Local REST API first using <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> with a 5-second timeout.
-If the connection is refused, automatically fall back to direct filesystem writes via std::fs.
-Consequences: Positive: Maximum resilience. The user never loses a log entry due to application state.
-<br>Negative: Feature asymmetry. The API backend returns raw filenames (for example, latte.md) while the FS backend returns file stems (latte). This requires normalization in <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
-<br>See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-2-transport-report" href="06-reports/sprints/sprint-2-transport-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-2-transport-report</a>.]]></description><link>04-architecture/adr/adr-001-hybrid-transport-layer.html</link><guid isPermaLink="false">04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[ADR-002-Custom-YAML-Serialization]]></title><description><![CDATA[Date: 2026-03-31
-Status: AcceptedContext:
-Obsidian Properties and Dataview require highly specific YAML frontmatter formatting. Standard serialization crates like serde_yaml introduce a runtime dependency for writing and often format arrays or special characters in ways that Obsidian handles poorly.Decision:
-Write a custom generate_frontmatter pipeline instead of relying on generic serializers.
-Auto-injects and prioritizes the date field.
-Automatically double-quotes values containing YAML-special characters.
-Detects comma-separated string inputs and expands them into YAML lists.
-Consequences:
-Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-3-output-pipeline-report" href="06-reports/sprints/sprint-3-output-pipeline-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-3-output-pipeline-report</a>.]]></description><link>04-architecture/adr/adr-002-custom-yaml-serialization.html</link><guid isPermaLink="false">04 architecture/adr/ADR-002-Custom-YAML-Serialization.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[ADR-003-Synchronous-TUI-Async-Operations]]></title><description><![CDATA[Date: 2026-03-31
-Status: Accepted (v1 specific)Context:
-The main.rs event loop uses tokio for async data fetching and API submissions. Managing true background async in a TUI requires complex channels and shared state to prevent UI freezing while waiting for network responses.Decision:
-For v1, fetch_dynamic_options and handle_submit calls are awaited inline, effectively blocking the UI thread during network operations.Consequences:
-Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>, and <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/adr/adr-003-synchronous-tui-async-operations.html</link><guid isPermaLink="false">04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[The-3-Tier-Data-Fallback]]></title><description><![CDATA[Used for populating dynamic_select UI fields without perceived latency in the <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> form flow.When the TUI initializes a form that requires dynamic data, it executes fetch_options() using a strict three-tier degradation path:
-<br>Tier 1 (Transport): Attempts to read the live directory via the active <a data-tooltip-position="top" aria-label="ADR-001-Hybrid-Transport-Layer" data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">transport layer</a> (API or FS).
-Tier 2 (Cache): If transport fails or is slow, it queries the atomic local JSON cache at ~/.cache/pour/state.json.
-Tier 3 (Empty Fallback): If cache is empty or corrupt, it returns an empty vector, dynamically shifting the UI to accept free-text input rather than a strict select list.
-<br>This fallback behavior is part of the broader <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and is called out in <a data-href="sprint-4-data-fetching-report" href="06-reports/sprints/sprint-4-data-fetching-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-4-data-fetching-report</a>.Note: Results are always normalized to file stems (stripping .md) before being cached.]]></description><link>01-concepts/the-3-tier-data-fallback.html</link><guid isPermaLink="false">01 concepts/The-3-Tier-Data-Fallback.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[Guide-Adding-New-Field-Types]]></title><description><![CDATA[When extending the configuration schema, touch these layers in order so the new field stays coherent across <a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> and the running app:
-Config Layer (src/config.rs): Add the new variant to the FieldType enum. Update validate() if the field requires specific properties, like static_select requiring options.
-State Layer (src/app.rs): Update App::init_form() to handle any default state population for the new field, and App::validate_form() if it requires custom validation logic before submission.
-Presentation Layer (src/tui/form.rs): Add the render logic to render(). Determine if it renders inline like text or requires a popup overlay like selects.
-Input Handling (src/tui/form.rs): Update the KeyEvent matcher to handle how the user interacts with this specific field when it is active.
-Output Layer (src/output/mod.rs): Ensure the field's data structure is properly routed to either frontmatter or body targets during submission.
-<br>For the current TUI shape and event routing, see <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and <a data-href="sprint-5-tui-report" href="06-reports/sprints/sprint-5-tui-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-5-tui-report</a>.]]></description><link>03-guides/guide-adding-new-field-types.html</link><guid isPermaLink="false">03 guides/Guide-Adding-New-Field-Types.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[System-Architecture-Overview]]></title><description><![CDATA[The codebase strictly separates concerns to isolate terminal drawing from data logic. This note is the short-form companion to <a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>.
-<br>src/main.rs: Entry point. Owns CLI parsing, config load, terminal lifecycle, event loop polling, and orchestrates submit/cache persistence. See also <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
-<br>src/tui/: Presentation layer. Routes events to screen handlers (dashboard.rs, form.rs, summary.rs) and dispatches Action enums. Built with <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> and <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>.
-src/app.rs: State management. Owns FormState, active field indices, and input validation.
-<br>src/output/: Write execution. Orchestrates frontmatter.rs generation and template.rs path rendering. Related: <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
-<br>src/data/: Fetch and cache tier. Related: <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
-<br>src/transport/: Network/disk boundary. Hides the complexity of API vs filesystem from the rest of the application. Related: <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
-<br>For the integrated event loop and subsystem wiring, see <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/system-architecture-overview.html</link><guid isPermaLink="false">04 architecture/System-Architecture-Overview.md</guid><pubDate>Tue, 31 Mar 2026 22:27:07 GMT</pubDate></item><item><title><![CDATA[sprint-5-tui-report]]></title><description><![CDATA[Implement the terminal UI layer: app state management, three screen views (dashboard, form, summary), event handling, and top-level wiring that dispatches rendering and input to the correct view.
-App struct: config, transport, screen enum (Dashboard/Form/Summary), selected_module, form_state, summary_state, sorted module_keys
-FormState: field_values HashMap, field_options HashMap, active_field index, validation_errors, cursor_position
-SummaryState: message, file_path (Option), transport_mode
-App::new(config, transport) — starts on Dashboard, sorts module keys alphabetically
-App::init_form(module_key) — populates defaults and static_select options, returns None for unknown modules
-App::validate_form(module, form_state) — checks required fields and number parsing, skips empty optional numbers
-9 tests in tests/app.rs render(app, frame) — vertical field list with prompt label, current value, required marker, active field highlight
-Text/number fields: inline input with cursor indicator; textarea: first-line preview with ellipsis; static/dynamic select: scrollable options popup
-handle_key(app, key) -&gt; FormAction — Tab/Shift-Tab between fields, Enter submit (or confirm select), Esc cancel, Up/Down cycle select options, Char/Backspace/Left/Right for text editing
-Number fields filter input to digits, decimal, and minus sign
-Footer shows key hints or validation errors
-FormAction enum: None, Submit, Cancel render(app, frame) — header with "Pour" title + connection status (API/File System), navigable module list using display_name, footer key hints
-Zero-module edge case: shows "No modules configured" message
-handle_key(app, key) -&gt; DashboardAction — Up/Down navigate with wrapping, Enter select module, q quit
-DashboardAction enum: None, Quit, SelectModule render(app, frame) — success (green header, file path, transport mode) or error (red header, error message)
-handle_key(key) -&gt; SummaryAction — Enter (dashboard), a (another entry/same module), q (quit)
-SummaryAction enum: None, Quit, Dashboard, AnotherEntry pub mod dashboard; pub mod form; pub mod summary;
-Action enum: None, Quit, Submit, Navigate(Screen)
-render(app, frame) — dispatches to correct view based on app.screen
-handle_event(app, key) -&gt; Action — dispatches to correct handler, manages screen transitions: Dashboard: SelectModule -&gt; init_form + navigate to Form
-Form: Cancel -&gt; clear form + navigate to Dashboard; Submit -&gt; bubble up
-Summary: Dashboard -&gt; clear summary; AnotherEntry -&gt; re-init form for same module src/lib.rs already declared pub mod app; pub mod tui; (from task scaffolding)
-Fixed pre-existing clippy warnings: collapsible_if in app.rs (2) and form.rs (1)
-Fixed unused import FormState in tests/app.rs TUI rendering not unit-tested: Ratatui render functions produce terminal output that requires a mock backend to assert on. App state logic (the testable surface) is covered by tests/app.rs. Visual correctness will be validated manually.
-Select field interaction model: Up/Down cycles options immediately (value updates in real-time), Enter confirms and advances to next field. This avoids a separate "dropdown open" state.
-Screen transitions managed in wiring layer: Individual view handlers return typed action enums. The wiring layer in tui/mod.rs translates those into screen transitions and state mutations. Views never mutate app.screen directly.
-Number input filtering: Form handler rejects non-numeric characters at input time (digits, decimal, minus only). Validation still runs on submit to catch malformed values like "3.2.1".
-src/ lib.rs — pub mod app, config, data, output, transport, tui app.rs — App state, FormState, SummaryState, Screen enum config.rs — Config, VaultConfig, ModuleConfig, FieldConfig, validation data/ mod.rs — fetch_options() with 3-tier fallback cache.rs — Cache with atomic JSON persistence output/ mod.rs — write_create(), write_append() orchestration frontmatter.rs — YAML frontmatter generation template.rs — path + append template rendering transport/ mod.rs — Transport enum with connect() fallback api.rs — Obsidian REST API client fs.rs — Direct filesystem writer tui/ mod.rs — render() + handle_event() dispatch, Action enum dashboard.rs — Module list with connection status form.rs — Field input with select popups summary.rs — Write result display main.rs — Entry point (placeholder) main.rs: Wire up the actual TUI event loop (terminal init, render loop, event polling, write orchestration on Submit)
-Dynamic select data loading: Connect data::fetch_options() to form init for dynamic_select fields
-Error handling in main: Graceful config load errors, transport connect failures
-Manual testing: End-to-end with a real Obsidian vault
-]]></description><link>06-reports/sprints/sprint-5-tui-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-5-tui-report.md</guid><pubDate>Tue, 31 Mar 2026 21:47:10 GMT</pubDate></item><item><title><![CDATA[sprint-6-integration-report]]></title><description><![CDATA[Wire all subsystems together into a working binary so that cargo run launches a TUI dashboard and cargo run -- &lt;module&gt; opens a form for direct entry. This is the final sprint of v1.
-#[tokio::main] async entry point
-CLI arg parsing: no args = dashboard, one arg = fast-path direct to form
-Config load via Config::load() with user-friendly stderr error + exit(1) on failure
-Transport connect via Transport::connect(&amp;config).await (auto-fallback from API to filesystem)
-App::new(config, transport) builds central state
-Fast path: validates module name exists, sets selected_module index, calls init_form(), fetches dynamic_select options
-Unknown module name prints available modules to stderr and exits with code 1
-Panic hook: std::panic::set_hook restores terminal before printing panic info
-Terminal lifecycle: ratatui::init() / ratatui::restore() with clean teardown on all exit paths
-Main loop in run_loop(): terminal.draw(|frame| tui::render(&amp;app, frame))
-event::poll(100ms) + event::read() for crossterm events
-Ctrl+C always breaks cleanly
-Routes key events through tui::handle_event(&amp;mut app, key_event)
-Action::Quit breaks the loop
-Action::Navigate(Screen::Form) triggers dynamic option fetch for new form
-Action::Submit calls handle_submit() for validation + write + summary transition
-Action::None continues fetch_dynamic_options() scans module fields for FieldType::DynamicSelect, collects (field_name, source) pairs
-Calls data::fetch_options(&amp;transport, &amp;source, &amp;mut cache) for each, populating form_state.field_options
-Invoked on fast-path init AND on dashboard module selection (Navigate to Form)
-Cache loaded once at startup via Cache::load(), persisted after each write via cache.save() (best-effort, ignores save errors) Config load failure: stderr message + exit code 1 (no TUI initialized)
-Unknown module fast-path: stderr with available module list + exit code 1
-Transport connect: already fallback-safe (API -&gt; filesystem)
-Write failure on submit: SummaryState populated with error message, file_path = None, displayed as "Error" header in red on summary screen
-Validation failure on submit: errors stored in form_state.validation_errors, displayed inline in form footer, form stays open (no screen transition)
-Panic: hook restores terminal before printing panic, so the user sees the panic message in a clean terminal
-Main loop IO error: terminal restored, error printed to stderr, exit code 1
-The main loop is intentionally synchronous within each iteration: draw, poll, handle, act. The fetch_dynamic_options and handle_submit calls are awaited inline, which means the UI blocks during transport operations. This is acceptable for v1 because:
-Filesystem writes are near-instant
-API calls have a 5-second timeout
-True background async would require channels or tokio::spawn + shared state, adding complexity disproportionate to the UX gain main.rs owns: CLI parsing, config load, terminal lifecycle, event loop, submit orchestration, cache persistence
-tui/mod.rs owns: event routing to screen handlers, action dispatch
-app.rs owns: form initialization, validation
-output/ owns: write execution (frontmatter, template, transport calls)
-data/ owns: option fetching with 3-tier fallback, cache storage Background async refresh of dynamic selects (options load before first render, but don't refresh in background)
-Multiple-argument CLI support (only one module at a time)
-Logging/tracing (structured logging is a future sprint)
-Undo/confirmation before write src/main.rs — complete rewrite from placeholder to full integration
-The main event loop and submit handler are inherently difficult to unit test (they own terminal state and async I/O). All component logic they call into (config, app, transport, output, data) has thorough test coverage. Manual verification: cargo run launches dashboard, cargo run -- &lt;module&gt; opens form directly.]]></description><link>06-reports/sprints/sprint-6-integration-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-6-integration-report.md</guid><pubDate>Tue, 31 Mar 2026 19:22:06 GMT</pubDate></item><item><title><![CDATA[sprint-4-data-fetching-report]]></title><description><![CDATA[Implement the cache layer and dynamic data fetching with 3-tier fallback (transport -&gt; cache -&gt; empty) for populating dynamic select dropdowns.
-Cache struct backed by ~/.cache/pour/state.json
-load() / load_from() — returns empty cache on missing or corrupt file (no panics)
-get(source) — returns Option&lt;Vec&lt;String&gt;&gt; for a source path
-set(source, items) — updates entry with UTC timestamp via chrono
-save() — atomic persist to disk (temp file + rename), creates parent directories
-Uses serde_json for serialization, dirs::cache_dir() for platform path
-6 tests: round-trip, missing file, corrupt file, parent dir creation, unknown source, overwrite fetch_options(transport, source_path, cache) -&gt; Vec&lt;String&gt; — async 3-tier fallback
-Tier 1: transport.list_directory() (API with FS fallback handled by transport layer)
-Tier 2: cache.get() for previously fetched items
-Tier 3: empty vec (TUI will offer freetext input)
-Results normalized to file stems before caching (strips .md extension, filters directory entries)
-On successful transport fetch, updates cache in-memory (caller saves)
-5 tests: transport success + cache population, normalization, transport fail -&gt; cache fallback, both miss -&gt; empty, empty dir -&gt; cache fallback Transport::append_under_heading() now delegates to heading-aware FsWriter::append_under_heading() instead of plain append_to_file()
-Updated dispatcher test to use a file with actual heading content CRITICAL — API vs FS return shape mismatch: fetch_options cached raw transport results without normalizing. API returns "Ethiopia.md", FS returns "Ethiopia". Fixed: added normalize_items() that strips .md extensions and filters directory entries before caching.
-MAJOR — Non-atomic cache save: Cache::save() wrote directly, risking corruption on crash. Fixed: now uses temp file + rename (same pattern as FsWriter).
-MAJOR — No path traversal validation: Config source field accepted ../../etc/secrets. Fixed: Config::validate() now rejects source paths containing ... Added test.
-Minor — default_cache_path() relative fallback: Falls back to .cache if dirs::cache_dir() returns None. Accepted for v1 (exotic platform edge case).
-Minor — ApiClient::new uses .expect(): Pre-existing from Sprint 2. Deferred — reqwest::Client::builder().build() effectively never fails.
-All foundation layers are complete:
-Config (Sprint 1) — types, loading, validation (incl. path traversal check)
-Transport (Sprint 2) — API client, FS writer, heading-aware dispatcher with fallback
-Output (Sprint 3) — frontmatter generation, template rendering, write orchestration
-Data (Sprint 4) — cache layer, normalized dynamic fetch with 3-tier fallback
-Sprint 5 (TUI) can begin: app state, dashboard, form, and summary views.]]></description><link>06-reports/sprints/sprint-4-data-fetching-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-4-data-fetching-report.md</guid><pubDate>Tue, 31 Mar 2026 18:40:22 GMT</pubDate></item><item><title><![CDATA[sprint-3-output-pipeline-report]]></title><description><![CDATA[Sprint 3 implemented the output rendering pipeline: YAML frontmatter generation, template rendering for paths and append content, and write orchestration that routes field values through the correct pipeline based on module write mode. All three tasks passed inspection with cargo check, cargo test (59 tests), cargo clippy, and cargo fmt -- --check all clean.generate_frontmatter(fields: &amp;[(String, String)]) -&gt; String with:
-Hand-built YAML output (no serde_yaml dependency for writing)
----\nkey: value\n---\n block format
-Auto-injects date field (today via chrono::Local) if not already present, always first
-Explicit date values are preserved and placed first
-Empty values are silently skipped
-Values containing YAML-special characters (:, #, {, }, [, ], etc.) are double-quoted with escaped internal quotes
-Leading - triggers quoting (YAML list indicator) but - mid-value does not (avoids quoting dates like 2025-01-15)
-Comma-separated values (detected by ", " delimiter) are emitted as YAML lists with - item syntax
-7 tests: auto-date injection, explicit date preservation/ordering, empty value skipping, special character quoting, comma-to-list conversion, list items with special chars, all-empty-fields edge case.Two functions:
-render_path(template: &amp;str) -&gt; String -- chrono strftime substitution via Local::now().format(). Converts "Journal/%Y/%Y-%m-%d.md" to "Journal/2026/2026-03-30.md".
-render_append_template(template: &amp;str, fields: &amp;HashMap&lt;String, String&gt;) -&gt; String -- {{field}} placeholder substitution with special {{time}} (HH:MM) and {{date}} (YYYY-MM-DD) tokens. Missing fields leave the placeholder as-is for debuggability.
-8 tests: date token substitution, passthrough for static paths, field replacement, special time/date tokens, missing field preservation, mixed known/unknown fields, realistic journal template.Two public async functions:
-write_create(transport, module, field_values) -&gt; Result&lt;String&gt; -- partitions fields into frontmatter and body by target/field_type defaults (textarea -&gt; body, all else -&gt; frontmatter), generates frontmatter block, joins body parts, renders the path template, writes via transport.create_file(). Returns the resolved vault path.
-write_append(transport, module, field_values) -&gt; Result&lt;String&gt; -- renders the module's append_template with field values (or falls back to joining body fields), renders the path template, writes via transport.append_under_heading(). Returns the resolved vault path.
-Internal partition_fields() helper implements the routing logic: explicit target field config takes precedence, otherwise FieldType::Textarea defaults to body and all other field types default to frontmatter.Both functions bail early with a clear error if called with the wrong write mode.5 tests: full create-mode round-trip (verifies frontmatter content, body separation, and file structure), wrong-mode rejection for both directions, append with rendered template, create with no body fields.
-FieldTarget in src/config.rs gained Clone derive (required by partition_fields to clone out of an Option&lt;&amp;FieldTarget&gt;)
-src/lib.rs updated with pub mod output;
-Test crate root tests/output/main.rs wires frontmatter, template, and orchestration modules YAML quoting of dates: The initial YAML_SPECIAL character set included -, which caused date values like 2025-01-15 to be unnecessarily quoted. Fixed by splitting into YAML_SPECIAL (always-quote characters) and YAML_SPECIAL_START (only-quote-at-start characters like -). Formatting: Several assert macros with long message strings didn't match cargo fmt expectations for line wrapping. Fixed by running cargo fmt before final gate check. FieldTarget Clone: The partition_fields function needed to clone FieldTarget values out of Option references. Added Clone derive to FieldTarget enum -- minimal, safe change to the config module. running 59 tests (13 config + 20 output + 26 transport) config: 13 passed
-output::frontmatter: 7 passed
-output::template: 8 passed
-output::orchestration: 5 passed
+<br>Release context: <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a> and <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>.]]></description><link>09-milestones/v1.0.0-release.html</link><guid isPermaLink="false">09 milestones/v1.0.0-Release.md</guid><pubDate>Thu, 02 Apr 2026 07:46:54 GMT</pubDate></item><item><title><![CDATA[ARCHITECTURE]]></title><description><![CDATA[
+<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (v0.2) <br><a data-href="v1-implementation-plan" href="04-architecture/v1-implementation-plan.html" class="internal-link" target="_self" rel="noopener nofollow">v1-implementation-plan</a> — V1 task backlog and sprint sequencing <br><a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a> — Why Pour uses a dual API/filesystem transport
+<br><a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a> — Why frontmatter uses custom serialization instead of serde_yaml
+<br><a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a> — How sync TUI coexists with async network calls
+]]></description><link>00-index/architecture.html</link><guid isPermaLink="false">00 index/ARCHITECTURE.md</guid><pubDate>Thu, 02 Apr 2026 07:46:54 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[Library API references and external documentation for Pour's tech stack.]]></description><link>00-index/references.html</link><guid isPermaLink="false">00 index/REFERENCES.md</guid><pubDate>Thu, 02 Apr 2026 07:46:54 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[Feature and component specifications.
+<a data-href="distill-first-pass-spec" href="08-specs/distill-first-pass-spec.html" class="internal-link" target="_self" rel="noopener nofollow">distill-first-pass-spec</a> — First-pass specification for the distill concept; standalone AI local companion TUI
+]]></description><link>00-index/specs.html</link><guid isPermaLink="false">00 index/SPECS.md</guid><pubDate>Thu, 02 Apr 2026 07:46:54 GMT</pubDate></item><item><title><![CDATA[field-types]]></title><description><![CDATA[This document covers all field types available in Pour's config.toml schema, their config keys, validation rules, default output targets, and TUI rendering behavior.Every field in a module's [[modules.&lt;name&gt;.fields]] array supports these keys:Any field can override its default via target = "frontmatter" or target = "body".Single-line free text input.[[modules.coffee.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Bean origin"
+TUI: Inline text input with cursor. Accepts any characters.
+Output: Value written as-is to frontmatter (or body if overridden).Multi-line text input with an editor overlay.[[modules.me.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "What's on your mind?"
+target = "body"
+TUI: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
+Output: Defaults to Markdown body. Can be overridden to frontmatter.Numeric input. Restricts keyboard input to digits, ., and -.[[modules.coffee.fields]]
+name = "rating"
+field_type = "number"
+prompt = "Rating (1-5)"
+default = "3"
+TUI: Inline text input, filtered to numeric characters only.
+Output: Written to frontmatter as an unquoted YAML number (if parseable as integer or float). Falls back to quoted string if the value contains non-numeric content.
+Validation: Non-numeric characters are rejected at input time, not at submit time.Dropdown with hardcoded options defined in config.[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["V60", "AeroPress", "Espresso", "French Press"]
+TUI: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
+Output: Selected string written to frontmatter.
+Validation: options must be present and non-empty. Config load fails otherwise.Dropdown populated from vault directory contents at runtime.[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+TUI: Same dropdown interaction as static_select. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (~/.cache/pour/state.json), then freetext input if all fail.
+Output: Selected string written to frontmatter.
+Validation: source must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or .. traversal paths). Config load fails otherwise.
+Source path: Relative to the vault root. Example: "Coffee/Beans" resolves to &lt;vault_base_path&gt;/Coffee/Beans/.Tabular data entry with multiple columns (sub-fields). Renders as a YAML array of objects in frontmatter or a Markdown table in body.[[modules.recipe.fields]]
+name = "ingredients"
+field_type = "composite_array"
+prompt = "Ingredients" [[modules.recipe.fields.sub_fields]]
+name = "item"
+field_type = "text"
+prompt = "Item" [[modules.recipe.fields.sub_fields]]
+name = "amount"
+field_type = "number"
+prompt = "Amount" [[modules.recipe.fields.sub_fields]]
+name = "unit"
+field_type = "static_select"
+prompt = "Unit"
+options = ["g", "ml", "oz", "cups", "tbsp", "tsp"]
+TUI: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output.
+Output (frontmatter): Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers.ingredients: - item: "flour" amount: 200 unit: "g" - item: "milk" amount: 250 unit: "ml"
+Output (body): Rendered as a Markdown table.
+Validation: sub_fields must be present and non-empty. Sub-field names must be unique. static_select sub-fields must have non-empty options.Sub-fields support a restricted set of types — no nesting or dynamic data:These keys are set on the module itself, not on individual fields:]]></description><link>02-references/field-types.html</link><guid isPermaLink="false">02 references/field-types.md</guid><pubDate>Wed, 01 Apr 2026 22:49:25 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
+Offline-First Resilience: Works with the Obsidian Local REST API, but falls back seamlessly to direct file-system operations if the vault is closed.
+Snappy &amp; Rhythmic: Designed around the pour command. Fast muscle memory.
+Data Integrity: Generates strict YAML frontmatter and standard Markdown to ensure 100% compatibility with Obsidian Properties (Bases) and Dataview.
+The application has two primary execution paths:Running the base command opens the main interactive hub.
+Header: Displays vault connection status (🟢 API Connected | 🟡 Direct File Mode).
+Body: Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). [Deviation: not implemented in v1 — dashboard shows module list with connection status only.]
+Menu: Navigable list to launch specific modules (me, coffee).
+Bypasses the dashboard and launches directly into a specific data-entry view.
+pour me — Opens the journal appending view.
+pour coffee — Opens the coffee logging form.
+Upon submitting a form, the app does not immediately exit. It transitions to a Summary View displaying:
+A success message with the destination file path.
+Options: [Enter] Main Menu, [A] Pour Another → .., [Q] Quit, [O] Open file in $EDITOR. [Deviation: [O] not implemented in v1 — summary supports Enter, A, and Q only.]
+Pour uses a dual-pronged approach to writing data:
+<br>Primary (API): Attempts a fast local HTTPS request via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs). [Deviation: originally spec'd as HTTP; implementation uses HTTPS with danger_accept_invalid_certs.]
+Fallback (File System): If the connection is refused, it gracefully falls back to std::fs to write directly to the absolute vault path defined in the configuration.
+API Authentication: The REST API plugin requires a Bearer token. Pour supports two sources:
+api_key field under [vault] in config.toml.
+POUR_API_KEY environment variable (takes precedence over config if set).
+3-tier fallback (API → disk scan → cache → freetext) with async background refresh.Append vs. create modes, and how fields map to frontmatter/body.Full TOML schema, field type reference, and validation rules — see config schema section.
+Language: Rust (2024 Edition)
+<br>TUI Framework: <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> + <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>
+<br>Serialization: serde, serde_json, <a data-tooltip-position="top" aria-label="toml-serde" data-href="toml-serde" href="02-references/toml-serde.html" class="internal-link" target="_self" rel="noopener nofollow">toml</a>, toml_edit [Deviation: serde_yaml was originally included but removed — YAML frontmatter uses custom serialization instead. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.]
+<br>Network: <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> (with tokio for async fetching)
+<br>Time: <a data-href="chrono" href="02-references/chrono.html" class="internal-link" target="_self" rel="noopener nofollow">chrono</a> (for file formatting and timestamps)
+The following are explicitly in scope for v0.1:
+Dashboard with connection status and module menu
+pour me (append mode with Templater integration + atomic note fallback)
+pour coffee (create mode with frontmatter generation)
+Hybrid transport layer (API → filesystem fallback)
+Dynamic data fetching (API → disk scan → cache → freetext)
+Configurable append templates (callout default)
+Configurable theme (accent color, border style) [Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]
+Post-execution summary view
+required field validation
+The following are explicitly deferred:
+pour music module (generic config supports it when ready)
+Rich validation (min/max, regex)
+Tag-based dynamic_select sources
+Plugin/extension system
+]]></description><link>08-specs/pour-design-spec.html</link><guid isPermaLink="false">08 specs/pour-design-spec.md</guid><pubDate>Wed, 01 Apr 2026 22:48:10 GMT</pubDate></item><item><title><![CDATA[implementation-debt-and-dependency-audit]]></title><description><![CDATA[
+Validate all module write targets as vault-relative before they reach transport
+Make config persistence atomic (write-then-rename)
+Remove serde_yaml
+Fix README and CLAUDE.md to match actual behavior Stop swallowing browse errors; surface them into status_message
+Wire real loading/error state into browser or remove BrowserState.loading
+Add focused tests for configure behavior (input handling, mode toggle, path selection, error UX)
+Decide configurator scope: narrow scalar-editor vs. full epic from TODO.md Break src/tui/configure.rs into smaller units once behavior stabilizes
+Reevaluate reqwest if build time or binary size becomes a concern
+Expand docs under 04 architecture/ if configurator becomes a committed subsystem
+Review the current implementation and outstanding local changes for technical debt, unnecessary complexity, and external dependency bloat. Prioritize issues that materially affect correctness, maintainability, and release readiness.
+Current worktree changes on main
+Core runtime code in src/
+New configurator and config-write path
+Cargo dependency surface from Cargo.toml, Cargo.lock, cargo tree, and cargo metadata
+Existing docs and repo hygiene files that add maintenance overhead
+The current branch introduces a substantial in-app configurator feature before a few v1 hardening items are closed. The largest risks are:
+Module write paths are still not validated as vault-relative and safe.
+The new configure/browse flow blocks the TUI on transport calls and hides browse errors.
+Config writes are not atomic.
+serde_yaml appears to be unused dependency bloat.
+Repo documentation is now out of sync with actual config and transport behavior.
+The new toml_edit dependency is justified. The new configurator feature is directionally useful, but it expands app, config, transport, and TUI complexity faster than the current test coverage supports.Problemmodule.path is still not rejected when absolute or when it escapes the vault root after normalization. Current validation covers dynamic select source, but not write targets. The filesystem backend joins configured paths directly and can write outside the vault if given a bad path.Why it matters
+Correctness and safety issue
+The new configurator makes unsafe edits easier to introduce from inside the app
+This is already acknowledged in TODO.md as a blocker-level bug
+Action
+Extend Config::validate() to reject: absolute paths
+drive-qualified Windows paths
+UNC paths
+normalized traversal outside the vault root Reuse the same validation for: module.path
+any future multi-path/fallback path feature Add regression tests for both Windows-style and Unix-style path variants
+Suggested owner files
+src/config.rs
+tests/config.rs
+tests/output/orchestration.rs
+ProblemEntering the configure screen pre-fetches a directory listing inline from the main event loop. Browsing also performs transport calls inline. API browse failures are turned into empty directory listings via unwrap_or_default(), which misreports errors as "no subdirectories".Why it matters
+The TUI can freeze for up to the request timeout
+UX lies to the user on API/filesystem browse failures
+BrowserState.loading exists but is effectively dead state
+Action
+Replace eager configure prefetch with explicit browse open
+Set browser_state.loading = true before fetch begins
+Surface errors into status_message instead of converting them to empty results
+If keeping the current architecture, at minimum distinguish: empty directory
+failed request
+invalid path Add focused tests for configure browse state transitions
+Suggested owner files
+src/main.rs
+src/app.rs
+src/tui/configure.rs
+src/transport/mod.rs
+ProblemConfig::update_module_on_disk() validates before writing, but the final write is still a direct overwrite of the live config.toml.Why it matters
+Partial writes can brick the app until the config is manually repaired
+This is the highest-risk persistence path because it touches the app's boot-critical file
+Action
+Write edited TOML to a sibling temp file
+rename/replace atomically after validation succeeds
+Mirror the pattern already used in cache persistence
+Add a short comment documenting the crash-safety expectation
+Suggested owner files
+src/config.rs
+tests/config_update.rs
+ProblemThe new configurator touches:
+app state
+event dispatch
+transport listing APIs
+config persistence
+a large single-file TUI handler
+But the only new tests cover config persistence. There is no direct coverage for configure input handling, mode toggling behavior, path selection flow, or error UX.Why it matters
+High change surface with low confidence
+Likely source of regressions as the configurator grows
+Action
+Add tests for: App::init_configure()
+mode toggle add/remove of append_under_header
+configure key handling transitions
+path browser selection semantics
+save error message behavior Split pure helper logic from src/tui/configure.rs into testable functions if needed
+Suggested owner files
+src/app.rs
+src/tui/configure.rs
+tests/app.rs
+new tests/tui_* or equivalent focused tests
+ProblemThe README example and assistant guidance no longer match the implementation:
+README uses type where the code expects field_type
+README uses vault://... for source, but runtime expects vault-relative paths
+README implies path interpolation that is not implemented
+CLAUDE.md describes the API as HTTP while the code uses HTTPS with invalid-cert acceptance
+Why it matters
+Misleads future contributors
+Inflates support/debugging cost
+Makes feature review harder because the docs are not a trustworthy source of truth
+Action
+Update README config examples to match the real schema
+Correct transport protocol wording
+Document the current limits of path rendering and dynamic select sources
+If the configurator is staying, document its current scope honestly
+Suggested owner files
+README.md
+CLAUDE.md
+optional architecture notes in pour - docs/04 architecture/
+Justified. Used pervasively for transport, init, cache, and output orchestration.Justified. Used in path rendering, append templates, frontmatter date injection, and cache timestamps.Justified. Core terminal event/input layer.Justified. Used for config path, cache path, and vault detection.Justified. Core UI dependency.Justified, but it is the heaviest dependency in the tree by a wide margin. Keep it only because hybrid API transport is a first-class product feature.Justified. Central to config and cache parsing.Justified. Required for cache persistence and API response handling.Justified. Required for async main loop and async transport calls.Justified. Required for config parsing.Justified. This is the right tool for comment-preserving TOML mutation. Incremental dependency cost is acceptable because toml already brings it transitively.Justified. Test-only and heavily used across transport/config/output tests.This appears to be unused dependency bloat.Current state
+Declared in Cargo.toml
+Not used in runtime code for frontmatter generation
+Pulls deprecated unsafe-libyaml transitively
+Action
+Remove serde_yaml from dependencies
+Regenerate Cargo.lock
+Update docs that still imply YAML serialization is crate-backed The extra transport API for typed directory entries is reasonable
+Using toml_edit for structure-preserving config mutation is a sound tradeoff
+Dashboard alignment and form title changes are harmless polish src/tui/configure.rs is already carrying rendering, browser state, key handling, mode toggle policy, and path helper logic in one file
+BrowserState.loading is unused state and should either be wired or removed
+The current configure feature scope is much smaller than the TODO epic it starts to imply; avoid widening it before hardening what exists
+The worktree also contains new assistant/tooling artifacts:
+.claude/
+CLAUDE.md
+If these are not intentional project assets, they should be ignored or excluded before merge to avoid accumulating maintenance surface unrelated to the shipped binary.Current .gitignore only ignores /target. That is not enough if local assistant/editor files are expected to recur.
+Add vault-relative validation for all module write paths.
+Make config writes atomic.
+Remove serde_yaml.
+Fix README and CLAUDE.md to match actual behavior. Stop swallowing browse errors.
+Either wire real loading/error state into the browser or remove loading.
+Add focused tests for configure behavior, not just persistence.
+Decide whether the configurator remains a narrow scalar-editor or is truly beginning the larger epic described in TODO.md. Break src/tui/configure.rs into smaller units once behavior stabilizes.
+Reevaluate reqwest only if build time or binary size becomes a product concern.
+Expand docs under 04 architecture/ if the configurator becomes a committed subsystem.
+The dependency review was backed by:
+cargo tree
+cargo metadata --format-version 1 --no-deps
+repo-wide symbol usage search
+cargo test could not be completed in the current Windows environment because Cargo could not write to the target directory due to Access is denied errors. That constraint should be resolved before treating this branch as release-ready.]]></description><link>06-reports/implementation-debt-and-dependency-audit.html</link><guid isPermaLink="false">06 reports/implementation-debt-and-dependency-audit.md</guid><pubDate>Wed, 01 Apr 2026 21:34:35 GMT</pubDate></item><item><title><![CDATA[Design-Language]]></title><description><![CDATA[Primary: ▽
+Fallback: v▽ reads as a funnel, dripper, intake cone. It covers coffee, music, and thought capture without collapsing into one domain. It survives any terminal font. Nerd Font glyphs are acceptable as optional enhancements but never as the primary mark.The TUI should feel sharp, ritualized, command-forward, and quietly technical.It should not feel cozy, corporate, menu-first, or playful. The product is about immediate capture under flow. The interface is a precision tool you trust at 1am, not a friendly dashboard.Text reads like a tool, not an app.▽ pour coffee not Welcome to Pour
+▽ saved not Your entry was successfully written
+transport: api not Transport Mode: API
+Lowercase. Terse. Imperative. Almost command-line dry.▽ pour [local]
+The front door. One branded mark, module list below as a clean launcher, transport badge as system state.Empty state: no modules configured. add modules to config.toml.▽ pour coffee — Brew Log
+The strongest expression of the product. The ▽ anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads [ submit ] — lowercase, tool-voiced.▽ saved (success — green bold)
+! error (failure — red bold)
+The brand mark signals completed flow. Dropping it on error is intentional — the funnel failed, the pattern breaks, the red styling does the rest.Body labels are terse and lowercase: path: 02-Logbook/2026-04-01-brew.md transport: api
+▽ configure coffee [modified]
+Intentionally more utilitarian than the form. Module key only — display name omitted. This is maintenance mode, not the main ritual. Browser overlay title: browse: {path}.No centralized theme file. All styling is inline via ratatui's Style builder.
+One ▽ per screen. It belongs in the header. Not on list items, footers, or popups.
+Angular geometry. Brackets, dividers, compact tags. No rounded emoji-style symbols.
+Contrast is functional. Cyan for active, dark gray for scaffolding, yellow for hints. Never decorative.
+No coffee tropes. No mug icons, steam motifs, beans, or cafe signage.
+No terminal cosplay. No ASCII art banners, heavy box drawing, or CRT gimmicks.
+Headers establish context in one line. Brand, module, state.
+Footers are operational. Key hints only. Not a branding surface.
+If the mark becomes an SVG for web or docs:
+Outline cone
+One centered drop or point of flow
+No mug handle, no steam, no dense detail
+Same geometry as ▽, same restraint.]]></description><link>03-guides/design-language.html</link><guid isPermaLink="false">03 guides/Design-Language.md</guid><pubDate>Wed, 01 Apr 2026 21:29:18 GMT</pubDate></item><item><title><![CDATA[distill-first-pass-spec]]></title><description><![CDATA[Distill is a minimal, terminal-native local AI harness for processing Obsidian notes after capture. Where <a data-tooltip-position="top" aria-label="the_pour_manifesto" data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">pour</a> is optimized for reflexive entry, distill is optimized for deliberate synthesis. It turns raw notes into reviewable knowledge artifacts without sacrificing source integrity, plaintext portability, or user authority.Core Philosophy:
+Synthesis After Capture: pour captures first. distill processes later. These responsibilities should stay separate.
+Source Integrity Above All: The original note is never silently rewritten or discarded.
+AI Isolation: Machine-generated output must live in explicit sections, sidecar files, or review buffers until accepted.
+Plaintext Is Still Forever: All durable state is stored as Markdown, YAML, or simple local metadata. No opaque hosted pipeline.
+Local-First Control: The model, prompts, embeddings, and note context should be operable on-device.
+distill is not a chatbot wrapped in a TUI. It is a controlled note-processing tool for Obsidian.The application has four primary execution paths:Running the base command opens the main processing queue.
+Header: Model/provider status, vault readiness, pending review count.
+Body: Notes ready for processing or review.
+Sidebar or Tabs: Filters such as inbox, pending, applied, failed.
+Quick Actions: Start processing, open review, skip, re-run.
+The queue should feel operational and calm, more like a triage board than a chat session.Bypasses the queue and processes one note directly.
+snapshots source state
+runs configured AI passes
+opens the review surface rather than applying edits automatically
+This is the equivalent of pour &lt;module&gt;: a direct path for focused work.Opens the pending suggestion workflow.The review view is the core product surface. It should support rapid tabbing through proposal types:
+summary
+links
+entities
+questions
+metadata
+rewrite
+The left side remains canonical source. The right side shows structured proposals. Acceptance is explicit and granular.The following commands are in scope as first-class routes:
+distill inbox
+distill note &lt;path&gt;
+distill review
+distill links &lt;path&gt;
+distill apply
+These should map to stable internal workflows rather than becoming arbitrary prompt entry points.<br>distill must inherit guidance from <a data-tooltip-position="top" aria-label="the_pour_manifesto" data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">The Pour Manifesto</a> without copying pour's exact interaction model.The manifesto gives four durable constraints: Capture and synthesis are separate acts.
+pour handles the raw moment. distill handles the slower second pass. Plaintext output matters.
+AI assistance should not move note processing into a black box or proprietary state store. The tool must get out of the way.
+distill should reduce note-maintenance friction, not create a sprawling "AI workspace." The command is the ritual.
+distill should feel like an intentional refinement pass over notes, not a general-purpose assistant shell. The practical implication is: distill must be review-first, bounded, and file-native.Each note should move through a predictable local pipeline:
+discover candidate note
+snapshot original state
+normalize markdown for model input
+gather vault context
+run one or more specialized AI passes
+store proposals in an isolated state representation
+review proposals in the TUI
+apply accepted changes back to the note
+This should be modular. A failed links pass should not invalidate an otherwise successful summary pass.distill should avoid a single giant "improve this note" prompt. The minimum useful passes are:
+Summary Pass: compress the note into a durable, reviewable synopsis
+Link Pass: propose [[wikilinks]] to existing vault notes
+Entity Pass: identify people, places, topics, projects, media, or gear worth linking
+Metadata Pass: propose tags, aliases, and lightweight structured fields
+Question Pass: identify unresolved threads or follow-up prompts
+Optional later pass:
+Rewrite Pass: propose a cleaner version of the note body without replacing the source by default
+This is the most important architectural rule.The original note remains canonical until the user applies accepted changes. AI output must be isolated in one of the following ways:
+explicit note sections such as ## AI Summary or ## Proposed Links
+sibling sidecar files such as &lt;note&gt;.distill.md
+local state/cache files outside the vault for intermediate review data
+Preferred first-pass model:
+source note remains untouched during processing
+proposals are written to a sibling .distill.md file or equivalent local state
+accepted changes are merged back into the note through an explicit apply step
+This provides:
+auditability
+rollback safety
+clean separation between source and machine output
+compatibility with Obsidian sync and version control
+The link pass should consult vault-local context rather than hallucinating note structure.Useful context sources:
+note titles
+aliases
+tags
+frontmatter metadata
+nearby folder structure
+optional embeddings/vector index
+distill should prefer linking to existing notes over inventing new structure unless explicitly configured to suggest new note creation.The model layer should be provider-agnostic.Examples:
+local HTTP model server
+llama.cpp
+ollama
+custom local inference bridge
+The spec should treat model access as a pluggable provider, but all core flows must assume the provider may be slow, imperfect, or occasionally offline.The first-pass TUI should be built around three core screens:
+Queue: candidate notes, status, and pending work
+Review: source note vs. AI proposals
+Apply Summary: accepted operations and resulting file changes
+The review surface should optimize for fast, repetitive approval work.Required characteristics:
+source always visible
+proposals grouped by type
+tabbing between proposal groups is fast and predictable
+accept/reject/edit actions are explicit
+no hidden background mutation of canonical notes
+Suggested keys:
+Tab / Shift+Tab to move between proposal panes
+j / k or arrows to move items
+a accept
+r reject
+e edit
+A apply all accepted
+q quit
+The interface should feel technical, sparse, and trustworthy.Prefer:
+pending
+accepted
+applied
+source
+proposal
+links
+Avoid:
+conversational assistant language
+celebratory AI wording
+anything that implies the model is authoritative
+The TUI should read like a careful processing tool, not an AI companion.The source note is the authority.distill may:
+append accepted summaries
+insert accepted wikilinks
+add accepted metadata
+write derived sidecar files
+distill must not:
+silently replace the original body
+reorder note structure without review
+delete original content by default
+The first-pass application layer should support these mutation classes:
+insert or replace an AI Summary section
+insert accepted wikilinks into note body or footer block
+add frontmatter fields such as distill_status, distill_last_run, or tags
+create a related note stub when explicitly approved
+Each applied change should be narrow and inspectable.Useful local metadata fields may include:
+distill_status
+distill_last_run
+distill_model
+distill_reviewed
+These should remain optional and human-readable.The following are explicitly in scope for v0.1:
+queue view for candidate notes
+single-note processing path
+local provider abstraction for AI execution
+source snapshotting / persistence
+isolated proposal storage
+review UI with proposal tabs
+link suggestions against existing vault context
+summary and metadata passes
+explicit apply step for accepted changes
+The following are explicitly deferred:
+autonomous background processing with silent application
+chat-style prompting inside the main interface
+aggressive note rewriting as a default workflow
+multi-user collaboration
+cloud-only model dependency
+fully automatic graph restructuring of the vault
+If pour is the reflex that gets life into the vault, distill is the quiet second pass that makes the vault more legible.distill should help the user:
+preserve original notes
+isolate AI output
+strengthen wiki linking
+tab through suggestions quickly
+apply synthesis without surrendering authorship
+That is the correct complement to the manifesto: capture first, synthesize later, and keep both acts native to plaintext and the terminal.]]></description><link>08-specs/distill-first-pass-spec.html</link><guid isPermaLink="false">08 specs/distill-first-pass-spec.md</guid><pubDate>Wed, 01 Apr 2026 04:59:04 GMT</pubDate></item><item><title><![CDATA[sprint-2-transport-report]]></title><description><![CDATA[Sprint 2 implemented the hybrid transport layer: an API client for the Obsidian Local REST API, a filesystem writer for direct vault access, and a unified dispatcher that tries the API first and falls back to filesystem. All three tasks passed inspection with cargo check, cargo test (34 tests), cargo clippy, and cargo fmt -- --check all clean.ApiClient struct wrapping reqwest::Client with:
+Constructor new(port, api_key) building an HTTPS client that accepts self-signed certificates with a 5-second timeout
+check_connection() -- GET / with Bearer auth, returns bool (catches all errors, never propagates)
+create_file(vault_path, content) -- PUT to /vault/{path} with Content-Type: text/markdown
+append_under_heading(vault_path, heading, content) -- PATCH to /vault/{path} using the v3 header-based API (Operation: append, Target-Type: heading, Target: {heading})
+list_directory(vault_dir_path) -- GET /vault/{dir}/ (trailing slash), deserializes {"files": […]} JSON response
+All methods async, returning anyhow::Result with contextual error messages.5 tests: HTTPS scheme validation, port embedding, default port, multi-port sweep, unreachable server returns false.FsWriter struct holding a vault base_path: PathBuf with:
+create_file(relative_path, content) -- writes file, creates parent directories, errors if file already exists
+append_to_file(relative_path, content) -- appends to existing file, errors if file not found
+list_directory(relative_dir_path) -- lists .md files, returns sorted stem names, excludes non-.md files and subdirectories
+All methods synchronous, returning anyhow::Result with contextual error messages.10 tests: content writing, parent dir creation, duplicate file rejection, append behavior, missing file error, sorted stem listing, subdirectory exclusion, non-directory error, empty directory handling, base_path getter.
+TransportMode enum (Api / FileSystem) with Display impl for TUI status display
+Transport enum wrapping ApiClient and FsWriter
+Transport::connect(config) -- attempts API connection when both api_port and api_key are configured and check_connection() succeeds; falls back to filesystem otherwise
+Unified create_file, append_under_heading, list_directory methods that delegate to the active backend
+Filesystem fallback for append_under_heading does a plain append (heading-aware insertion deferred to future sprint)
+src/lib.rs updated with pub mod transport;
+6 tests: no-API-key fallback, unreachable-API fallback, create/append/list delegation through FS backend, TransportMode Display formatting. Clippy collapsible_if (TASK-005): Nested if path.is_file() { if let Some(ext) … { if ext == "md" { … }}} flagged by clippy. Collapsed into a single if with let-chains (Rust 2024 edition). Formatting (TASK-005): Several anyhow::bail! and .with_context() calls had formatting that didn't match cargo fmt expectations. Reformatted. Module wiring: Integration tests in tests/transport/ require the module to be exported from lib.rs. Added minimal pub mod transport; to lib.rs and pub mod api; / pub mod fs; to transport/mod.rs as part of the build-up, rather than deferring all wiring to TASK-006. Test crate structure: tests/transport/ uses main.rs as the crate root (not mod.rs), following Rust's convention for directory-based integration test crates. running 34 tests (13 config + 21 transport) config: 13 passed
 transport::api: 5 passed
 transport::fs: 10 passed
-transport::dispatcher: 6 passed test result: ok. 59 passed; 0 failed Hand-built YAML over serde_yaml: The frontmatter generator builds YAML strings manually rather than using serde_yaml. This avoids a runtime dependency for writing (serde_yaml is still available for reading) and gives precise control over formatting -- Obsidian expects specific YAML conventions that a generic serializer might not produce. Comma-separated detection heuristic: Values containing ", " (comma-space) are treated as lists. This matches the common pattern for tag input in TUI forms. A single comma without a following space is not treated as a list delimiter. Missing placeholders preserved: render_append_template leaves {{unknown}} placeholders in the output rather than replacing them with empty strings. This makes debugging easier -- the user can see which fields were not provided. Partition logic in mod.rs, not config.rs: The field-to-target routing logic lives in the output module rather than on FieldConfig, keeping config.rs focused on parsing/validation and output/mod.rs focused on rendering decisions. The output pipeline is complete and ready to be wired into the TUI:
-write_create and write_append accept a Transport, a ModuleConfig, and field values -- all of which the TUI will have after form completion
-The functions return the vault-relative path of the written file, which the TUI can display as confirmation
-Error handling uses anyhow::Result consistently, ready for TUI error display
-Next sprint candidates: TUI form screens, dynamic data fetching, or the dashboard view.]]></description><link>06-reports/sprints/sprint-3-output-pipeline-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-3-output-pipeline-report.md</guid><pubDate>Tue, 31 Mar 2026 05:29:29 GMT</pubDate></item><item><title><![CDATA[the_pour_manifesto]]></title><description><![CDATA[Obsidian is a beautiful, sprawling garden for our minds. It is the perfect place to wander, connect ideas, and synthesize knowledge.But opening the gates takes too long.When you are deep in a flow state, dialing in the perfect espresso shot, or standing in the crowd at a festival, your brain operates in seconds, not minutes. If the process of logging a thought takes longer than the thought itself, the thought dies.Opening a GUI, waiting for the Electron client to render, finding the right folder, opening the daily note, and formatting the YAML frontmatter—that isn't just friction. It is a barrier to entry. It makes the act of remembering feel like administrative work. And because of that friction, we stop writing. We lose the nuances of our days.We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely.Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
-Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
-Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
-Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
-Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion. As a developer and enthusiast, I want a frictionless, instant-booting terminal interface to log highly structured data (like coffee recipes and concert memories) directly into my Obsidian vault, so that I can capture the details of the things I love without breaking my workflow or wrestling with a GUI.
-]]></description><link>07-stories/the_pour_manifesto.html</link><guid isPermaLink="false">07 stories/the_pour_manifesto.md</guid><pubDate>Tue, 31 Mar 2026 05:18:18 GMT</pubDate></item><item><title><![CDATA[README]]></title><description><![CDATA[00 index - Index files for the vault; Act both as a hub for 'spokes' of knowledge but also enforce knowledge mapping structure. <a data-href="index" href="index.html" class="internal-link" target="_self" rel="noopener nofollow">index</a> captures the documentation structure01 concepts - Persistent atomic notes, permanent broad knowledge acting as an ever expanding wiki of knowledge gathered working on this project02 references - Library API references, external documentation, and OpenAPI specs03 guides - DX guides, developer workflow documentation<br>04 architecture - Design spec, <a data-href="ADR" href=".html" class="internal-link" target="_self" rel="noopener nofollow">ADR</a>s and broader architectural decisions05 notes - 'Fleeting' development notes; precursor to atomic notes in persistent vault above07 stories - User stories and vision documents08 specs - Feature and component specifications99 meta -
-00 templates - Obsidian templates
-]]></description><link>readme.html</link><guid isPermaLink="false">README.md</guid><pubDate>Tue, 31 Mar 2026 05:18:18 GMT</pubDate></item><item><title><![CDATA[STORIES]]></title><description><![CDATA[Vision documents and narratives behind Pour.
-<a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour: the problem, the vision, and the ethos
-]]></description><link>00-index/stories.html</link><guid isPermaLink="false">00 index/STORIES.md</guid><pubDate>Tue, 31 Mar 2026 05:18:18 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api]]></title><description><![CDATA[
+transport::dispatcher: 6 passed test result: ok. 34 passed; 0 failed base_url is pub on ApiClient to allow test assertions on URL construction without needing a getter method. list_directory return type differences: The API backend returns raw filenames (e.g., "latte.md", "subdir/"), while the filesystem backend returns .md stems only (e.g., "latte"). This asymmetry is documented; callers will need to normalize. A normalization layer can be added in a future sprint. Filesystem append_under_heading fallback: The FS backend cannot do heading-aware insertion without a markdown parser. It falls back to plain append_to_file. This is documented in the code and acceptable for v1. tempfile crate: Added as a dev-dependency for filesystem tests. Creates OS-managed temporary directories that auto-clean on drop. The transport layer is complete and ready to be consumed. Sprint 3 (Output Rendering) can begin:
+Output modules can use Transport::create_file and Transport::append_under_heading to write to the vault
+Data fetching modules can use Transport::list_directory to populate dynamic dropdowns
+The TUI can display Transport::mode() to show the user which backend is active
+No blockers. The transport foundation is in place.]]></description><link>06-reports/sprints/sprint-2-transport-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-2-transport-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:11 GMT</pubDate></item><item><title><![CDATA[sprint-1-foundation-report]]></title><description><![CDATA[Sprint 1 established the project foundation: a buildable Rust project with a fully typed, validated configuration layer. All three tasks passed inspection with cargo check, cargo test (13 tests), cargo clippy, and cargo fmt -- --check all clean.Created the project manifest with Rust 2024 edition and all required dependencies:
+TUI: ratatui, crossterm
+Serialization: serde (with derive), toml, serde_yaml, serde_json
+Networking: reqwest (with json + rustls-tls, no OpenSSL dependency on Windows)
+Async: tokio (with rt-multi-thread, macros, fs)
+Utilities: chrono, dirs, anyhow
+Binary name set to pour.Defined all structs and enums for the config layer:
+Config (top-level: vault + modules HashMap)
+VaultConfig (base_path, api_port with default 27124, api_key)
+ModuleConfig (mode, path, append settings, fields, display_name)
+FieldConfig (name, field_type, prompt, required, default, options, source, target)
+WriteMode enum: append / create
+FieldType enum: text, textarea, number, static_select, dynamic_select
+FieldTarget enum: frontmatter / body
+All types derive Deserialize + Debug. Enums use #[serde(rename_all = "snake_case")]. Three unit tests verify round-trip TOML deserialization, default api_port behavior, and minimal config parsing.Implemented Config::load() and Config::from_str() with:
+File resolution: POUR_CONFIG env var -&gt; ~/.config/pour/config.toml via dirs::config_dir()
+Typed errors: ConfigError enum with NotFound, ReadError, ParseError, ValidationError variants, plus Display and Error impls
+Validation rules: Every module must have &gt;= 1 field
+append mode requires append_under_header
+static_select requires non-empty options
+dynamic_select requires source API key resolution: POUR_API_KEY env var takes precedence over config value
+Ten additional tests covering: valid parse via from_str, each validation failure case, invalid TOML parse error, env var override for API key, file-not-found via env var, and full file loading via POUR_CONFIG. Raw string delimiters (TASK-002): Rust 2024 edition reserves "## sequences. Initial r#"…"# delimiters conflicted with "## Log" in test TOML. Fixed by using r####"…"####. Unsafe env var mutation (TASK-003): Rust 2024 edition made std::env::set_var and remove_var unsafe (not thread-safe). Wrapped all test env var calls in unsafe blocks with safety comments. Clippy collapsible_if (TASK-003): Nested if let + if for API key env var check flagged by clippy. Collapsed into a single if let … &amp;&amp; … expression using let-chains (stable in 2024 edition). Formatting (TASK-003): cargo fmt flagged a multi-line let binding that fit on one line. Auto-fixed. running 13 tests
+test config::tests::load_with_pour_config_env_var_nonexistent_file ... ok
+test config::tests::invalid_toml_produces_parse_error ... ok
+test config::tests::module_with_no_fields_fails_validation ... ok
+test config::tests::minimal_config_parses ... ok
+test config::tests::api_port_defaults_when_omitted ... ok
+test config::tests::static_select_with_empty_options_fails_validation ... ok
+test config::tests::append_mode_without_header_fails_validation ... ok
+test config::tests::dynamic_select_without_source_fails_validation ... ok
+test config::tests::static_select_without_options_fails_validation ... ok
+test config::tests::round_trip_sample_config ... ok
+test config::tests::api_key_env_var_overrides_config ... ok
+test config::tests::valid_config_parses_via_from_str ... ok
+test config::tests::load_from_pour_config_env_var ... ok test result: ok. 13 passed; 0 failed
+Only dead_code warnings for types not yet consumed outside tests. These will resolve as Sprint 2+ code starts using the config types. No clippy lints, no formatting issues.The config layer is solid and ready to be consumed. Sprint 2 (Transport Layer) can begin:
+TASK-004: API client - can read VaultConfig.api_port and api_key
+TASK-005: Filesystem writer - can read VaultConfig.base_path and ModuleConfig.path
+TASK-006: Transport dispatcher - can use Config::load() to get the full config
+No blockers. The foundation is in place.]]></description><link>06-reports/sprints/sprint-1-foundation-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-1-foundation-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:11 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Hot storage for development notes. Notes here are fleeting — consolidate into concepts, guides, or ADRs before version releases.No active notes yet.]]></description><link>00-index/notes.html</link><guid isPermaLink="false">00 index/NOTES.md</guid><pubDate>Tue, 31 Mar 2026 22:34:10 GMT</pubDate></item><item><title><![CDATA[ratatui]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/ratatui/latest/ratatui/" target="_self">https://docs.rs/ratatui/latest/ratatui/</a><br>
+Crate: ratatui (with <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a> backend)
+Ratatui uses an immediate rendering model -- the entire frame is redrawn each cycle. No widget state is retained between frames.fn main() -&gt; Result&lt;()&gt; { let mut terminal = ratatui::init(); let result = run(&amp;mut terminal); ratatui::restore(); result
+} fn run(terminal: &amp;mut DefaultTerminal) -&gt; Result&lt;()&gt; { loop { terminal.draw(|frame| { // render widgets here frame.render_widget(my_widget, frame.area()); })?; // handle events if let Event::Key(key) = crossterm::event::read()? { match key.code { KeyCode::Char('q') =&gt; break, _ =&gt; {} } } } Ok(())
+}
+use ratatui::layout::{Layout, Constraint, Direction}; // Vertical stack
+let chunks = Layout::vertical([ Constraint::Length(3), // fixed 3 rows Constraint::Min(0), // fill remaining Constraint::Length(1), // fixed 1 row
+]).split(frame.area()); // Horizontal split
+let cols = Layout::horizontal([ Constraint::Percentage(50), Constraint::Percentage(50),
+]).split(chunks[1]);
+Constraint variants: Length(u16), Min(u16), Max(u16), Percentage(u16), Fill(u16), Ratio(u32, u32)let block = Block::default() .title("My Block") .borders(Borders::ALL) .border_style(Style::default().fg(Color::Cyan));
+let text = Paragraph::new("Hello world") .block(Block::default().borders(Borders::ALL)) .style(Style::default().fg(Color::White)) .wrap(Wrap { trim: true });
+let items = vec![ ListItem::new("Item 1"), ListItem::new("Item 2"), ListItem::new("Item 3"),
+];
+let list = List::new(items) .block(Block::default().title("Menu").borders(Borders::ALL)) .highlight_style(Style::default().add_modifier(Modifier::BOLD)) .highlight_symbol("&gt;&gt; "); // Requires StatefulWidget rendering:
+frame.render_stateful_widget(list, area, &amp;mut list_state);
+let rows = vec![ Row::new(vec!["Cell1", "Cell2"]), Row::new(vec!["Cell3", "Cell4"]),
+];
+let table = Table::new(rows, [Constraint::Length(10), Constraint::Length(10)]) .header(Row::new(vec!["Col1", "Col2"]).style(Style::default().bold())) .block(Block::default().borders(Borders::ALL));
+let tabs = Tabs::new(vec!["Tab1", "Tab2", "Tab3"]) .select(current_tab) .highlight_style(Style::default().fg(Color::Yellow));
+Text hierarchy: Text &gt; Line &gt; Spanuse ratatui::text::{Text, Line, Span};
+use ratatui::style::{Style, Color, Modifier, Stylize}; // Fluent API via Stylize trait
+let span = "bold red".red().bold(); // Composed line
+let line = Line::from(vec![ Span::raw("Normal "), Span::styled("highlighted", Style::default().fg(Color::Yellow).bold()),
+]); // Multi-line text
+let text = Text::from(vec![ Line::from("Line 1"), Line::from("Line 2"),
+]);
+Some widgets (List, Table) have associated state types:let mut list_state = ListState::default();
+list_state.select(Some(0)); // select first item // In render:
+frame.render_stateful_widget(list, area, &amp;mut list_state); // Navigation:
+list_state.select_next();
+list_state.select_previous();
+Ratatui doesn't have built-in form widgets. Common patterns:
+App struct holds form state (current field, field values, cursor positions)
+Event handler routes input to the active field
+Render function draws each field with appropriate styling (active vs inactive)
+Third-party crates: tui-textarea, tui-input for text input widgets
+]]></description><link>02-references/ratatui.html</link><guid isPermaLink="false">02 references/ratatui.md</guid><pubDate>Tue, 31 Mar 2026 22:34:10 GMT</pubDate></item><item><title><![CDATA[crossterm]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/crossterm/latest/crossterm/" target="_self">https://docs.rs/crossterm/latest/crossterm/</a>
+Crate: crossterm
+<br>Crossterm is the backend for <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>. It handles raw terminal I/O, event capture, and screen management.use crossterm::{ execute, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+}; // Setup
+enable_raw_mode()?;
+execute!(std::io::stdout(), EnterAlternateScreen)?; // Teardown
+disable_raw_mode()?;
+execute!(std::io::stdout(), LeaveAlternateScreen)?;
+Note: ratatui::init() and ratatui::restore() handle this automatically.use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers}; // Blocking read
+if let Event::Key(key) = event::read()? { match key.code { KeyCode::Char('q') =&gt; { /* quit */ } KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) =&gt; { /* ctrl+c */ } KeyCode::Enter =&gt; { /* submit */ } KeyCode::Tab =&gt; { /* next field */ } KeyCode::BackTab =&gt; { /* prev field */ } KeyCode::Up =&gt; { /* navigate up */ } KeyCode::Down =&gt; { /* navigate down */ } KeyCode::Backspace =&gt; { /* delete char */ } KeyCode::Char(c) =&gt; { /* type character */ } KeyCode::Esc =&gt; { /* cancel */ } _ =&gt; {} }
+} // Non-blocking poll
+if event::poll(std::time::Duration::from_millis(100))? { if let Event::Key(key) = event::read()? { // handle key }
+}
+// Immediate flush (for single commands)
+execute!(stdout, command1, command2)?; // Queued (for batch rendering -- ratatui uses this internally)
+queue!(stdout, command1, command2)?;
+stdout.flush()?;
+]]></description><link>02-references/crossterm.html</link><guid isPermaLink="false">02 references/crossterm.md</guid><pubDate>Tue, 31 Mar 2026 22:34:10 GMT</pubDate></item><item><title><![CDATA[reqwest]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/reqwest/latest/reqwest/" target="_self">https://docs.rs/reqwest/latest/reqwest/</a>
+Crate: reqwest (with json feature)
+<br>Reqwest is used to communicate with the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> over HTTP/HTTPS on localhost.use reqwest::Client; // Basic client
+let client = Client::new(); // With custom config (e.g., accept self-signed certs)
+let client = Client::builder() .danger_accept_invalid_certs(true) // needed for Obsidian's self-signed cert .timeout(std::time::Duration::from_secs(5)) .build()?;
+let resp = client.get("https://127.0.0.1:27124/vault/path/to/file.md") .bearer_auth("your-api-key") .send() .await?; let body = resp.text().await?;
+let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(markdown_content) .send() .await?;
+let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(content_to_append) .send() .await?;
+let resp = client.patch("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Operation", "append") .header("Target-Type", "heading") .header("Target", "Brain Dump") .header("Content-Type", "text/markdown") .body("- New thought here\n") .send() .await?;
+// Send JSON
+let resp = client.post(url) .bearer_auth(api_key) .json(&amp;serde_json::json!({"key": "value"})) .send() .await?; // Parse JSON response
+let data: serde_json::Value = resp.json().await?;
+let resp = client.get(url).bearer_auth(key).send().await?; // Check status
+if resp.status().is_success() { let body = resp.text().await?;
+} else { let status = resp.status(); let error_body = resp.text().await?; // handle error
+}
+/// Check if Obsidian REST API is available
+async fn check_api(client: &amp;Client, port: u16) -&gt; bool { client.get(format!("https://127.0.0.1:{}/", port)) .send() .await .map(|r| r.status().is_success()) .unwrap_or(false)
+}
+let resp = client.get("https://127.0.0.1:27124/vault/02-Logbook/Beans/") .bearer_auth(api_key) .send() .await?; let listing: serde_json::Value = resp.json().await?;
+// listing["files"] is an array of {path, stat} objects
+]]></description><link>02-references/reqwest.html</link><guid isPermaLink="false">02 references/reqwest.md</guid><pubDate>Tue, 31 Mar 2026 22:34:09 GMT</pubDate></item><item><title><![CDATA[chrono]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/chrono/latest/chrono/" target="_self">https://docs.rs/chrono/latest/chrono/</a>
+Crate: chrono
+Used for generating timestamps in file names (e.g., 2026-03-30_1205_V60.md) and daily note paths (e.g., 2026-03-30.md).use chrono::Local; let now = Local::now();
+// Daily note path: "2026-03-30.md"
+let date_str = now.format("%Y-%m-%d").to_string(); // Coffee log filename: "2026-03-30_1205_Brew.md"
+let timestamp = now.format("%Y-%m-%d_%H%M").to_string(); // Full timestamp for entries: "14:32"
+let time_str = now.format("%H:%M").to_string();
+Common format specifiers:use chrono::NaiveDate; let date = NaiveDate::parse_from_str("2026-03-30", "%Y-%m-%d")?;
+]]></description><link>02-references/chrono.html</link><guid isPermaLink="false">02 references/chrono.md</guid><pubDate>Tue, 31 Mar 2026 22:34:09 GMT</pubDate></item><item><title><![CDATA[toml-serde]]></title><description><![CDATA[
+Sources: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/toml/latest/toml/" target="_self">https://docs.rs/toml/latest/toml/</a>, <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/serde_yaml/latest/serde_yaml/" target="_self">https://docs.rs/serde_yaml/latest/serde_yaml/</a>
+Crates: toml, serde, serde_json, serde_yaml
+use serde::Deserialize; #[derive(Deserialize)]
+struct Config { vault: VaultConfig, modules: std::collections::HashMap&lt;String, ModuleConfig&gt;,
+} #[derive(Deserialize)]
+struct VaultConfig { base_path: String, api_port: u16,
+} #[derive(Deserialize)]
+struct ModuleConfig { mode: String, // "append" or "create" path: String, // strftime-templated path append_under_header: Option&lt;String&gt;, fields: Vec&lt;FieldConfig&gt;,
+} #[derive(Deserialize)]
+struct FieldConfig { name: String, #[serde(rename = "type")] field_type: String, // "textarea", "dynamic_select", "number", etc. prompt: String, source: Option&lt;String&gt;,
+} // Parse
+let config: Config = toml::from_str(&amp;std::fs::read_to_string(path)?)?;
+use serde::Serialize;
+use serde_yaml; #[derive(Serialize)]
+struct CoffeeFrontmatter { bean: String, yield_g: u32, date: String, tags: Vec&lt;String&gt;,
+} let fm = CoffeeFrontmatter { bean: "Ethiopian Yirgacheffe".into(), yield_g: 36, date: "2026-03-30".into(), tags: vec!["coffee".into(), "v60".into()],
+}; let yaml = serde_yaml::to_string(&amp;fm)?;
+// Output:
+// bean: Ethiopian Yirgacheffe
+// yield_g: 36
+// date: '2026-03-30'
+// tags:
+// - coffee
+// - v60 // Wrap as frontmatter
+let frontmatter = format!("---\n{}---\n", yaml);
+use serde_json; // Parse API response
+let files: serde_json::Value = serde_json::from_str(&amp;response_body)?; // Build request body
+let body = serde_json::to_string(&amp;data)?;
+]]></description><link>02-references/toml-serde.html</link><guid isPermaLink="false">02 references/toml-serde.md</guid><pubDate>Tue, 31 Mar 2026 22:34:09 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api]]></title><description><![CDATA[
 Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://github.com/coddingtonbear/obsidian-local-rest-api" target="_self">https://github.com/coddingtonbear/obsidian-local-rest-api</a><br>
 Full OpenAPI Spec: <a data-href="obsidian-local-rest-api-openapi.yaml" href="02-references/obsidian-local-rest-api-openapi.html" class="internal-link" target="_self" rel="noopener nofollow">obsidian-local-rest-api-openapi.yaml</a>
 All endpoints (except GET /) require Bearer token authentication:Authorization: Bearer &lt;your-api-key&gt;
@@ -251,129 +671,174 @@ GET /commands/ response:{ "commands": [ { "id": "global-search:open", "name": "S
 POST /open/{filename}?newLeaf=true
 Opens the specified file in Obsidian's interface. Creates the file if it doesn't exist.All errors return:{ "errorCode": 40149, "message": "A brief description of the error."
 }
-Error codes are 5-digit numbers unique to each error type.<br>Based on the <a data-tooltip-position="top" aria-label="pour-design-spec" data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">project spec</a>, these are the most relevant endpoints:
+Error codes are 5-digit numbers unique to each error type.<br>Based on the <a data-tooltip-position="top" aria-label="pour-design-spec" data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">project spec</a>, these are the most relevant endpoints:
 GET / - Check if API is available (connectivity test)
 PUT /vault/{filename} - Create new notes (coffee logs, music sets)
 PATCH /vault/{filename} - Append under headers (journal entries)
 GET /vault/{dirpath}/ - List files in directory (populate dynamic dropdowns)
 POST /search/ - Dataview queries for dynamic selects by tag
-]]></description><link>02-references/obsidian-local-rest-api.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api.md</guid><pubDate>Tue, 31 Mar 2026 05:18:18 GMT</pubDate></item><item><title><![CDATA[toml-serde]]></title><description><![CDATA[
-Sources: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/toml/latest/toml/" target="_self">https://docs.rs/toml/latest/toml/</a>, <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/serde_yaml/latest/serde_yaml/" target="_self">https://docs.rs/serde_yaml/latest/serde_yaml/</a>
-Crates: toml, serde, serde_json, serde_yaml
-use serde::Deserialize; #[derive(Deserialize)]
-struct Config { vault: VaultConfig, modules: std::collections::HashMap&lt;String, ModuleConfig&gt;,
-} #[derive(Deserialize)]
-struct VaultConfig { base_path: String, api_port: u16,
-} #[derive(Deserialize)]
-struct ModuleConfig { mode: String, // "append" or "create" path: String, // strftime-templated path append_under_header: Option&lt;String&gt;, fields: Vec&lt;FieldConfig&gt;,
-} #[derive(Deserialize)]
-struct FieldConfig { name: String, #[serde(rename = "type")] field_type: String, // "textarea", "dynamic_select", "number", etc. prompt: String, source: Option&lt;String&gt;,
-} // Parse
-let config: Config = toml::from_str(&amp;std::fs::read_to_string(path)?)?;
-use serde::Serialize;
-use serde_yaml; #[derive(Serialize)]
-struct CoffeeFrontmatter { bean: String, yield_g: u32, date: String, tags: Vec&lt;String&gt;,
-} let fm = CoffeeFrontmatter { bean: "Ethiopian Yirgacheffe".into(), yield_g: 36, date: "2026-03-30".into(), tags: vec!["coffee".into(), "v60".into()],
-}; let yaml = serde_yaml::to_string(&amp;fm)?;
-// Output:
-// bean: Ethiopian Yirgacheffe
-// yield_g: 36
-// date: '2026-03-30'
-// tags:
-// - coffee
-// - v60 // Wrap as frontmatter
-let frontmatter = format!("---\n{}---\n", yaml);
-use serde_json; // Parse API response
-let files: serde_json::Value = serde_json::from_str(&amp;response_body)?; // Build request body
-let body = serde_json::to_string(&amp;data)?;
-]]></description><link>02-references/toml-serde.html</link><guid isPermaLink="false">02 references/toml-serde.md</guid><pubDate>Tue, 31 Mar 2026 05:18:18 GMT</pubDate></item><item><title><![CDATA[chrono]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/chrono/latest/chrono/" target="_self">https://docs.rs/chrono/latest/chrono/</a>
-Crate: chrono
-Used for generating timestamps in file names (e.g., 2026-03-30_1205_V60.md) and daily note paths (e.g., 2026-03-30.md).use chrono::Local; let now = Local::now();
-// Daily note path: "2026-03-30.md"
-let date_str = now.format("%Y-%m-%d").to_string(); // Coffee log filename: "2026-03-30_1205_Brew.md"
-let timestamp = now.format("%Y-%m-%d_%H%M").to_string(); // Full timestamp for entries: "14:32"
-let time_str = now.format("%H:%M").to_string();
-Common format specifiers:use chrono::NaiveDate; let date = NaiveDate::parse_from_str("2026-03-30", "%Y-%m-%d")?;
-]]></description><link>02-references/chrono.html</link><guid isPermaLink="false">02 references/chrono.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[reqwest]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/reqwest/latest/reqwest/" target="_self">https://docs.rs/reqwest/latest/reqwest/</a>
-Crate: reqwest (with json feature)
-<br>Reqwest is used to communicate with the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> over HTTP/HTTPS on localhost.use reqwest::Client; // Basic client
-let client = Client::new(); // With custom config (e.g., accept self-signed certs)
-let client = Client::builder() .danger_accept_invalid_certs(true) // needed for Obsidian's self-signed cert .timeout(std::time::Duration::from_secs(5)) .build()?;
-let resp = client.get("https://127.0.0.1:27124/vault/path/to/file.md") .bearer_auth("your-api-key") .send() .await?; let body = resp.text().await?;
-let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(markdown_content) .send() .await?;
-let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(content_to_append) .send() .await?;
-let resp = client.patch("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Operation", "append") .header("Target-Type", "heading") .header("Target", "Brain Dump") .header("Content-Type", "text/markdown") .body("- New thought here\n") .send() .await?;
-// Send JSON
-let resp = client.post(url) .bearer_auth(api_key) .json(&amp;serde_json::json!({"key": "value"})) .send() .await?; // Parse JSON response
-let data: serde_json::Value = resp.json().await?;
-let resp = client.get(url).bearer_auth(key).send().await?; // Check status
-if resp.status().is_success() { let body = resp.text().await?;
-} else { let status = resp.status(); let error_body = resp.text().await?; // handle error
-}
-/// Check if Obsidian REST API is available
-async fn check_api(client: &amp;Client, port: u16) -&gt; bool { client.get(format!("https://127.0.0.1:{}/", port)) .send() .await .map(|r| r.status().is_success()) .unwrap_or(false)
-}
-let resp = client.get("https://127.0.0.1:27124/vault/02-Logbook/Beans/") .bearer_auth(api_key) .send() .await?; let listing: serde_json::Value = resp.json().await?;
-// listing["files"] is an array of {path, stat} objects
-]]></description><link>02-references/reqwest.html</link><guid isPermaLink="false">02 references/reqwest.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[crossterm]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/crossterm/latest/crossterm/" target="_self">https://docs.rs/crossterm/latest/crossterm/</a>
-Crate: crossterm
-<br>Crossterm is the backend for <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>. It handles raw terminal I/O, event capture, and screen management.use crossterm::{ execute, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-}; // Setup
-enable_raw_mode()?;
-execute!(std::io::stdout(), EnterAlternateScreen)?; // Teardown
-disable_raw_mode()?;
-execute!(std::io::stdout(), LeaveAlternateScreen)?;
-Note: ratatui::init() and ratatui::restore() handle this automatically.use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers}; // Blocking read
-if let Event::Key(key) = event::read()? { match key.code { KeyCode::Char('q') =&gt; { /* quit */ } KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) =&gt; { /* ctrl+c */ } KeyCode::Enter =&gt; { /* submit */ } KeyCode::Tab =&gt; { /* next field */ } KeyCode::BackTab =&gt; { /* prev field */ } KeyCode::Up =&gt; { /* navigate up */ } KeyCode::Down =&gt; { /* navigate down */ } KeyCode::Backspace =&gt; { /* delete char */ } KeyCode::Char(c) =&gt; { /* type character */ } KeyCode::Esc =&gt; { /* cancel */ } _ =&gt; {} }
-} // Non-blocking poll
-if event::poll(std::time::Duration::from_millis(100))? { if let Event::Key(key) = event::read()? { // handle key }
-}
-// Immediate flush (for single commands)
-execute!(stdout, command1, command2)?; // Queued (for batch rendering -- ratatui uses this internally)
-queue!(stdout, command1, command2)?;
-stdout.flush()?;
-]]></description><link>02-references/crossterm.html</link><guid isPermaLink="false">02 references/crossterm.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[ratatui]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/ratatui/latest/ratatui/" target="_self">https://docs.rs/ratatui/latest/ratatui/</a><br>
-Crate: ratatui (with <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a> backend)
-Ratatui uses an immediate rendering model -- the entire frame is redrawn each cycle. No widget state is retained between frames.fn main() -&gt; Result&lt;()&gt; { let mut terminal = ratatui::init(); let result = run(&amp;mut terminal); ratatui::restore(); result
-} fn run(terminal: &amp;mut DefaultTerminal) -&gt; Result&lt;()&gt; { loop { terminal.draw(|frame| { // render widgets here frame.render_widget(my_widget, frame.area()); })?; // handle events if let Event::Key(key) = crossterm::event::read()? { match key.code { KeyCode::Char('q') =&gt; break, _ =&gt; {} } } } Ok(())
-}
-use ratatui::layout::{Layout, Constraint, Direction}; // Vertical stack
-let chunks = Layout::vertical([ Constraint::Length(3), // fixed 3 rows Constraint::Min(0), // fill remaining Constraint::Length(1), // fixed 1 row
-]).split(frame.area()); // Horizontal split
-let cols = Layout::horizontal([ Constraint::Percentage(50), Constraint::Percentage(50),
-]).split(chunks[1]);
-Constraint variants: Length(u16), Min(u16), Max(u16), Percentage(u16), Fill(u16), Ratio(u32, u32)let block = Block::default() .title("My Block") .borders(Borders::ALL) .border_style(Style::default().fg(Color::Cyan));
-let text = Paragraph::new("Hello world") .block(Block::default().borders(Borders::ALL)) .style(Style::default().fg(Color::White)) .wrap(Wrap { trim: true });
-let items = vec![ ListItem::new("Item 1"), ListItem::new("Item 2"), ListItem::new("Item 3"),
-];
-let list = List::new(items) .block(Block::default().title("Menu").borders(Borders::ALL)) .highlight_style(Style::default().add_modifier(Modifier::BOLD)) .highlight_symbol("&gt;&gt; "); // Requires StatefulWidget rendering:
-frame.render_stateful_widget(list, area, &amp;mut list_state);
-let rows = vec![ Row::new(vec!["Cell1", "Cell2"]), Row::new(vec!["Cell3", "Cell4"]),
-];
-let table = Table::new(rows, [Constraint::Length(10), Constraint::Length(10)]) .header(Row::new(vec!["Col1", "Col2"]).style(Style::default().bold())) .block(Block::default().borders(Borders::ALL));
-let tabs = Tabs::new(vec!["Tab1", "Tab2", "Tab3"]) .select(current_tab) .highlight_style(Style::default().fg(Color::Yellow));
-Text hierarchy: Text &gt; Line &gt; Spanuse ratatui::text::{Text, Line, Span};
-use ratatui::style::{Style, Color, Modifier, Stylize}; // Fluent API via Stylize trait
-let span = "bold red".red().bold(); // Composed line
-let line = Line::from(vec![ Span::raw("Normal "), Span::styled("highlighted", Style::default().fg(Color::Yellow).bold()),
-]); // Multi-line text
-let text = Text::from(vec![ Line::from("Line 1"), Line::from("Line 2"),
-]);
-Some widgets (List, Table) have associated state types:let mut list_state = ListState::default();
-list_state.select(Some(0)); // select first item // In render:
-frame.render_stateful_widget(list, area, &amp;mut list_state); // Navigation:
-list_state.select_next();
-list_state.select_previous();
-Ratatui doesn't have built-in form widgets. Common patterns:
-App struct holds form state (current field, field values, cursor positions)
-Event handler routes input to the active field
-Render function draws each field with appropriate styling (active vs inactive)
-Third-party crates: tui-textarea, tui-input for text input widgets
-]]></description><link>02-references/ratatui.html</link><guid isPermaLink="false">02 references/ratatui.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
+]]></description><link>02-references/obsidian-local-rest-api.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api.md</guid><pubDate>Tue, 31 Mar 2026 22:34:09 GMT</pubDate></item><item><title><![CDATA[STORIES]]></title><description><![CDATA[Vision documents and narratives behind Pour.
+<a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour: the problem, the vision, and the ethos
+]]></description><link>00-index/stories.html</link><guid isPermaLink="false">00 index/STORIES.md</guid><pubDate>Tue, 31 Mar 2026 22:34:09 GMT</pubDate></item><item><title><![CDATA[README]]></title><description><![CDATA[00 index - Index files for the vault; Act both as a hub for 'spokes' of knowledge but also enforce knowledge mapping structure. <a data-href="index" href="index.html" class="internal-link" target="_self" rel="noopener nofollow">index</a> captures the documentation structure01 concepts - Persistent atomic notes, permanent broad knowledge acting as an ever expanding wiki of knowledge gathered working on this project02 references - Library API references, external documentation, and OpenAPI specs03 guides - DX guides, developer workflow documentation<br>04 architecture - Design spec, <a data-href="ADR" href=".html" class="internal-link" target="_self" rel="noopener nofollow">ADR</a>s and broader architectural decisions05 notes - 'Fleeting' development notes; precursor to atomic notes in persistent vault above07 stories - User stories and vision documents08 specs - Feature and component specifications99 meta -
+00 templates - Obsidian templates
+]]></description><link>readme.html</link><guid isPermaLink="false">README.md</guid><pubDate>Tue, 31 Mar 2026 22:34:08 GMT</pubDate></item><item><title><![CDATA[the_pour_manifesto]]></title><description><![CDATA[Obsidian is a beautiful, sprawling garden for our minds. It is the perfect place to wander, connect ideas, and synthesize knowledge.But opening the gates takes too long.When you are deep in a flow state, dialing in the perfect espresso shot, or standing in the crowd at a festival, your brain operates in seconds, not minutes. If the process of logging a thought takes longer than the thought itself, the thought dies.Opening a GUI, waiting for the Electron client to render, finding the right folder, opening the daily note, and formatting the YAML frontmatter—that isn't just friction. It is a barrier to entry. It makes the act of remembering feel like administrative work. And because of that friction, we stop writing. We lose the nuances of our days.We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely.Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
+Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
+Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
+Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
+Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion. As a developer and enthusiast, I want a frictionless, instant-booting terminal interface to log highly structured data (like coffee recipes and concert memories) directly into my Obsidian vault, so that I can capture the details of the things I love without breaking my workflow or wrestling with a GUI.
+]]></description><link>07-stories/the_pour_manifesto.html</link><guid isPermaLink="false">07 stories/the_pour_manifesto.md</guid><pubDate>Tue, 31 Mar 2026 22:34:08 GMT</pubDate></item><item><title><![CDATA[sprint-3-output-pipeline-report]]></title><description><![CDATA[Sprint 3 implemented the output rendering pipeline: YAML frontmatter generation, template rendering for paths and append content, and write orchestration that routes field values through the correct pipeline based on module write mode. All three tasks passed inspection with cargo check, cargo test (59 tests), cargo clippy, and cargo fmt -- --check all clean.generate_frontmatter(fields: &amp;[(String, String)]) -&gt; String with:
+Hand-built YAML output (no serde_yaml dependency for writing)
+---\nkey: value\n---\n block format
+Auto-injects date field (today via chrono::Local) if not already present, always first
+Explicit date values are preserved and placed first
+Empty values are silently skipped
+Values containing YAML-special characters (:, #, {, }, [, ], etc.) are double-quoted with escaped internal quotes
+Leading - triggers quoting (YAML list indicator) but - mid-value does not (avoids quoting dates like 2025-01-15)
+Comma-separated values (detected by ", " delimiter) are emitted as YAML lists with - item syntax
+7 tests: auto-date injection, explicit date preservation/ordering, empty value skipping, special character quoting, comma-to-list conversion, list items with special chars, all-empty-fields edge case.Two functions:
+render_path(template: &amp;str) -&gt; String -- chrono strftime substitution via Local::now().format(). Converts "Journal/%Y/%Y-%m-%d.md" to "Journal/2026/2026-03-30.md".
+render_append_template(template: &amp;str, fields: &amp;HashMap&lt;String, String&gt;) -&gt; String -- {{field}} placeholder substitution with special {{time}} (HH:MM) and {{date}} (YYYY-MM-DD) tokens. Missing fields leave the placeholder as-is for debuggability.
+8 tests: date token substitution, passthrough for static paths, field replacement, special time/date tokens, missing field preservation, mixed known/unknown fields, realistic journal template.Two public async functions:
+write_create(transport, module, field_values) -&gt; Result&lt;String&gt; -- partitions fields into frontmatter and body by target/field_type defaults (textarea -&gt; body, all else -&gt; frontmatter), generates frontmatter block, joins body parts, renders the path template, writes via transport.create_file(). Returns the resolved vault path.
+write_append(transport, module, field_values) -&gt; Result&lt;String&gt; -- renders the module's append_template with field values (or falls back to joining body fields), renders the path template, writes via transport.append_under_heading(). Returns the resolved vault path.
+Internal partition_fields() helper implements the routing logic: explicit target field config takes precedence, otherwise FieldType::Textarea defaults to body and all other field types default to frontmatter.Both functions bail early with a clear error if called with the wrong write mode.5 tests: full create-mode round-trip (verifies frontmatter content, body separation, and file structure), wrong-mode rejection for both directions, append with rendered template, create with no body fields.
+FieldTarget in src/config.rs gained Clone derive (required by partition_fields to clone out of an Option&lt;&amp;FieldTarget&gt;)
+src/lib.rs updated with pub mod output;
+Test crate root tests/output/main.rs wires frontmatter, template, and orchestration modules YAML quoting of dates: The initial YAML_SPECIAL character set included -, which caused date values like 2025-01-15 to be unnecessarily quoted. Fixed by splitting into YAML_SPECIAL (always-quote characters) and YAML_SPECIAL_START (only-quote-at-start characters like -). Formatting: Several assert macros with long message strings didn't match cargo fmt expectations for line wrapping. Fixed by running cargo fmt before final gate check. FieldTarget Clone: The partition_fields function needed to clone FieldTarget values out of Option references. Added Clone derive to FieldTarget enum -- minimal, safe change to the config module. running 59 tests (13 config + 20 output + 26 transport) config: 13 passed
+output::frontmatter: 7 passed
+output::template: 8 passed
+output::orchestration: 5 passed
+transport::api: 5 passed
+transport::fs: 10 passed
+transport::dispatcher: 6 passed test result: ok. 59 passed; 0 failed Hand-built YAML over serde_yaml: The frontmatter generator builds YAML strings manually rather than using serde_yaml. This avoids a runtime dependency for writing (serde_yaml is still available for reading) and gives precise control over formatting -- Obsidian expects specific YAML conventions that a generic serializer might not produce. Comma-separated detection heuristic: Values containing ", " (comma-space) are treated as lists. This matches the common pattern for tag input in TUI forms. A single comma without a following space is not treated as a list delimiter. Missing placeholders preserved: render_append_template leaves {{unknown}} placeholders in the output rather than replacing them with empty strings. This makes debugging easier -- the user can see which fields were not provided. Partition logic in mod.rs, not config.rs: The field-to-target routing logic lives in the output module rather than on FieldConfig, keeping config.rs focused on parsing/validation and output/mod.rs focused on rendering decisions. The output pipeline is complete and ready to be wired into the TUI:
+write_create and write_append accept a Transport, a ModuleConfig, and field values -- all of which the TUI will have after form completion
+The functions return the vault-relative path of the written file, which the TUI can display as confirmation
+Error handling uses anyhow::Result consistently, ready for TUI error display
+Next sprint candidates: TUI form screens, dynamic data fetching, or the dashboard view.]]></description><link>06-reports/sprints/sprint-3-output-pipeline-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-3-output-pipeline-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:08 GMT</pubDate></item><item><title><![CDATA[sprint-4-data-fetching-report]]></title><description><![CDATA[Implement the cache layer and dynamic data fetching with 3-tier fallback (transport -&gt; cache -&gt; empty) for populating dynamic select dropdowns.
+Cache struct backed by ~/.cache/pour/state.json
+load() / load_from() — returns empty cache on missing or corrupt file (no panics)
+get(source) — returns Option&lt;Vec&lt;String&gt;&gt; for a source path
+set(source, items) — updates entry with UTC timestamp via chrono
+save() — atomic persist to disk (temp file + rename), creates parent directories
+Uses serde_json for serialization, dirs::cache_dir() for platform path
+6 tests: round-trip, missing file, corrupt file, parent dir creation, unknown source, overwrite fetch_options(transport, source_path, cache) -&gt; Vec&lt;String&gt; — async 3-tier fallback
+Tier 1: transport.list_directory() (API with FS fallback handled by transport layer)
+Tier 2: cache.get() for previously fetched items
+Tier 3: empty vec (TUI will offer freetext input)
+Results normalized to file stems before caching (strips .md extension, filters directory entries)
+On successful transport fetch, updates cache in-memory (caller saves)
+5 tests: transport success + cache population, normalization, transport fail -&gt; cache fallback, both miss -&gt; empty, empty dir -&gt; cache fallback Transport::append_under_heading() now delegates to heading-aware FsWriter::append_under_heading() instead of plain append_to_file()
+Updated dispatcher test to use a file with actual heading content CRITICAL — API vs FS return shape mismatch: fetch_options cached raw transport results without normalizing. API returns "Ethiopia.md", FS returns "Ethiopia". Fixed: added normalize_items() that strips .md extensions and filters directory entries before caching.
+MAJOR — Non-atomic cache save: Cache::save() wrote directly, risking corruption on crash. Fixed: now uses temp file + rename (same pattern as FsWriter).
+MAJOR — No path traversal validation: Config source field accepted ../../etc/secrets. Fixed: Config::validate() now rejects source paths containing ... Added test.
+Minor — default_cache_path() relative fallback: Falls back to .cache if dirs::cache_dir() returns None. Accepted for v1 (exotic platform edge case).
+Minor — ApiClient::new uses .expect(): Pre-existing from Sprint 2. Deferred — reqwest::Client::builder().build() effectively never fails.
+All foundation layers are complete:
+Config (Sprint 1) — types, loading, validation (incl. path traversal check)
+Transport (Sprint 2) — API client, FS writer, heading-aware dispatcher with fallback
+Output (Sprint 3) — frontmatter generation, template rendering, write orchestration
+Data (Sprint 4) — cache layer, normalized dynamic fetch with 3-tier fallback
+Sprint 5 (TUI) can begin: app state, dashboard, form, and summary views.]]></description><link>06-reports/sprints/sprint-4-data-fetching-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-4-data-fetching-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:08 GMT</pubDate></item><item><title><![CDATA[sprint-6-integration-report]]></title><description><![CDATA[Wire all subsystems together into a working binary so that cargo run launches a TUI dashboard and cargo run -- &lt;module&gt; opens a form for direct entry. This is the final sprint of v1.
+#[tokio::main] async entry point
+CLI arg parsing: no args = dashboard, one arg = fast-path direct to form
+Config load via Config::load() with user-friendly stderr error + exit(1) on failure
+Transport connect via Transport::connect(&amp;config).await (auto-fallback from API to filesystem)
+App::new(config, transport) builds central state
+Fast path: validates module name exists, sets selected_module index, calls init_form(), fetches dynamic_select options
+Unknown module name prints available modules to stderr and exits with code 1
+Panic hook: std::panic::set_hook restores terminal before printing panic info
+Terminal lifecycle: ratatui::init() / ratatui::restore() with clean teardown on all exit paths
+Main loop in run_loop(): terminal.draw(|frame| tui::render(&amp;app, frame))
+event::poll(100ms) + event::read() for crossterm events
+Ctrl+C always breaks cleanly
+Routes key events through tui::handle_event(&amp;mut app, key_event)
+Action::Quit breaks the loop
+Action::Navigate(Screen::Form) triggers dynamic option fetch for new form
+Action::Submit calls handle_submit() for validation + write + summary transition
+Action::None continues fetch_dynamic_options() scans module fields for FieldType::DynamicSelect, collects (field_name, source) pairs
+Calls data::fetch_options(&amp;transport, &amp;source, &amp;mut cache) for each, populating form_state.field_options
+Invoked on fast-path init AND on dashboard module selection (Navigate to Form)
+Cache loaded once at startup via Cache::load(), persisted after each write via cache.save() (best-effort, ignores save errors) Config load failure: stderr message + exit code 1 (no TUI initialized)
+Unknown module fast-path: stderr with available module list + exit code 1
+Transport connect: already fallback-safe (API -&gt; filesystem)
+Write failure on submit: SummaryState populated with error message, file_path = None, displayed as "Error" header in red on summary screen
+Validation failure on submit: errors stored in form_state.validation_errors, displayed inline in form footer, form stays open (no screen transition)
+Panic: hook restores terminal before printing panic, so the user sees the panic message in a clean terminal
+Main loop IO error: terminal restored, error printed to stderr, exit code 1
+The main loop is intentionally synchronous within each iteration: draw, poll, handle, act. The fetch_dynamic_options and handle_submit calls are awaited inline, which means the UI blocks during transport operations. This is acceptable for v1 because:
+Filesystem writes are near-instant
+API calls have a 5-second timeout
+True background async would require channels or tokio::spawn + shared state, adding complexity disproportionate to the UX gain main.rs owns: CLI parsing, config load, terminal lifecycle, event loop, submit orchestration, cache persistence
+tui/mod.rs owns: event routing to screen handlers, action dispatch
+app.rs owns: form initialization, validation
+output/ owns: write execution (frontmatter, template, transport calls)
+data/ owns: option fetching with 3-tier fallback, cache storage Background async refresh of dynamic selects (options load before first render, but don't refresh in background)
+Multiple-argument CLI support (only one module at a time)
+Logging/tracing (structured logging is a future sprint)
+Undo/confirmation before write src/main.rs — complete rewrite from placeholder to full integration
+The main event loop and submit handler are inherently difficult to unit test (they own terminal state and async I/O). All component logic they call into (config, app, transport, output, data) has thorough test coverage. Manual verification: cargo run launches dashboard, cargo run -- &lt;module&gt; opens form directly.]]></description><link>06-reports/sprints/sprint-6-integration-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-6-integration-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:08 GMT</pubDate></item><item><title><![CDATA[sprint-5-tui-report]]></title><description><![CDATA[Implement the terminal UI layer: app state management, three screen views (dashboard, form, summary), event handling, and top-level wiring that dispatches rendering and input to the correct view.
+App struct: config, transport, screen enum (Dashboard/Form/Summary), selected_module, form_state, summary_state, sorted module_keys
+FormState: field_values HashMap, field_options HashMap, active_field index, validation_errors, cursor_position
+SummaryState: message, file_path (Option), transport_mode
+App::new(config, transport) — starts on Dashboard, sorts module keys alphabetically
+App::init_form(module_key) — populates defaults and static_select options, returns None for unknown modules
+App::validate_form(module, form_state) — checks required fields and number parsing, skips empty optional numbers
+9 tests in tests/app.rs render(app, frame) — vertical field list with prompt label, current value, required marker, active field highlight
+Text/number fields: inline input with cursor indicator; textarea: first-line preview with ellipsis; static/dynamic select: scrollable options popup
+handle_key(app, key) -&gt; FormAction — Tab/Shift-Tab between fields, Enter submit (or confirm select), Esc cancel, Up/Down cycle select options, Char/Backspace/Left/Right for text editing
+Number fields filter input to digits, decimal, and minus sign
+Footer shows key hints or validation errors
+FormAction enum: None, Submit, Cancel render(app, frame) — header with "Pour" title + connection status (API/File System), navigable module list using display_name, footer key hints
+Zero-module edge case: shows "No modules configured" message
+handle_key(app, key) -&gt; DashboardAction — Up/Down navigate with wrapping, Enter select module, q quit
+DashboardAction enum: None, Quit, SelectModule render(app, frame) — success (green header, file path, transport mode) or error (red header, error message)
+handle_key(key) -&gt; SummaryAction — Enter (dashboard), a (another entry/same module), q (quit)
+SummaryAction enum: None, Quit, Dashboard, AnotherEntry pub mod dashboard; pub mod form; pub mod summary;
+Action enum: None, Quit, Submit, Navigate(Screen)
+render(app, frame) — dispatches to correct view based on app.screen
+handle_event(app, key) -&gt; Action — dispatches to correct handler, manages screen transitions: Dashboard: SelectModule -&gt; init_form + navigate to Form
+Form: Cancel -&gt; clear form + navigate to Dashboard; Submit -&gt; bubble up
+Summary: Dashboard -&gt; clear summary; AnotherEntry -&gt; re-init form for same module src/lib.rs already declared pub mod app; pub mod tui; (from task scaffolding)
+Fixed pre-existing clippy warnings: collapsible_if in app.rs (2) and form.rs (1)
+Fixed unused import FormState in tests/app.rs TUI rendering not unit-tested: Ratatui render functions produce terminal output that requires a mock backend to assert on. App state logic (the testable surface) is covered by tests/app.rs. Visual correctness will be validated manually.
+Select field interaction model: Up/Down cycles options immediately (value updates in real-time), Enter confirms and advances to next field. This avoids a separate "dropdown open" state.
+Screen transitions managed in wiring layer: Individual view handlers return typed action enums. The wiring layer in tui/mod.rs translates those into screen transitions and state mutations. Views never mutate app.screen directly.
+Number input filtering: Form handler rejects non-numeric characters at input time (digits, decimal, minus only). Validation still runs on submit to catch malformed values like "3.2.1".
+src/ lib.rs — pub mod app, config, data, output, transport, tui app.rs — App state, FormState, SummaryState, Screen enum config.rs — Config, VaultConfig, ModuleConfig, FieldConfig, validation data/ mod.rs — fetch_options() with 3-tier fallback cache.rs — Cache with atomic JSON persistence output/ mod.rs — write_create(), write_append() orchestration frontmatter.rs — YAML frontmatter generation template.rs — path + append template rendering transport/ mod.rs — Transport enum with connect() fallback api.rs — Obsidian REST API client fs.rs — Direct filesystem writer tui/ mod.rs — render() + handle_event() dispatch, Action enum dashboard.rs — Module list with connection status form.rs — Field input with select popups summary.rs — Write result display main.rs — Entry point (placeholder) main.rs: Wire up the actual TUI event loop (terminal init, render loop, event polling, write orchestration on Submit)
+Dynamic select data loading: Connect data::fetch_options() to form init for dynamic_select fields
+Error handling in main: Graceful config load errors, transport connect failures
+Manual testing: End-to-end with a real Obsidian vault
+]]></description><link>06-reports/sprints/sprint-5-tui-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-5-tui-report.md</guid><pubDate>Tue, 31 Mar 2026 22:34:07 GMT</pubDate></item><item><title><![CDATA[Guide-Adding-New-Field-Types]]></title><description><![CDATA[When extending the configuration schema, touch these layers in order so the new field stays coherent across <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> and the running app:
+Config Layer (src/config.rs): Add the new variant to the FieldType enum. Update validate() if the field requires specific properties, like static_select requiring options.
+State Layer (src/app.rs): Update App::init_form() to handle any default state population for the new field, and App::validate_form() if it requires custom validation logic before submission.
+Presentation Layer (src/tui/form.rs): Add the render logic to render(). Determine if it renders inline like text or requires a popup overlay like selects.
+Input Handling (src/tui/form.rs): Update the KeyEvent matcher to handle how the user interacts with this specific field when it is active.
+Output Layer (src/output/mod.rs): Ensure the field's data structure is properly routed to either frontmatter or body targets during submission.
+<br>For the current TUI shape and event routing, see <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and <a data-href="sprint-5-tui-report" href="06-reports/sprints/sprint-5-tui-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-5-tui-report</a>.]]></description><link>03-guides/guide-adding-new-field-types.html</link><guid isPermaLink="false">03 guides/Guide-Adding-New-Field-Types.md</guid><pubDate>Tue, 31 Mar 2026 22:34:07 GMT</pubDate></item><item><title><![CDATA[The-3-Tier-Data-Fallback]]></title><description><![CDATA[Used for populating dynamic_select UI fields without perceived latency in the <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> form flow.When the TUI initializes a form that requires dynamic data, it executes fetch_options() using a strict three-tier degradation path:
+<br>Tier 1 (Transport): Attempts to read the live directory via the active <a data-tooltip-position="top" aria-label="ADR-001-Hybrid-Transport-Layer" data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">transport layer</a> (API or FS).
+Tier 2 (Cache): If transport fails or is slow, it queries the atomic local JSON cache at ~/.cache/pour/state.json.
+Tier 3 (Empty Fallback): If cache is empty or corrupt, it returns an empty vector, dynamically shifting the UI to accept free-text input rather than a strict select list.
+<br>This fallback behavior is part of the broader <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and is called out in <a data-href="sprint-4-data-fetching-report" href="06-reports/sprints/sprint-4-data-fetching-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-4-data-fetching-report</a>.Note: Results are always normalized to file stems (stripping .md) before being cached.]]></description><link>01-concepts/the-3-tier-data-fallback.html</link><guid isPermaLink="false">01 concepts/The-3-Tier-Data-Fallback.md</guid><pubDate>Tue, 31 Mar 2026 22:34:07 GMT</pubDate></item><item><title><![CDATA[ADR-003-Synchronous-TUI-Async-Operations]]></title><description><![CDATA[Date: 2026-03-31
+Status: Accepted (v1 specific)Context:
+The main.rs event loop uses tokio for async data fetching and API submissions. Managing true background async in a TUI requires complex channels and shared state to prevent UI freezing while waiting for network responses.Decision:
+For v1, fetch_dynamic_options and handle_submit calls are awaited inline, effectively blocking the UI thread during network operations.Consequences:
+Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>, and <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/adr/adr-003-synchronous-tui-async-operations.html</link><guid isPermaLink="false">04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md</guid><pubDate>Tue, 31 Mar 2026 22:34:07 GMT</pubDate></item><item><title><![CDATA[ADR-002-Custom-YAML-Serialization]]></title><description><![CDATA[Date: 2026-03-31
+Status: AcceptedContext:
+Obsidian Properties and Dataview require highly specific YAML frontmatter formatting. Standard serialization crates like serde_yaml introduce a runtime dependency for writing and often format arrays or special characters in ways that Obsidian handles poorly.Decision:
+Write a custom generate_frontmatter pipeline instead of relying on generic serializers.
+Auto-injects and prioritizes the date field.
+Automatically double-quotes values containing YAML-special characters.
+Detects comma-separated string inputs and expands them into YAML lists.
+Consequences:
+Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-3-output-pipeline-report" href="06-reports/sprints/sprint-3-output-pipeline-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-3-output-pipeline-report</a>.]]></description><link>04-architecture/adr/adr-002-custom-yaml-serialization.html</link><guid isPermaLink="false">04 architecture/adr/ADR-002-Custom-YAML-Serialization.md</guid><pubDate>Tue, 31 Mar 2026 22:34:06 GMT</pubDate></item><item><title><![CDATA[ADR-001-Hybrid-Transport-Layer]]></title><description><![CDATA[Date: 2026-03-31
+Status: AcceptedContext:
+The core ethos of pour is killing friction. Relying solely on the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> means data entry fails if the Obsidian Electron client is closed. Relying solely on the filesystem means missing out on advanced API features when the vault is open.Decision:
+Implement a dual-pronged Transport dispatcher.
+<br>Attempt an HTTP connection to the Local REST API first using <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> with a 5-second timeout.
+If the connection is refused, automatically fall back to direct filesystem writes via std::fs.
+Consequences: Positive: Maximum resilience. The user never loses a log entry due to application state.
+<br>Negative: Feature asymmetry. The API backend returns raw filenames (for example, latte.md) while the FS backend returns file stems (latte). This requires normalization in <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
+<br>See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-2-transport-report" href="06-reports/sprints/sprint-2-transport-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-2-transport-report</a>.]]></description><link>04-architecture/adr/adr-001-hybrid-transport-layer.html</link><guid isPermaLink="false">04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md</guid><pubDate>Tue, 31 Mar 2026 22:34:06 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
 Offline-First Resilience: Works with the Obsidian Local REST API, but falls back seamlessly to direct file-system operations if the vault is closed.
 Snappy &amp; Rhythmic: Designed around the pour command. Fast muscle memory.
 Data Integrity: Generates strict YAML frontmatter and standard Markdown to ensure 100% compatibility with Obsidian Properties (Bases) and Dataview.
@@ -414,77 +879,7 @@ pour music module (generic config supports it when ready)
 Rich validation (min/max, regex)
 Tag-based dynamic_select sources
 Plugin/extension system
-]]></description><link>04-architecture/pour-design-spec.html</link><guid isPermaLink="false">04 architecture/pour-design-spec.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[Feature and component specifications.No specs yet — feature specs will be linked here as they are created.]]></description><link>00-index/specs.html</link><guid isPermaLink="false">00 index/SPECS.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Hot storage for development notes. Notes here are fleeting — consolidate into concepts, guides, or ADRs before version releases.No active notes yet.]]></description><link>00-index/notes.html</link><guid isPermaLink="false">00 index/NOTES.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[Library API references and external documentation for Pour's tech stack.]]></description><link>00-index/references.html</link><guid isPermaLink="false">00 index/REFERENCES.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[v1-implementation-plan]]></title><description><![CDATA[
-Config first, transport second, TUI last — each layer is testable independently
-No task depends on unverified prior work — the inspector must sign off before dependents start
-Atomic tasks — each can be implemented and tested in isolation
-Cargo.toml -&gt; Config parsing -&gt; Transport (API + FS) -&gt; Output pipeline -&gt; Data fetching -&gt; TUI (form -&gt; dashboard -&gt; summary) -&gt; CLI routing (main.rs)
-See the Project State maintained by the Governor agent for current status of each task.]]></description><link>04-architecture/v1-implementation-plan.html</link><guid isPermaLink="false">04 architecture/v1-implementation-plan.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[ARCHITECTURE]]></title><description><![CDATA[
-<a data-href="pour-design-spec" href="04-architecture/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (v0.2) <br><a data-href="v1-implementation-plan" href="04-architecture/v1-implementation-plan.html" class="internal-link" target="_self" rel="noopener nofollow">v1-implementation-plan</a> — V1 task backlog and sprint sequencing
-None yet — ADRs will be added as architectural decisions are made.]]></description><link>00-index/architecture.html</link><guid isPermaLink="false">00 index/ARCHITECTURE.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[sprint-1-foundation-report]]></title><description><![CDATA[Sprint 1 established the project foundation: a buildable Rust project with a fully typed, validated configuration layer. All three tasks passed inspection with cargo check, cargo test (13 tests), cargo clippy, and cargo fmt -- --check all clean.Created the project manifest with Rust 2024 edition and all required dependencies:
-TUI: ratatui, crossterm
-Serialization: serde (with derive), toml, serde_yaml, serde_json
-Networking: reqwest (with json + rustls-tls, no OpenSSL dependency on Windows)
-Async: tokio (with rt-multi-thread, macros, fs)
-Utilities: chrono, dirs, anyhow
-Binary name set to pour.Defined all structs and enums for the config layer:
-Config (top-level: vault + modules HashMap)
-VaultConfig (base_path, api_port with default 27124, api_key)
-ModuleConfig (mode, path, append settings, fields, display_name)
-FieldConfig (name, field_type, prompt, required, default, options, source, target)
-WriteMode enum: append / create
-FieldType enum: text, textarea, number, static_select, dynamic_select
-FieldTarget enum: frontmatter / body
-All types derive Deserialize + Debug. Enums use #[serde(rename_all = "snake_case")]. Three unit tests verify round-trip TOML deserialization, default api_port behavior, and minimal config parsing.Implemented Config::load() and Config::from_str() with:
-File resolution: POUR_CONFIG env var -&gt; ~/.config/pour/config.toml via dirs::config_dir()
-Typed errors: ConfigError enum with NotFound, ReadError, ParseError, ValidationError variants, plus Display and Error impls
-Validation rules: Every module must have &gt;= 1 field
-append mode requires append_under_header
-static_select requires non-empty options
-dynamic_select requires source API key resolution: POUR_API_KEY env var takes precedence over config value
-Ten additional tests covering: valid parse via from_str, each validation failure case, invalid TOML parse error, env var override for API key, file-not-found via env var, and full file loading via POUR_CONFIG. Raw string delimiters (TASK-002): Rust 2024 edition reserves "## sequences. Initial r#"…"# delimiters conflicted with "## Log" in test TOML. Fixed by using r####"…"####. Unsafe env var mutation (TASK-003): Rust 2024 edition made std::env::set_var and remove_var unsafe (not thread-safe). Wrapped all test env var calls in unsafe blocks with safety comments. Clippy collapsible_if (TASK-003): Nested if let + if for API key env var check flagged by clippy. Collapsed into a single if let … &amp;&amp; … expression using let-chains (stable in 2024 edition). Formatting (TASK-003): cargo fmt flagged a multi-line let binding that fit on one line. Auto-fixed. running 13 tests
-test config::tests::load_with_pour_config_env_var_nonexistent_file ... ok
-test config::tests::invalid_toml_produces_parse_error ... ok
-test config::tests::module_with_no_fields_fails_validation ... ok
-test config::tests::minimal_config_parses ... ok
-test config::tests::api_port_defaults_when_omitted ... ok
-test config::tests::static_select_with_empty_options_fails_validation ... ok
-test config::tests::append_mode_without_header_fails_validation ... ok
-test config::tests::dynamic_select_without_source_fails_validation ... ok
-test config::tests::static_select_without_options_fails_validation ... ok
-test config::tests::round_trip_sample_config ... ok
-test config::tests::api_key_env_var_overrides_config ... ok
-test config::tests::valid_config_parses_via_from_str ... ok
-test config::tests::load_from_pour_config_env_var ... ok test result: ok. 13 passed; 0 failed
-Only dead_code warnings for types not yet consumed outside tests. These will resolve as Sprint 2+ code starts using the config types. No clippy lints, no formatting issues.The config layer is solid and ready to be consumed. Sprint 2 (Transport Layer) can begin:
-TASK-004: API client - can read VaultConfig.api_port and api_key
-TASK-005: Filesystem writer - can read VaultConfig.base_path and ModuleConfig.path
-TASK-006: Transport dispatcher - can use Config::load() to get the full config
-No blockers. The foundation is in place.]]></description><link>06-reports/sprints/sprint-1-foundation-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-1-foundation-report.md</guid><pubDate>Tue, 31 Mar 2026 05:18:16 GMT</pubDate></item><item><title><![CDATA[sprint-2-transport-report]]></title><description><![CDATA[Sprint 2 implemented the hybrid transport layer: an API client for the Obsidian Local REST API, a filesystem writer for direct vault access, and a unified dispatcher that tries the API first and falls back to filesystem. All three tasks passed inspection with cargo check, cargo test (34 tests), cargo clippy, and cargo fmt -- --check all clean.ApiClient struct wrapping reqwest::Client with:
-Constructor new(port, api_key) building an HTTPS client that accepts self-signed certificates with a 5-second timeout
-check_connection() -- GET / with Bearer auth, returns bool (catches all errors, never propagates)
-create_file(vault_path, content) -- PUT to /vault/{path} with Content-Type: text/markdown
-append_under_heading(vault_path, heading, content) -- PATCH to /vault/{path} using the v3 header-based API (Operation: append, Target-Type: heading, Target: {heading})
-list_directory(vault_dir_path) -- GET /vault/{dir}/ (trailing slash), deserializes {"files": […]} JSON response
-All methods async, returning anyhow::Result with contextual error messages.5 tests: HTTPS scheme validation, port embedding, default port, multi-port sweep, unreachable server returns false.FsWriter struct holding a vault base_path: PathBuf with:
-create_file(relative_path, content) -- writes file, creates parent directories, errors if file already exists
-append_to_file(relative_path, content) -- appends to existing file, errors if file not found
-list_directory(relative_dir_path) -- lists .md files, returns sorted stem names, excludes non-.md files and subdirectories
-All methods synchronous, returning anyhow::Result with contextual error messages.10 tests: content writing, parent dir creation, duplicate file rejection, append behavior, missing file error, sorted stem listing, subdirectory exclusion, non-directory error, empty directory handling, base_path getter.
-TransportMode enum (Api / FileSystem) with Display impl for TUI status display
-Transport enum wrapping ApiClient and FsWriter
-Transport::connect(config) -- attempts API connection when both api_port and api_key are configured and check_connection() succeeds; falls back to filesystem otherwise
-Unified create_file, append_under_heading, list_directory methods that delegate to the active backend
-Filesystem fallback for append_under_heading does a plain append (heading-aware insertion deferred to future sprint)
-src/lib.rs updated with pub mod transport;
-6 tests: no-API-key fallback, unreachable-API fallback, create/append/list delegation through FS backend, TransportMode Display formatting. Clippy collapsible_if (TASK-005): Nested if path.is_file() { if let Some(ext) … { if ext == "md" { … }}} flagged by clippy. Collapsed into a single if with let-chains (Rust 2024 edition). Formatting (TASK-005): Several anyhow::bail! and .with_context() calls had formatting that didn't match cargo fmt expectations. Reformatted. Module wiring: Integration tests in tests/transport/ require the module to be exported from lib.rs. Added minimal pub mod transport; to lib.rs and pub mod api; / pub mod fs; to transport/mod.rs as part of the build-up, rather than deferring all wiring to TASK-006. Test crate structure: tests/transport/ uses main.rs as the crate root (not mod.rs), following Rust's convention for directory-based integration test crates. running 34 tests (13 config + 21 transport) config: 13 passed
-transport::api: 5 passed
-transport::fs: 10 passed
-transport::dispatcher: 6 passed test result: ok. 34 passed; 0 failed base_url is pub on ApiClient to allow test assertions on URL construction without needing a getter method. list_directory return type differences: The API backend returns raw filenames (e.g., "latte.md", "subdir/"), while the filesystem backend returns .md stems only (e.g., "latte"). This asymmetry is documented; callers will need to normalize. A normalization layer can be added in a future sprint. Filesystem append_under_heading fallback: The FS backend cannot do heading-aware insertion without a markdown parser. It falls back to plain append_to_file. This is documented in the code and acceptable for v1. tempfile crate: Added as a dev-dependency for filesystem tests. Creates OS-managed temporary directories that auto-clean on drop. The transport layer is complete and ready to be consumed. Sprint 3 (Output Rendering) can begin:
-Output modules can use Transport::create_file and Transport::append_under_heading to write to the vault
-Data fetching modules can use Transport::list_directory to populate dynamic dropdowns
-The TUI can display Transport::mode() to show the user which backend is active
-No blockers. The transport foundation is in place.]]></description><link>06-reports/sprints/sprint-2-transport-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-2-transport-report.md</guid><pubDate>Tue, 31 Mar 2026 05:18:15 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api-openapi]]></title><link>02-references/obsidian-local-rest-api-openapi.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api-openapi.yaml</guid><pubDate>Tue, 31 Mar 2026 00:12:47 GMT</pubDate></item><item><title><![CDATA[sprint-2-transport-report]]></title><description><![CDATA[Sprint 2 implemented the hybrid transport layer: an API client for the Obsidian Local REST API, a filesystem writer for direct vault access, and a unified dispatcher that tries the API first and falls back to filesystem. All three tasks passed inspection with cargo check, cargo test (34 tests), cargo clippy, and cargo fmt -- --check all clean.ApiClient struct wrapping reqwest::Client with:
+]]></description><link>04-architecture/pour-design-spec.html</link><guid isPermaLink="false">04 architecture/pour-design-spec.md</guid><pubDate>Tue, 31 Mar 2026 05:18:17 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api-openapi]]></title><link>02-references/obsidian-local-rest-api-openapi.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api-openapi.yaml</guid><pubDate>Tue, 31 Mar 2026 00:12:47 GMT</pubDate></item><item><title><![CDATA[sprint-2-transport-report]]></title><description><![CDATA[Sprint 2 implemented the hybrid transport layer: an API client for the Obsidian Local REST API, a filesystem writer for direct vault access, and a unified dispatcher that tries the API first and falls back to filesystem. All three tasks passed inspection with cargo check, cargo test (34 tests), cargo clippy, and cargo fmt -- --check all clean.ApiClient struct wrapping reqwest::Client with:
 Constructor new(port, api_key) building an HTTPS client that accepts self-signed certificates with a 5-second timeout
 check_connection() -- GET / with Bearer auth, returns bool (catches all errors, never propagates)
 create_file(vault_path, content) -- PUT to /vault/{path} with Content-Type: text/markdown

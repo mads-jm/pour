@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, March 31st 2026, 12:12:23 am
-date modified: Tuesday, March 31st 2026, 10:34:06 pm
+date modified: Thursday, April 2nd 2026, 8:17:02 am
 ---
 
 # Pour Documentation
@@ -76,7 +76,7 @@ cargo fmt                # format
 ## Architecture Overview
 
 Pour writes to Obsidian via a __hybrid transport layer__:
-1. __API__ — HTTP via [[reqwest]] to [[obsidian-local-rest-api|Obsidian Local REST API]] (`http://127.0.0.1:27124`)
+1. __API__ — HTTPS via [[reqwest]] to [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs)
 2. __File System__ — Direct `std::fs` fallback if API unavailable
 
 ### Dynamic Data Fetching (3-tier fallback)
@@ -87,5 +87,7 @@ API query -> disk scan -> `~/.cache/pour/state.json` cache -> freetext input
 
 __Last Updated__: 2026-03-31
 __Documentation Version__: v0.1.0
+
+
 
 

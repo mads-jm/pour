@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Tuesday, March 31st 2026, 10:34:10 pm
+date modified: Thursday, April 2nd 2026, 8:17:04 am
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -31,7 +31,7 @@ The application has two primary execution paths:
 Running the base command opens the main interactive hub.
 
 - __Header:__ Displays vault connection status (🟢 API Connected | 🟡 Direct File Mode).
-- __Body:__ Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal").
+- __Body:__ Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). *[Deviation: not implemented in v1 — dashboard shows module list with connection status only.]*
 - __Menu:__ Navigable list to launch specific modules (`me`, `coffee`).
 
 ### __2.2 The Fast Path (`pour <module>`)__
@@ -46,7 +46,7 @@ Bypasses the dashboard and launches directly into a specific data-entry view.
 Upon submitting a form, the app does *not* immediately exit. It transitions to a __Summary View__ displaying:
 
 - A success message with the destination file path.
-- Options: `[Enter]` Main Menu, `[A]` Pour Another → .., `[Q]` Quit, `[O]` Open file in `$EDITOR`.
+- Options: `[Enter]` Main Menu, `[A]` Pour Another → .., `[Q]` Quit, `[O]` Open file in `$EDITOR`. *[Deviation: `[O]` not implemented in v1 — summary supports Enter, A, and Q only.]*
 
 ## __3. Architecture & Data Layer__
 
@@ -54,7 +54,7 @@ Upon submitting a form, the app does *not* immediately exit. It transitions to a
 
 Pour uses a dual-pronged approach to writing data:
 
-1. __Primary (API):__ Attempts a fast local HTTP request via [[reqwest]] to the [[obsidian-local-rest-api|Obsidian Local REST API]] (`http://127.0.0.1:27124`).
+1. __Primary (API):__ Attempts a fast local HTTPS request via [[reqwest]] to the [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs). *[Deviation: originally spec'd as HTTP; implementation uses HTTPS with `danger_accept_invalid_certs`.]*
 2. __Fallback (File System):__ If the connection is refused, it gracefully falls back to `std::fs` to write directly to the absolute vault path defined in the configuration.
 
 __API Authentication:__ The REST API plugin requires a Bearer token. Pour supports two sources:
@@ -78,7 +78,7 @@ Full TOML schema, field type reference, and validation rules — see config sche
 
 - __Language:__ Rust (2024 Edition)
 - __TUI Framework:__ [[ratatui]] + [[crossterm]]
-- __Serialization:__ `serde`, `serde_json`, [[toml-serde|toml]], `serde_yaml`
+- __Serialization:__ `serde`, `serde_json`, [[toml-serde|toml]], `toml_edit` *[Deviation: `serde_yaml` was originally included but removed — YAML frontmatter uses custom serialization instead. See [[ADR-002-Custom-YAML-Serialization]].]*
 - __Network:__ [[reqwest]] (with `tokio` for async fetching)
 - __Time:__ [[chrono]] (for file formatting and timestamps)
 
@@ -92,7 +92,7 @@ The following are explicitly __in scope__ for v0.1:
 - Hybrid transport layer (API → filesystem fallback)
 - Dynamic data fetching (API → disk scan → cache → freetext)
 - Configurable append templates (callout default)
-- Configurable theme (accent color, border style)
+- Configurable theme (accent color, border style) *[Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]*
 - Post-execution summary view
 - `required` field validation
 
@@ -102,6 +102,7 @@ The following are explicitly __deferred__:
 - Rich validation (min/max, regex)
 - Tag-based dynamic_select sources
 - Plugin/extension system
+
 
 
 

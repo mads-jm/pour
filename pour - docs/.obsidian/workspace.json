@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "index.md",
+                "file": "04 architecture/v1-implementation-plan.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "index"
+              "title": "v1-implementation-plan"
             }
           }
         ]
@@ -215,7 +215,7 @@
               },
               "pinned": true,
               "icon": "terminal",
-              "title": "Terminal: cmd"
+              "title": "Terminal: C:\\Windows\\System32\\conhost.exe"
             }
           }
         ]
@@ -239,39 +239,43 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "ee68a755b79db48a",
+  "active": "6629666eed5eef8f",
   "lastOpenFiles": [
-    "06 reports/sprints/sprint-2-transport-report.md",
-    "06 reports/sprints/sprint-1-foundation-report.md",
-    "00 index/ARCHITECTURE.md",
     "04 architecture/v1-implementation-plan.md",
-    "00 index/REFERENCES.md",
-    "00 index/NOTES.md",
-    "00 index/SPECS.md",
-    "04 architecture/pour-design-spec.md",
-    "02 references/ratatui.md",
-    "02 references/crossterm.md",
-    "02 references/reqwest.md",
-    "02 references/chrono.md",
-    "02 references/toml-serde.md",
-    "02 references/obsidian-local-rest-api.md",
-    "00 index/STORIES.md",
-    "README.md",
-    "07 stories/the_pour_manifesto.md",
-    "06 reports/sprints/sprint-3-output-pipeline-report.md",
-    "06 reports/sprints/sprint-4-data-fetching-report.md",
-    "06 reports/sprints/sprint-6-integration-report.md",
-    "06 reports/sprints/sprint-5-tui-report.md",
-    "04 architecture/System-Architecture-Overview.md",
-    "03 guides/Guide-Adding-New-Field-Types.md",
-    "01 concepts/The-3-Tier-Data-Fallback.md",
-    "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
+    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
     "04 architecture/adr/ADR-002-Custom-YAML-Serialization.md",
+    "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
+    "01 concepts/The-3-Tier-Data-Fallback.md",
+    "03 guides/Guide-Adding-New-Field-Types.md",
+    "06 reports/sprints/sprint-5-tui-report.md",
+    "06 reports/sprints/sprint-6-integration-report.md",
+    "06 reports/sprints/sprint-4-data-fetching-report.md",
+    "06 reports/sprints/sprint-3-output-pipeline-report.md",
+    "07 stories/the_pour_manifesto.md",
+    "README.md",
+    "00 index/STORIES.md",
+    "02 references/obsidian-local-rest-api.md",
+    "02 references/toml-serde.md",
+    "02 references/chrono.md",
+    "02 references/reqwest.md",
+    "02 references/crossterm.md",
+    "02 references/ratatui.md",
+    "00 index/NOTES.md",
+    "06 reports/sprints/sprint-1-foundation-report.md",
+    "06 reports/sprints/sprint-2-transport-report.md",
+    "08 specs/distill-first-pass-spec.md",
+    "03 guides/Design-Language.md",
+    "06 reports/implementation-debt-and-dependency-audit.md",
+    "08 specs/pour-design-spec.md",
+    "09 milestones/v1.0.0-Release.md.tmp.12080.1775098712344",
+    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098691668",
+    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098685888",
+    "09 milestones/v1.0.0-Release.md.tmp.36836.1775092296910",
+    "04 architecture/System-Architecture-Overview.md.tmp.36836.1775092279516",
     "06 reports/sprints",
     "06 reports",
     "09 milestones",
     "09 - milestones",
-    "04 architecture/adr",
-    "index.md.tmp.18436.1774917365397"
+    "04 architecture/adr"
   ]
 }

@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Tuesday, April 1st 2026, 12:00:00 am
+date modified: Thursday, April 2nd 2026, 8:17:04 am
 ---
 
 # Pour Design Language
@@ -22,15 +22,15 @@ Fallback: `v`
 
 ## Voice
 
-The TUI should feel **sharp**, **ritualized**, **command-forward**, and **quietly technical**.
+The TUI should feel __sharp__, __ritualized__, __command-forward__, and __quietly technical__.
 
 It should not feel cozy, corporate, menu-first, or playful. The product is about immediate capture under flow. The interface is a precision tool you trust at 1am, not a friendly dashboard.
 
-### Copy rules
+### Copy Rules
 
 Text reads like a tool, not an app.
 
-```
+```ts
 ▽ pour coffee        not    Welcome to Pour
 ▽ saved              not    Your entry was successfully written
 transport: api       not    Transport Mode: API
@@ -40,9 +40,9 @@ Lowercase. Terse. Imperative. Almost command-line dry.
 
 ## Implemented Surfaces
 
-### Dashboard header
+### Dashboard Header
 
-```
+```ts
 ▽ pour   [local]
 ```
 
@@ -50,9 +50,9 @@ The front door. One branded mark, module list below as a clean launcher, transpo
 
 Empty state: `no modules configured. add modules to config.toml.`
 
-### Form header
+### Form Header
 
-```
+```ts
 ▽ pour coffee — Brew Log
 ```
 
@@ -60,7 +60,7 @@ The strongest expression of the product. The `▽` anchors the command lockup. D
 
 ### Summary
 
-```
+```ts
 ▽ saved                    (success — green bold)
 ! error                    (failure — red bold)
 ```
@@ -69,14 +69,14 @@ The brand mark signals completed flow. Dropping it on error is intentional — t
 
 Body labels are terse and lowercase:
 
-```
+```ts
   path: 02-Logbook/2026-04-01-brew.md
   transport: api
 ```
 
-### Configure header
+### Configure Header
 
-```
+```ts
 ▽ configure coffee   [modified]
 ```
 
@@ -98,13 +98,13 @@ No centralized theme file. All styling is inline via ratatui's `Style` builder.
 
 ## Rules
 
-1. **One `▽` per screen.** It belongs in the header. Not on list items, footers, or popups.
-2. **Angular geometry.** Brackets, dividers, compact tags. No rounded emoji-style symbols.
-3. **Contrast is functional.** Cyan for active, dark gray for scaffolding, yellow for hints. Never decorative.
-4. **No coffee tropes.** No mug icons, steam motifs, beans, or cafe signage.
-5. **No terminal cosplay.** No ASCII art banners, heavy box drawing, or CRT gimmicks.
-6. **Headers establish context in one line.** Brand, module, state.
-7. **Footers are operational.** Key hints only. Not a branding surface.
+1. __One `▽` per screen.__ It belongs in the header. Not on list items, footers, or popups.
+2. __Angular geometry.__ Brackets, dividers, compact tags. No rounded emoji-style symbols.
+3. __Contrast is functional.__ Cyan for active, dark gray for scaffolding, yellow for hints. Never decorative.
+4. __No coffee tropes.__ No mug icons, steam motifs, beans, or cafe signage.
+5. __No terminal cosplay.__ No ASCII art banners, heavy box drawing, or CRT gimmicks.
+6. __Headers establish context in one line.__ Brand, module, state.
+7. __Footers are operational.__ Key hints only. Not a branding surface.
 
 ## SVG Guidance
 
@@ -115,3 +115,4 @@ If the mark becomes an SVG for web or docs:
 - No mug handle, no steam, no dense detail
 
 Same geometry as `▽`, same restraint.
+

@@ -3,16 +3,12 @@ tags:
   - index
   - specs
 date created: Tuesday, March 31st 2026, 12:12:39 am
-date modified: Tuesday, March 31st 2026, 10:34:10 pm
+date modified: Thursday, April 2nd 2026, 8:17:03 am
 ---
 
 # Specs
 
 Feature and component specifications.
 
-*No specs yet — feature specs will be linked here as they are created.*
-
-
-
-
+- [[distill-first-pass-spec]] — First-pass specification for the distill concept; standalone AI local companion TUI
 
