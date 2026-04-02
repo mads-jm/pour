@@ -10,7 +10,7 @@ module_order = ["me", "coffee"]
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
 # Absolute path to your Obsidian vault root directory
-base_path = "VAULT_PATH_PLACEHOLDER"
+base_path = "D:\\! System\\Documents\\! obsidian\\main"
 
 # Obsidian Local REST API (optional — Pour falls back to direct filesystem writes)
 # api_port = 27124
@@ -34,9 +34,9 @@ base_path = "VAULT_PATH_PLACEHOLDER"
 # append_template supports {{time}} and any field name as {{field_name}}.
 [modules.me]
 mode = "append"
-path = "Journal/%Y/%Y-%m-%d.md"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
 display_name = "Journal"
-append_under_header = "## Log"
+append_under_header = "## [[Journaling|Journal]]"
 append_template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}"
 
 [[modules.me.fields]]
@@ -60,7 +60,7 @@ target = "body"
 # {bean} in the path is replaced with the value of the "bean" field at write time.
 [modules.coffee]
 mode = "create"
-path = "Coffee/%Y/%Y-%m-%d-{bean}.md"
+path = "02 - Areas/204 - Cooking/Coffee/{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
 
 [[modules.coffee.fields]]
@@ -77,7 +77,7 @@ target = "frontmatter"
 name = "bean"
 field_type = "dynamic_select"
 prompt = "Bean"
-source = "Coffee/Beans"
+source = "02 - Areas/204 - Cooking/Coffee/Beans"
 target = "frontmatter"
 
 [[modules.coffee.fields]]
