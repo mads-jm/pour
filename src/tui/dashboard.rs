@@ -33,46 +33,50 @@ pub fn render(app: &App, frame: &mut Frame) {
     let gap_modules: Vec<(&str, String)> = app
         .module_keys
         .iter()
-        .filter_map(|key| {
-            match last_per_module.get(key.as_str()) {
-                Some(ts) => {
-                    let d = ts.with_timezone(&chrono::Local).date_naive();
-                    if d < week_start {
-                        Some((key.as_str(), format!("last: {}", format_relative(*ts))))
-                    } else {
-                        None
-                    }
+        .filter_map(|key| match last_per_module.get(key.as_str()) {
+            Some(ts) => {
+                let d = ts.with_timezone(&chrono::Local).date_naive();
+                if d < week_start {
+                    Some((key.as_str(), format!("last: {}", format_relative(*ts))))
+                } else {
+                    None
                 }
-                None => Some((key.as_str(), "never".to_string())),
             }
+            None => Some((key.as_str(), "never".to_string())),
         })
         .collect();
 
     // Height for the recent/gaps section: "recent" header + entries + optional gap header + gaps
-    let recent_lines = if recent_entries.is_empty() { 0 } else { 1 + recent_entries.len() };
-    let gap_lines = if gap_modules.is_empty() { 0 } else { 1 + gap_modules.len() };
+    let recent_lines = if recent_entries.is_empty() {
+        0
+    } else {
+        1 + recent_entries.len()
+    };
+    let gap_lines = if gap_modules.is_empty() {
+        0
+    } else {
+        1 + gap_modules.len()
+    };
     let bottom_section_height = (recent_lines + gap_lines) as u16;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2), // header
-            Constraint::Length(1), // ambient stats
-            Constraint::Min(3),   // module list
+            Constraint::Length(2),                            // header
+            Constraint::Length(1),                            // ambient stats
+            Constraint::Min(3),                               // module list
             Constraint::Length(bottom_section_height.max(1)), // recent + gaps
-            Constraint::Length(3), // footer
+            Constraint::Length(3),                            // footer
         ])
         .split(area);
 
     // ── Header ──
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(
-            " ▽ pour",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]))
+    let header = Paragraph::new(Line::from(vec![Span::styled(
+        " ▽ pour",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )]))
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, chunks[0]);
 
@@ -102,7 +106,10 @@ pub fn render(app: &App, frame: &mut Frame) {
         stats_spans.push(Span::styled(format!("{streak}d"), val));
     }
     stats_spans.push(Span::styled("   ", dim));
-    stats_spans.push(Span::styled(format!("[{mode}]"), Style::default().fg(Color::Green)));
+    stats_spans.push(Span::styled(
+        format!("[{mode}]"),
+        Style::default().fg(Color::Green),
+    ));
 
     let stats_row = Paragraph::new(Line::from(stats_spans));
     frame.render_widget(stats_row, chunks[1]);
@@ -179,12 +186,17 @@ pub fn render(app: &App, frame: &mut Frame) {
     if !recent_entries.is_empty() {
         bottom_lines.push(Line::from(Span::styled(
             " recent",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
         )));
         for entry in &recent_entries {
             let time_str = format_relative(entry.timestamp);
             bottom_lines.push(Line::from(vec![
-                Span::styled(format!("   {:<12}", entry.module_key), Style::default().fg(Color::White)),
+                Span::styled(
+                    format!("   {:<12}", entry.module_key),
+                    Style::default().fg(Color::White),
+                ),
                 Span::styled(time_str, Style::default().fg(Color::DarkGray)),
             ]));
         }
@@ -193,11 +205,16 @@ pub fn render(app: &App, frame: &mut Frame) {
     if !gap_modules.is_empty() {
         bottom_lines.push(Line::from(Span::styled(
             " gaps",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
         )));
         for (module, label) in &gap_modules {
             bottom_lines.push(Line::from(vec![
-                Span::styled(format!("   {:<12}", module), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    format!("   {:<12}", module),
+                    Style::default().fg(Color::Yellow),
+                ),
                 Span::styled(label.clone(), Style::default().fg(Color::DarkGray)),
             ]));
         }
@@ -415,9 +432,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> DashboardAc
             }
             // Ctrl+Down — move selected module down
             KeyCode::Down => {
-                if !app.module_keys.is_empty()
-                    && app.selected_module < app.module_keys.len() - 1
-                {
+                if !app.module_keys.is_empty() && app.selected_module < app.module_keys.len() - 1 {
                     return DashboardAction::ReorderModule(MoveDirection::Down);
                 }
                 return DashboardAction::None;

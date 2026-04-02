@@ -20,12 +20,13 @@ fn sync_scroll_offset(state: &mut ConfigureState, term_cols: u16) {
         None => return,
     };
     let kind_hint_len = match &setting.kind {
-        SettingKind::Path => 9,       // " [Browse]"
-        SettingKind::Toggle(_) => 8,  // " [toggle]"
+        SettingKind::Path => 9,      // " [Browse]"
+        SettingKind::Toggle(_) => 8, // " [toggle]"
         SettingKind::Text => 0,
-        SettingKind::NavLink => 2,    // " >"
+        SettingKind::NavLink => 2,     // " >"
         SettingKind::ListEditor => 10, // " [Edit list]"
         SettingKind::Identifier => 0,
+        SettingKind::QuickSelect(_) => 8, // " [select]"
     };
     let prefix_len = 2 + setting.label.len() + 3;
     let avail = (term_cols as usize).saturating_sub(prefix_len + kind_hint_len);
@@ -72,6 +73,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
     let mut display_name: Option<Option<String>> = None;
     let mut mode: Option<crate::config::WriteMode> = None;
     let mut append_under_header: Option<Option<String>> = None;
+    let mut callout_type: Option<Option<String>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -97,6 +99,13 @@ fn auto_save_module_settings(app: &mut App) -> bool {
                     Some(setting.value.clone())
                 });
             }
+            "callout_type" => {
+                callout_type = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -106,6 +115,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
         display_name,
         mode,
         append_under_header,
+        callout_type,
     };
 
     match crate::config::Config::update_module_on_disk(&module_key, &updates) {
@@ -184,6 +194,7 @@ pub fn build_field_updates_from_settings(
     let mut options: Option<Option<Vec<String>>> = None;
     let mut source: Option<Option<String>> = None;
     let mut target: Option<Option<FieldTarget>> = None;
+    let mut callout: Option<Option<String>> = None;
 
     for setting in settings {
         match setting.key.as_str() {
@@ -201,7 +212,11 @@ pub fn build_field_updates_from_settings(
                 });
             }
             "required" => {
-                required = Some(if setting.value == "true" { Some(true) } else { None });
+                required = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
             }
             "default" => {
                 default = Some(if setting.value.is_empty() {
@@ -233,6 +248,13 @@ pub fn build_field_updates_from_settings(
                     _ => None,
                 });
             }
+            "callout" => {
+                callout = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -246,6 +268,7 @@ pub fn build_field_updates_from_settings(
         options,
         source,
         target,
+        callout,
     }
 }
 
@@ -383,6 +406,88 @@ fn render_path_help_overlay(app: &App, frame: &mut Frame, area: Rect) {
     super::render_overflow_hints(frame, inner, total_content, 0);
 }
 
+/// Render the quick-select overlay for callout type (or any QuickSelect field).
+fn render_quick_select_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    options: &[(char, String)],
+    current_value: &str,
+) {
+    let key_style = Style::default().fg(Color::Yellow);
+    let selected_style = Style::default()
+        .fg(Color::Green)
+        .add_modifier(Modifier::BOLD);
+    let normal_style = Style::default().fg(Color::White);
+    let dim = Style::default().fg(Color::DarkGray);
+
+    let mut lines: Vec<Line> = vec![Line::from("")];
+
+    // Render options in two columns
+    let half = options.len().div_ceil(2);
+    for i in 0..half {
+        let mut spans = Vec::new();
+
+        // Left column
+        let (key, label) = &options[i];
+        let is_selected = label == current_value;
+        let style = if is_selected {
+            selected_style
+        } else {
+            normal_style
+        };
+        spans.push(Span::styled(format!("  [{key}] "), key_style));
+        spans.push(Span::styled(format!("{:12}", label), style));
+
+        // Right column (if exists)
+        if let Some((key2, label2)) = options.get(i + half) {
+            let is_selected2 = label2 == current_value;
+            let style2 = if is_selected2 {
+                selected_style
+            } else {
+                normal_style
+            };
+            spans.push(Span::styled(format!("[{key2}] "), key_style));
+            spans.push(Span::styled(label2.to_string(), style2));
+        }
+
+        lines.push(Line::from(spans));
+    }
+
+    lines.push(Line::from(""));
+    if current_value.is_empty() {
+        lines.push(Line::from(Span::styled("  (none selected)", dim)));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled("  Current: ", dim),
+            Span::styled(current_value, selected_style),
+        ]));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  Backspace ", dim),
+        Span::styled("clear  ", dim),
+        Span::styled("Esc ", dim),
+        Span::styled("cancel", dim),
+    ]));
+
+    let total_content = lines.len();
+    let overlay_height = (total_content as u16 + 2).min(area.height.saturating_sub(2));
+    let overlay_width = 42u16.min(area.width);
+    let overlay_area = centered_rect(overlay_width, overlay_height, area);
+
+    frame.render_widget(Clear, overlay_area);
+
+    let overlay = Paragraph::new(lines).block(
+        Block::default()
+            .title(" Callout Type ")
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
+
+    frame.render_widget(overlay, overlay_area);
+}
+
 /// Actions the configure screen can signal to the wiring layer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConfigureAction {
@@ -449,7 +554,10 @@ pub fn render(app: &App, frame: &mut Frame) {
                 .and_then(|m| m.fields.get(*field_idx))
                 .map(|f| f.name.as_str())
                 .unwrap_or("?");
-            format!(" ▽ configure {} — {} — columns ", state.module_key, field_name)
+            format!(
+                " ▽ configure {} — {} — columns ",
+                state.module_key, field_name
+            )
         }
         ConfigureLevel::SubFieldEditor(field_idx, _sub_idx) => {
             let field_name = app
@@ -459,7 +567,10 @@ pub fn render(app: &App, frame: &mut Frame) {
                 .and_then(|m| m.fields.get(*field_idx))
                 .map(|f| f.name.as_str())
                 .unwrap_or("?");
-            format!(" ▽ configure {} — {} — edit column ", state.module_key, field_name)
+            format!(
+                " ▽ configure {} — {} — edit column ",
+                state.module_key, field_name
+            )
         }
         ConfigureLevel::VaultSettings => " ▽ vault settings ".to_string(),
         // Stub — full implementation in Phase 4c.
@@ -509,6 +620,14 @@ pub fn render(app: &App, frame: &mut Frame) {
         render_path_help_overlay(app, frame, chunks[1]);
     }
 
+    // Quick-select overlay (on top of body)
+    if state.quick_select_open
+        && let Some(setting) = state.settings.get(state.active_field)
+        && let SettingKind::QuickSelect(ref options) = setting.kind
+    {
+        render_quick_select_overlay(frame, chunks[1], options, &setting.value);
+    }
+
     // Footer
     let footer_line = if state.confirm.is_some() {
         Line::from(vec![
@@ -539,6 +658,15 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" new line  "),
             Span::styled("Ctrl+S", Style::default().fg(Color::Yellow)),
             Span::raw(" save  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" cancel"),
+        ])
+    } else if state.quick_select_open {
+        Line::from(vec![
+            Span::styled(" key", Style::default().fg(Color::Yellow)),
+            Span::raw(" select  "),
+            Span::styled("Backspace", Style::default().fg(Color::Yellow)),
+            Span::raw(" clear  "),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
             Span::raw(" cancel"),
         ])
@@ -724,6 +852,7 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             SettingKind::NavLink => " >",
             SettingKind::ListEditor => " [Edit list]",
             SettingKind::Identifier => "",
+            SettingKind::QuickSelect(_) => " [select]",
         };
 
         // Horizontal scroll viewport when editing this row.
@@ -732,19 +861,24 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         let hint_len = kind_hint.len();
         let avail = (area.width as usize).saturating_sub(prefix_len + hint_len);
 
-        let (value_display, left_clipped, right_clipped) = if is_active && state.editing && avail > 0 {
-            let char_count = raw_value.chars().count();
-            let scroll = state.scroll_offset;
-            let view_end = scroll + avail;
-            let left = scroll > 0;
-            let right = char_count > view_end;
-            let content_start = scroll;
-            let content_take = avail.saturating_sub(left as usize + right as usize);
-            let slice: String = raw_value.chars().skip(content_start).take(content_take).collect();
-            (slice, left, right)
-        } else {
-            (raw_value.clone(), false, false)
-        };
+        let (value_display, left_clipped, right_clipped) =
+            if is_active && state.editing && avail > 0 {
+                let char_count = raw_value.chars().count();
+                let scroll = state.scroll_offset;
+                let view_end = scroll + avail;
+                let left = scroll > 0;
+                let right = char_count > view_end;
+                let content_start = scroll;
+                let content_take = avail.saturating_sub(left as usize + right as usize);
+                let slice: String = raw_value
+                    .chars()
+                    .skip(content_start)
+                    .take(content_take)
+                    .collect();
+                (slice, left, right)
+            } else {
+                (raw_value.clone(), false, false)
+            };
 
         let display_text = if !is_active || !state.editing {
             if value_display.is_empty() {
@@ -781,7 +915,10 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
             Span::styled(format!("{}:  ", setting.label), label_style),
         ];
         spans.extend(value_spans);
-        spans.push(Span::styled(kind_hint, Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            kind_hint,
+            Style::default().fg(Color::DarkGray),
+        ));
 
         items.push(ListItem::new(Line::from(spans)));
         visual_row += 1;
@@ -815,7 +952,11 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         let left_indicator: u16 = if state.scroll_offset > 0 { 1 } else { 0 };
         let viewport_col = state.cursor_position.saturating_sub(state.scroll_offset) as u16;
         let cursor_x = area.x + prefix_len as u16 + left_indicator + viewport_col;
-        let cursor_y = area.y + visual_row_for.get(state.active_field).copied().unwrap_or(state.active_field) as u16;
+        let cursor_y = area.y
+            + visual_row_for
+                .get(state.active_field)
+                .copied()
+                .unwrap_or(state.active_field) as u16;
         if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
             frame.set_cursor_position(Position::new(cursor_x, cursor_y));
         }
@@ -1196,7 +1337,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                     PendingConfirm::DeleteModule { .. } => {
                         return ConfigureAction::DeleteModule;
                     }
-                    PendingConfirm::DeleteSubField { field_index, sub_field_index, .. } => {
+                    PendingConfirm::DeleteSubField {
+                        field_index,
+                        sub_field_index,
+                        ..
+                    } => {
                         return ConfigureAction::RemoveSubField(*field_index, *sub_field_index);
                     }
                 }
@@ -1220,6 +1365,34 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
         return ConfigureAction::None;
     }
 
+    // --- Quick-select overlay mode ---
+    if state.quick_select_open {
+        match key.code {
+            KeyCode::Esc => {
+                state.quick_select_open = false;
+            }
+            KeyCode::Backspace => {
+                // Clear selection
+                state.settings[state.active_field].value = String::new();
+                state.dirty = true;
+                state.quick_select_open = false;
+            }
+            KeyCode::Char(c) => {
+                // Match hotkey against the options
+                if let SettingKind::QuickSelect(ref options) =
+                    state.settings[state.active_field].kind
+                    && let Some((_, label)) = options.iter().find(|(k, _)| *k == c)
+                {
+                    state.settings[state.active_field].value = label.clone();
+                    state.dirty = true;
+                    state.quick_select_open = false;
+                }
+            }
+            _ => {}
+        }
+        return ConfigureAction::None;
+    }
+
     // --- Browser mode ---
     if state.browser_open {
         let browser = match &mut state.browser_state {
@@ -1233,8 +1406,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
         };
 
-        let at_root =
-            browser.current_path.is_empty() || browser.current_path == "/";
+        let at_root = browser.current_path.is_empty() || browser.current_path == "/";
 
         let dirs: Vec<String> = browser
             .entries
@@ -1292,23 +1464,22 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 // Select current directory as the path value
                 let selected = browser.selected;
                 let current_path = browser.current_path.clone();
-                let at_root_local =
-                    current_path.is_empty() || current_path == "/";
+                let at_root_local = current_path.is_empty() || current_path == "/";
 
                 let chosen_dir = if !at_root_local && selected == 0 {
                     // ".." selected → use parent
                     parent_path(&current_path)
                 } else {
-                    let dir_idx = if at_root_local { selected } else { selected - 1 };
+                    let dir_idx = if at_root_local {
+                        selected
+                    } else {
+                        selected - 1
+                    };
                     if let Some(name) = dirs.get(dir_idx) {
                         if current_path.is_empty() {
                             name.clone()
                         } else {
-                            format!(
-                                "{}/{}",
-                                current_path.trim_end_matches('/'),
-                                name
-                            )
+                            format!("{}/{}", current_path.trim_end_matches('/'), name)
                         }
                     } else {
                         // Nothing selected — just use current directory
@@ -1331,12 +1502,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 let chosen_path = if active_setting_key == "path"
                     && matches!(level, ConfigureLevel::ModuleSettings)
                 {
-                    let date_fmt = app
-                        .config
-                        .vault
-                        .date_format
-                        .as_deref()
-                        .unwrap_or("%Y%m%d");
+                    let date_fmt = app.config.vault.date_format.as_deref().unwrap_or("%Y%m%d");
                     format!("{}/{}.md", chosen_dir.trim_end_matches('/'), date_fmt)
                 } else {
                     chosen_dir
@@ -1347,8 +1513,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 // (e.g. append `{{bean}} {{date}}.md`).
                 // Re-borrow configure_state mutably after the immutable app.config
                 // access above is complete.
-                let is_module_path = active_setting_key == "path"
-                    && matches!(level, ConfigureLevel::ModuleSettings);
+                let is_module_path =
+                    active_setting_key == "path" && matches!(level, ConfigureLevel::ModuleSettings);
                 if let Some(state) = &mut app.configure_state {
                     if let Some(setting) = state.settings.get_mut(state.active_field) {
                         setting.value = chosen_path.clone();
@@ -1405,7 +1571,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             (_, KeyCode::Enter) => {
                 // Insert newline at cursor position
                 let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                let line_idx = state.list_editor_cursor_line.min(lines.len().saturating_sub(1));
+                let line_idx = state
+                    .list_editor_cursor_line
+                    .min(lines.len().saturating_sub(1));
                 let col = state.list_editor_cursor_col;
 
                 // Find byte offset for the cursor position
@@ -1426,7 +1594,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
             (_, KeyCode::Char(c)) => {
                 let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                let line_idx = state.list_editor_cursor_line.min(lines.len().saturating_sub(1));
+                let line_idx = state
+                    .list_editor_cursor_line
+                    .min(lines.len().saturating_sub(1));
                 let col = state.list_editor_cursor_col;
 
                 let mut byte_offset = 0;
@@ -1445,7 +1615,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             (_, KeyCode::Backspace) => {
                 if state.list_editor_cursor_col > 0 {
                     let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                    let line_idx = state.list_editor_cursor_line.min(lines.len().saturating_sub(1));
+                    let line_idx = state
+                        .list_editor_cursor_line
+                        .min(lines.len().saturating_sub(1));
                     let col = state.list_editor_cursor_col;
 
                     let mut byte_offset = 0;
@@ -1463,7 +1635,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 } else if state.list_editor_cursor_line > 0 {
                     // Merge with previous line
                     let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                    let prev_line_len = lines.get(state.list_editor_cursor_line - 1).map(|l| l.len()).unwrap_or(0);
+                    let prev_line_len = lines
+                        .get(state.list_editor_cursor_line - 1)
+                        .map(|l| l.len())
+                        .unwrap_or(0);
 
                     // Find the newline byte offset at end of previous line
                     let mut byte_offset = 0;
@@ -1486,7 +1661,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 if state.list_editor_cursor_line > 0 {
                     state.list_editor_cursor_line -= 1;
                     let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                    let line_len = lines.get(state.list_editor_cursor_line).map(|l| l.len()).unwrap_or(0);
+                    let line_len = lines
+                        .get(state.list_editor_cursor_line)
+                        .map(|l| l.len())
+                        .unwrap_or(0);
                     state.list_editor_cursor_col = state.list_editor_cursor_col.min(line_len);
                 }
                 return ConfigureAction::None;
@@ -1496,7 +1674,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 if state.list_editor_cursor_line + 1 < line_count {
                     state.list_editor_cursor_line += 1;
                     let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                    let line_len = lines.get(state.list_editor_cursor_line).map(|l| l.len()).unwrap_or(0);
+                    let line_len = lines
+                        .get(state.list_editor_cursor_line)
+                        .map(|l| l.len())
+                        .unwrap_or(0);
                     state.list_editor_cursor_col = state.list_editor_cursor_col.min(line_len);
                 }
                 return ConfigureAction::None;
@@ -1509,7 +1690,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
             (_, KeyCode::Right) => {
                 let lines: Vec<&str> = state.list_editor_buffer.lines().collect();
-                let line_len = lines.get(state.list_editor_cursor_line).map(|l| l.len()).unwrap_or(0);
+                let line_len = lines
+                    .get(state.list_editor_cursor_line)
+                    .map(|l| l.len())
+                    .unwrap_or(0);
                 if state.list_editor_cursor_col < line_len {
                     state.list_editor_cursor_col += 1;
                 }
@@ -1551,10 +1735,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             }
             KeyCode::Char(c) => {
                 // '?' on Path fields opens the placeholder help overlay
-                if c == '?' && matches!(
-                    state.settings.get(state.active_field).map(|s| &s.kind),
-                    Some(SettingKind::Path)
-                ) {
+                if c == '?'
+                    && matches!(
+                        state.settings.get(state.active_field).map(|s| &s.kind),
+                        Some(SettingKind::Path)
+                    )
+                {
                     state.help_overlay_open = true;
                     return ConfigureAction::None;
                 }
@@ -1567,7 +1753,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                     return ConfigureAction::None;
                 }
                 // Use char indices for correct Unicode handling
-                let byte_pos = state.edit_buffer.char_indices()
+                let byte_pos = state
+                    .edit_buffer
+                    .char_indices()
                     .nth(state.cursor_position)
                     .map(|(i, _)| i)
                     .unwrap_or(state.edit_buffer.len());
@@ -1580,7 +1768,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                 if state.cursor_position > 0 {
                     let char_count = state.edit_buffer.chars().count();
                     let pos = state.cursor_position.min(char_count);
-                    let byte_pos = state.edit_buffer.char_indices()
+                    let byte_pos = state
+                        .edit_buffer
+                        .char_indices()
                         .nth(pos - 1)
                         .map(|(i, _)| i)
                         .unwrap_or(0);
@@ -1637,7 +1827,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                     // active_field > 0 (not on Back) and not last field
                     if state.active_field > 0 && state.active_field < field_count {
                         let a = state.active_field - 1; // field index of current
-                        let b = state.active_field;     // field index of item below
+                        let b = state.active_field; // field index of item below
                         state.active_field += 1;
                         return ConfigureAction::ReorderFields(a, b);
                     }
@@ -1850,294 +2040,328 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             _ => ConfigureAction::None,
         }
     } else {
-    // --- Settings navigation mode ---
-    use crossterm::event::KeyModifiers;
+        // --- Settings navigation mode ---
+        use crossterm::event::KeyModifiers;
 
-    // Ctrl+S in NewModule level → trigger save of new module
-    if key.modifiers.contains(KeyModifiers::CONTROL)
-        && key.code == KeyCode::Char('s')
-        && state.level == ConfigureLevel::NewModule
-    {
-        // Validate module_key is non-empty and TOML-safe
-        let module_key_val = state
-            .settings
-            .iter()
-            .find(|s| s.key == "module_key")
-            .map(|s| s.value.clone())
-            .unwrap_or_default();
-
-        if module_key_val.is_empty() {
-            state.status_message = Some("Module Key must not be empty".to_string());
-            return ConfigureAction::None;
-        }
-
-        let valid_key = module_key_val
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-        if !valid_key {
-            state.status_message =
-                Some("Module Key: only a-z, A-Z, 0-9, _ and - are allowed".to_string());
-            return ConfigureAction::None;
-        }
-
-        state.status_message = None;
-        return ConfigureAction::SaveNewModule;
-    }
-
-    let setting_count = state.settings.len();
-
-    match key.code {
-        KeyCode::Esc => {
-            if let ConfigureLevel::SubFieldEditor(field_idx, _) = state.level {
-                // Back to sub-field list — no settings rebuild needed, SubFieldList reads from config
-                state.level = ConfigureLevel::SubFieldList(field_idx);
-                state.active_field = 0;
-                ConfigureAction::None
-            } else if let ConfigureLevel::FieldEditor(_) = state.level {
-                // Back to field list, restore module-level settings
-                state.level = ConfigureLevel::FieldList;
-                state.active_field = 0;
-                // Rebuild module-level settings since we replaced them with field settings
-                if let Some(module) = app.config.modules.get(&state.module_key) {
-                    let mode_str = match module.mode {
-                        crate::config::WriteMode::Append => "append".to_string(),
-                        crate::config::WriteMode::Create => "create".to_string(),
-                    };
-                    let mut settings = vec![
-                        ConfigSetting {
-                            label: "Path".to_string(),
-                            key: "path".to_string(),
-                            value: module.path.clone(),
-                            kind: SettingKind::Path,
-                        },
-                        ConfigSetting {
-                            label: "Display Name".to_string(),
-                            key: "display_name".to_string(),
-                            value: module.display_name.clone().unwrap_or_default(),
-                            kind: SettingKind::Text,
-                        },
-                        ConfigSetting {
-                            label: "Mode".to_string(),
-                            key: "mode".to_string(),
-                            value: mode_str.clone(),
-                            kind: SettingKind::Toggle(vec!["append".to_string(), "create".to_string()]),
-                        },
-                    ];
-                    if mode_str == "append" {
-                        settings.push(ConfigSetting {
-                            label: "Append Header".to_string(),
-                            key: "append_under_header".to_string(),
-                            value: module.append_under_header.clone().unwrap_or_default(),
-                            kind: SettingKind::Text,
-                        });
-                    }
-                    let field_count = module.fields.len();
-                    settings.push(ConfigSetting {
-                        label: "Fields".to_string(),
-                        key: "fields".to_string(),
-                        value: format!("{field_count} field{}", if field_count == 1 { "" } else { "s" }),
-                        kind: SettingKind::NavLink,
-                    });
-                    state.settings = settings;
-                }
-                ConfigureAction::None
-            } else {
-                // ModuleSettings, VaultSettings, and NewModule all return to dashboard
-                ConfigureAction::Cancel
-            }
-        }
-
-        KeyCode::Up => {
-            if setting_count > 0 && state.active_field > 0 {
-                state.active_field -= 1;
-            }
-            ConfigureAction::None
-        }
-
-        KeyCode::Down => {
-            if setting_count > 0 && state.active_field + 1 < setting_count {
-                state.active_field += 1;
-            }
-            ConfigureAction::None
-        }
-
-        // 's' saves for module/vault settings but is NOT wired for NewModule
-        // (NewModule uses Ctrl+S to avoid confusion with typing 's' in an identifier)
-        KeyCode::Char('s') if state.level != ConfigureLevel::NewModule && !state.editing => {
-            ConfigureAction::Save
-        }
-
-        // 'd' on ModuleSettings: prompt to delete the entire module
-        KeyCode::Char('d')
-            if state.level == ConfigureLevel::ModuleSettings && !state.editing =>
+        // Ctrl+S in NewModule level → trigger save of new module
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && key.code == KeyCode::Char('s')
+            && state.level == ConfigureLevel::NewModule
         {
-            let module_key = state.module_key.clone();
-            state.confirm = Some(PendingConfirm::DeleteModule { module_key });
-            ConfigureAction::None
+            // Validate module_key is non-empty and TOML-safe
+            let module_key_val = state
+                .settings
+                .iter()
+                .find(|s| s.key == "module_key")
+                .map(|s| s.value.clone())
+                .unwrap_or_default();
+
+            if module_key_val.is_empty() {
+                state.status_message = Some("Module Key must not be empty".to_string());
+                return ConfigureAction::None;
+            }
+
+            let valid_key = module_key_val
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            if !valid_key {
+                state.status_message =
+                    Some("Module Key: only a-z, A-Z, 0-9, _ and - are allowed".to_string());
+                return ConfigureAction::None;
+            }
+
+            state.status_message = None;
+            return ConfigureAction::SaveNewModule;
         }
 
-        KeyCode::Char('?') => {
-            // '?' on Path fields opens the placeholder help overlay
-            if let Some(setting) = state.settings.get(state.active_field) {
-                if matches!(setting.kind, SettingKind::Path) {
-                    state.help_overlay_open = true;
+        let setting_count = state.settings.len();
+
+        match key.code {
+            KeyCode::Esc => {
+                if let ConfigureLevel::SubFieldEditor(field_idx, _) = state.level {
+                    // Back to sub-field list — no settings rebuild needed, SubFieldList reads from config
+                    state.level = ConfigureLevel::SubFieldList(field_idx);
+                    state.active_field = 0;
+                    ConfigureAction::None
+                } else if let ConfigureLevel::FieldEditor(_) = state.level {
+                    // Back to field list, restore module-level settings
+                    state.level = ConfigureLevel::FieldList;
+                    state.active_field = 0;
+                    // Rebuild module-level settings since we replaced them with field settings
+                    if let Some(module) = app.config.modules.get(&state.module_key) {
+                        let mode_str = match module.mode {
+                            crate::config::WriteMode::Append => "append".to_string(),
+                            crate::config::WriteMode::Create => "create".to_string(),
+                        };
+                        let mut settings = vec![
+                            ConfigSetting {
+                                label: "Path".to_string(),
+                                key: "path".to_string(),
+                                value: module.path.clone(),
+                                kind: SettingKind::Path,
+                            },
+                            ConfigSetting {
+                                label: "Display Name".to_string(),
+                                key: "display_name".to_string(),
+                                value: module.display_name.clone().unwrap_or_default(),
+                                kind: SettingKind::Text,
+                            },
+                            ConfigSetting {
+                                label: "Mode".to_string(),
+                                key: "mode".to_string(),
+                                value: mode_str.clone(),
+                                kind: SettingKind::Toggle(vec![
+                                    "append".to_string(),
+                                    "create".to_string(),
+                                ]),
+                            },
+                        ];
+                        if mode_str == "append" {
+                            settings.push(ConfigSetting {
+                                label: "Append Header".to_string(),
+                                key: "append_under_header".to_string(),
+                                value: module.append_under_header.clone().unwrap_or_default(),
+                                kind: SettingKind::Text,
+                            });
+                        }
+                        let field_count = module.fields.len();
+                        settings.push(ConfigSetting {
+                            label: "Fields".to_string(),
+                            key: "fields".to_string(),
+                            value: format!(
+                                "{field_count} field{}",
+                                if field_count == 1 { "" } else { "s" }
+                            ),
+                            kind: SettingKind::NavLink,
+                        });
+                        state.settings = settings;
+                    }
+                    ConfigureAction::None
+                } else {
+                    // ModuleSettings, VaultSettings, and NewModule all return to dashboard
+                    ConfigureAction::Cancel
                 }
             }
-            ConfigureAction::None
-        }
 
-        KeyCode::Char('e') => {
-            // 'e' on any field starts freetext editing (including Path and Identifier)
-            if let Some(setting) = state.settings.get(state.active_field) {
-                state.edit_original = setting.value.clone();
-                state.edit_buffer = setting.value.clone();
-                state.cursor_position = setting.value.chars().count();
-                state.editing = true;
+            KeyCode::Up => {
+                if setting_count > 0 && state.active_field > 0 {
+                    state.active_field -= 1;
+                }
+                ConfigureAction::None
             }
-            ConfigureAction::None
-        }
 
-        KeyCode::Enter => {
-            if let Some(setting) = state.settings.get(state.active_field) {
-                match &setting.kind.clone() {
-                    SettingKind::Path => {
-                        // Open vault browser at current path's directory.
-                        // For field-level source paths, default to the
-                        // module's path directory when the source is empty.
-                        let browse_path = if setting.value.is_empty() {
-                            app.config
-                                .modules
-                                .get(&state.module_key)
-                                .map(|m| dir_of(&m.path))
-                                .unwrap_or_default()
-                        } else {
-                            dir_of(&setting.value)
-                        };
-                        return ConfigureAction::BrowseDirectory(browse_path);
+            KeyCode::Down => {
+                if setting_count > 0 && state.active_field + 1 < setting_count {
+                    state.active_field += 1;
+                }
+                ConfigureAction::None
+            }
+
+            // 's' saves for module/vault settings but is NOT wired for NewModule
+            // (NewModule uses Ctrl+S to avoid confusion with typing 's' in an identifier)
+            KeyCode::Char('s') if state.level != ConfigureLevel::NewModule && !state.editing => {
+                ConfigureAction::Save
+            }
+
+            // 'd' on ModuleSettings: prompt to delete the entire module
+            KeyCode::Char('d')
+                if state.level == ConfigureLevel::ModuleSettings && !state.editing =>
+            {
+                let module_key = state.module_key.clone();
+                state.confirm = Some(PendingConfirm::DeleteModule { module_key });
+                ConfigureAction::None
+            }
+
+            KeyCode::Char('?') => {
+                // '?' on Path fields opens the placeholder help overlay
+                if let Some(setting) = state.settings.get(state.active_field) {
+                    if matches!(setting.kind, SettingKind::Path) {
+                        state.help_overlay_open = true;
                     }
-                    SettingKind::Text | SettingKind::Identifier => {
-                        // Start freetext editing
-                        state.edit_original = setting.value.clone();
-                        state.edit_buffer = setting.value.clone();
-                        state.cursor_position = setting.value.chars().count();
-                        state.editing = true;
-                    }
-                    SettingKind::Toggle(options) => {
-                        // Cycle to next option
-                        let current = setting.value.clone();
-                        let key = setting.key.clone();
-                        let idx = options.iter().position(|o| *o == current);
-                        let next_idx = match idx {
-                            Some(i) => (i + 1) % options.len(),
-                            None => 0,
-                        };
-                        if let Some(next) = options.get(next_idx) {
-                            let next = next.clone();
-                            state.settings[state.active_field].value = next.clone();
-                            state.dirty = true;
+                }
+                ConfigureAction::None
+            }
 
-                            // Dynamically add/remove append_under_header when mode toggles
-                            if key == "mode" {
-                                let has_header = state.settings.iter().any(|s| s.key == "append_under_header");
-                                if next == "append" && !has_header {
-                                    state.settings.push(ConfigSetting {
-                                        label: "Append Header".to_string(),
-                                        key: "append_under_header".to_string(),
-                                        value: "## Log".to_string(),
-                                        kind: SettingKind::Text,
-                                    });
-                                } else if next == "create" && has_header {
-                                    state.settings.retain(|s| s.key != "append_under_header");
-                                }
-                            }
+            KeyCode::Char('e') => {
+                // 'e' on any field starts freetext editing (including Path and Identifier)
+                if let Some(setting) = state.settings.get(state.active_field) {
+                    state.edit_original = setting.value.clone();
+                    state.edit_buffer = setting.value.clone();
+                    state.cursor_position = setting.value.chars().count();
+                    state.editing = true;
+                }
+                ConfigureAction::None
+            }
 
-                            // Dynamically add/remove type-specific settings in field editor
-                            if key == "field_type" {
-                                if matches!(state.level, ConfigureLevel::SubFieldEditor(_, _)) {
-                                    // Sub-field editor: only options for static_select
-                                    state.settings.retain(|s| s.key != "options");
-                                    if next == "static_select" {
+            KeyCode::Enter => {
+                if let Some(setting) = state.settings.get(state.active_field) {
+                    match &setting.kind.clone() {
+                        SettingKind::Path => {
+                            // Open vault browser at current path's directory.
+                            // For field-level source paths, default to the
+                            // module's path directory when the source is empty.
+                            let browse_path = if setting.value.is_empty() {
+                                app.config
+                                    .modules
+                                    .get(&state.module_key)
+                                    .map(|m| dir_of(&m.path))
+                                    .unwrap_or_default()
+                            } else {
+                                dir_of(&setting.value)
+                            };
+                            return ConfigureAction::BrowseDirectory(browse_path);
+                        }
+                        SettingKind::Text | SettingKind::Identifier => {
+                            // Start freetext editing
+                            state.edit_original = setting.value.clone();
+                            state.edit_buffer = setting.value.clone();
+                            state.cursor_position = setting.value.chars().count();
+                            state.editing = true;
+                        }
+                        SettingKind::Toggle(options) => {
+                            // Cycle to next option
+                            let current = setting.value.clone();
+                            let key = setting.key.clone();
+                            let idx = options.iter().position(|o| *o == current);
+                            let next_idx = match idx {
+                                Some(i) => (i + 1) % options.len(),
+                                None => 0,
+                            };
+                            if let Some(next) = options.get(next_idx) {
+                                let next = next.clone();
+                                state.settings[state.active_field].value = next.clone();
+                                state.dirty = true;
+
+                                // Dynamically add/remove append_under_header when mode toggles
+                                if key == "mode" {
+                                    let has_header = state
+                                        .settings
+                                        .iter()
+                                        .any(|s| s.key == "append_under_header");
+                                    if next == "append" && !has_header {
                                         state.settings.push(ConfigSetting {
-                                            label: "Options".to_string(),
-                                            key: "options".to_string(),
-                                            value: String::new(),
-                                            kind: SettingKind::ListEditor,
+                                            label: "Append Header".to_string(),
+                                            key: "append_under_header".to_string(),
+                                            value: "## Log".to_string(),
+                                            kind: SettingKind::Text,
                                         });
+                                    } else if next == "create" && has_header {
+                                        state.settings.retain(|s| s.key != "append_under_header");
                                     }
-                                } else {
-                                    // Field editor: remove all type-conditional settings
-                                    state.settings.retain(|s| s.key != "options" && s.key != "source" && s.key != "sub_fields");
+                                }
 
-                                    if next == "static_select" {
-                                        state.settings.push(ConfigSetting {
-                                            label: "Options".to_string(),
-                                            key: "options".to_string(),
-                                            value: String::new(),
-                                            kind: SettingKind::ListEditor,
+                                // Dynamically add/remove type-specific settings in field editor
+                                if key == "field_type" {
+                                    if matches!(state.level, ConfigureLevel::SubFieldEditor(_, _)) {
+                                        // Sub-field editor: only options for static_select
+                                        state.settings.retain(|s| s.key != "options");
+                                        if next == "static_select" {
+                                            state.settings.push(ConfigSetting {
+                                                label: "Options".to_string(),
+                                                key: "options".to_string(),
+                                                value: String::new(),
+                                                kind: SettingKind::ListEditor,
+                                            });
+                                        }
+                                    } else {
+                                        // Field editor: remove all type-conditional settings
+                                        state.settings.retain(|s| {
+                                            s.key != "options"
+                                                && s.key != "source"
+                                                && s.key != "sub_fields"
+                                                && s.key != "callout"
                                         });
-                                    } else if next == "dynamic_select" {
-                                        state.settings.push(ConfigSetting {
-                                            label: "Source".to_string(),
-                                            key: "source".to_string(),
-                                            value: String::new(),
-                                            kind: SettingKind::Path,
-                                        });
-                                    } else if next == "composite_array" {
-                                        state.settings.push(ConfigSetting {
-                                            label: "Sub-fields".to_string(),
-                                            key: "sub_fields".to_string(),
-                                            value: "0 columns".to_string(),
-                                            kind: SettingKind::NavLink,
-                                        });
+
+                                        if next == "static_select" {
+                                            state.settings.push(ConfigSetting {
+                                                label: "Options".to_string(),
+                                                key: "options".to_string(),
+                                                value: String::new(),
+                                                kind: SettingKind::ListEditor,
+                                            });
+                                        } else if next == "dynamic_select" {
+                                            state.settings.push(ConfigSetting {
+                                                label: "Source".to_string(),
+                                                key: "source".to_string(),
+                                                value: String::new(),
+                                                kind: SettingKind::Path,
+                                            });
+                                        } else if next == "composite_array" {
+                                            state.settings.push(ConfigSetting {
+                                                label: "Sub-fields".to_string(),
+                                                key: "sub_fields".to_string(),
+                                                value: "0 columns".to_string(),
+                                                kind: SettingKind::NavLink,
+                                            });
+                                        }
+
+                                        if next == "textarea" {
+                                            state.settings.push(ConfigSetting {
+                                                label: "Callout".to_string(),
+                                                key: "callout".to_string(),
+                                                value: String::new(),
+                                                kind: SettingKind::QuickSelect(
+                                                    crate::app::callout_quick_select(),
+                                                ),
+                                            });
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    SettingKind::NavLink => {
-                        // Navigate to the linked sub-screen.
-                        // Auto-save dirty settings before transitioning so
-                        // edits (path, mode, etc.) are not silently lost.
-                        let nav_key = setting.key.clone();
-                        let current_level = state.level.clone();
-                        let is_dirty = state.dirty;
+                        SettingKind::NavLink => {
+                            // Navigate to the linked sub-screen.
+                            // Auto-save dirty settings before transitioning so
+                            // edits (path, mode, etc.) are not silently lost.
+                            let nav_key = setting.key.clone();
+                            let current_level = state.level.clone();
+                            let is_dirty = state.dirty;
 
-                        if nav_key == "fields" {
-                            if is_dirty {
-                                auto_save_module_settings(app);
-                            }
-                            if let Some(ref mut s) = app.configure_state {
-                                s.level = ConfigureLevel::FieldList;
-                                s.active_field = 0;
-                            }
-                        } else if nav_key == "sub_fields" {
-                            if let ConfigureLevel::FieldEditor(field_idx) = current_level {
+                            if nav_key == "fields" {
                                 if is_dirty {
-                                    auto_save_field_settings(app, field_idx);
+                                    auto_save_module_settings(app);
                                 }
                                 if let Some(ref mut s) = app.configure_state {
-                                    s.level = ConfigureLevel::SubFieldList(field_idx);
+                                    s.level = ConfigureLevel::FieldList;
                                     s.active_field = 0;
+                                }
+                            } else if nav_key == "sub_fields" {
+                                if let ConfigureLevel::FieldEditor(field_idx) = current_level {
+                                    if is_dirty {
+                                        auto_save_field_settings(app, field_idx);
+                                    }
+                                    if let Some(ref mut s) = app.configure_state {
+                                        s.level = ConfigureLevel::SubFieldList(field_idx);
+                                        s.active_field = 0;
+                                    }
                                 }
                             }
                         }
-                    }
-                    SettingKind::ListEditor => {
-                        // Open the list editor overlay
-                        state.list_editor_buffer = setting.value.clone();
-                        let line_count = state.list_editor_buffer.lines().count().max(1);
-                        let last_line_len = state.list_editor_buffer.lines().last().map(|l| l.len()).unwrap_or(0);
-                        state.list_editor_cursor_line = line_count - 1;
-                        state.list_editor_cursor_col = last_line_len;
-                        state.list_editor_open = true;
+                        SettingKind::ListEditor => {
+                            // Open the list editor overlay
+                            state.list_editor_buffer = setting.value.clone();
+                            let line_count = state.list_editor_buffer.lines().count().max(1);
+                            let last_line_len = state
+                                .list_editor_buffer
+                                .lines()
+                                .last()
+                                .map(|l| l.len())
+                                .unwrap_or(0);
+                            state.list_editor_cursor_line = line_count - 1;
+                            state.list_editor_cursor_col = last_line_len;
+                            state.list_editor_open = true;
+                        }
+                        SettingKind::QuickSelect(_) => {
+                            // Open the quick-select overlay
+                            state.quick_select_open = true;
+                        }
                     }
                 }
+                ConfigureAction::None
             }
-            ConfigureAction::None
-        }
 
-        _ => ConfigureAction::None,
-    }
+            _ => ConfigureAction::None,
+        }
     } // end else (settings navigation)
 }
 

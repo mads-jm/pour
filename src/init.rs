@@ -74,7 +74,10 @@ pub fn run(options: InitOptions) -> Result<PathBuf> {
     println!("pour: config written to {}", target.display());
     println!();
     println!("Next steps:");
-    println!("  1. Open {} and set your vault path if needed", target.display());
+    println!(
+        "  1. Open {} and set your vault path if needed",
+        target.display()
+    );
     println!("  2. Run `pour me` to capture a journal entry");
     println!("  3. Run `pour coffee` to log a brew");
     println!("  4. Add your own modules to the config");
@@ -171,10 +174,7 @@ fn prompt_vault_path() -> Result<String> {
 fn detect_obsidian_vaults() -> Vec<PathBuf> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
 
-    let mut search_roots = vec![
-        home.join("Documents"),
-        home.clone(),
-    ];
+    let mut search_roots = vec![home.join("Documents"), home.clone()];
 
     // Windows: also check OneDrive Documents
     #[cfg(target_os = "windows")]

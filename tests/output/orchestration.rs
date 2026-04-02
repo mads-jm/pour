@@ -1,5 +1,5 @@
 use pour::config::Config;
-use pour::output::{write_append, write_create, CompositeData};
+use pour::output::{CompositeData, write_append, write_create};
 use pour::transport::Transport;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -40,7 +40,7 @@ prompt = "Tasting notes"
 /// Build a Config with an append-mode journal module.
 fn append_config(base_path: &str) -> Config {
     let toml = format!(
-        r####"
+        r#####"
 [vault]
 base_path = "{base_path}"
 
@@ -48,7 +48,7 @@ base_path = "{base_path}"
 mode = "append"
 path = "Journal/daily.md"
 append_under_header = "## Log"
-append_template = "> [!note] {{{{time}}}}\n> {{{{body}}}}"
+append_template = "#### {{{{time}}}}\n> [!note] {{{{title}}}}\n> {{{{body}}}}"
 display_name = "Journal"
 
 [[modules.me.fields]]
@@ -57,7 +57,7 @@ field_type = "textarea"
 prompt = "What's on your mind?"
 required = true
 target = "body"
-"####
+"#####
     );
     Config::from_toml(&toml).expect("test config should parse")
 }
@@ -214,5 +214,67 @@ async fn write_create_skips_empty_body_section() {
     assert!(
         content.ends_with("---\n"),
         "with no body, content should end with ---\\n, got: {content}"
+    );
+}
+
+/// Config with a field-level callout on a textarea field.
+fn callout_field_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.test]
+mode = "create"
+path = "Test/note.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+target = "frontmatter"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "tip"
+"####
+    );
+    Config::from_toml(&toml).expect("test config should parse")
+}
+
+#[tokio::test]
+async fn write_create_wraps_body_in_callout() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = callout_field_config(&base);
+    let module = &config.modules["test"];
+
+    std::fs::create_dir_all(tmp.path().join("Test")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "My Title".to_string());
+    fields.insert("notes".to_string(), "Line one\nLine two".to_string());
+
+    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
+
+    assert!(
+        content.contains("> [!tip]"),
+        "body should contain callout opener, got: {content}"
+    );
+    assert!(
+        content.contains("> Line one"),
+        "first line should be blockquoted, got: {content}"
+    );
+    assert!(
+        content.contains("> Line two"),
+        "second line should be blockquoted, got: {content}"
     );
 }

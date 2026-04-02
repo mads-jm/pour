@@ -138,17 +138,77 @@ fn render_append_template_mixed_known_and_unknown() {
 #[test]
 fn render_append_template_realistic_journal() {
     let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "Morning reflection".to_string());
     fields.insert("body".to_string(), "Felt productive today.".to_string());
 
     let m = dummy_module();
-    let template = "> [!note] {{time}}\n> {{body}}";
+    let template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}";
     let result = render_append_template(template, &fields, &m, &no_composites());
 
     let now = Local::now().format("%H:%M").to_string();
-    assert!(result.contains(&now), "should have time");
+    assert!(
+        result.starts_with(&format!("#### {now}")),
+        "should start with h4 time header, got: {result}"
+    );
+    assert!(
+        result.contains("> [!note] Morning reflection"),
+        "should have title in callout"
+    );
     assert!(
         result.contains("Felt productive today."),
         "should have body"
+    );
+}
+
+fn callout_module() -> pour::config::ModuleConfig {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.t]
+mode = "append"
+path = "t.md"
+append_under_header = "## Log"
+callout_type = "tip"
+
+[[modules.t.fields]]
+name = "body"
+field_type = "text"
+prompt = "Body"
+"####;
+    let config = Config::from_toml(toml).unwrap();
+    config.modules.into_values().next().unwrap()
+}
+
+#[test]
+fn render_append_template_callout_placeholder() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Some content".to_string());
+
+    let m = callout_module();
+    let result = render_append_template(
+        "> [!{{callout}}] Title\n> {{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+    );
+
+    assert!(
+        result.contains("> [!tip] Title"),
+        "{{{{callout}}}} should resolve to module callout_type, got: {result}"
+    );
+    assert!(result.contains("> Some content"), "body should be present");
+}
+
+#[test]
+fn render_append_template_callout_placeholder_without_type() {
+    let fields = HashMap::new();
+    let m = dummy_module(); // no callout_type set
+    let result = render_append_template("> [!{{callout}}]", &fields, &m, &no_composites());
+
+    assert!(
+        result.contains("{{callout}}"),
+        "unresolved {{{{callout}}}} should be left as-is when no callout_type, got: {result}"
     );
 }
 

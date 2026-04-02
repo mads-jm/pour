@@ -49,7 +49,11 @@ required = true
 fn make_app() -> App {
     let config = Config::from_toml(SAMPLE_TOML).expect("sample config should parse");
     let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
-    App::new(config, transport, History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")))
+    App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+    )
 }
 
 #[test]
@@ -102,7 +106,11 @@ required = true
 "####;
     let config = Config::from_toml(toml_with_order).expect("config with module_order should parse");
     let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
-    let app = App::new(config, transport, History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")));
+    let app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+    );
     assert_eq!(app.module_keys, vec!["me", "coffee"]);
 }
 
@@ -247,7 +255,11 @@ options = ["Bloom", "Spiral", "Center", "Pulse"]
 fn make_composite_app() -> App {
     let config = Config::from_toml(COMPOSITE_APP_TOML).expect("composite config should parse");
     let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
-    App::new(config, transport, History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")))
+    App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+    )
 }
 
 #[test]
@@ -260,7 +272,10 @@ fn init_form_sets_up_composite_values() {
     // recipe should NOT be in field_values
     assert!(!form.field_values.contains_key("recipe"));
     // recipe should be in composite_values as empty vec
-    let rows = form.composite_values.get("recipe").expect("recipe in composite_values");
+    let rows = form
+        .composite_values
+        .get("recipe")
+        .expect("recipe in composite_values");
     assert!(rows.is_empty());
     // overlay state should be closed
     assert!(!form.composite_open);
@@ -288,7 +303,7 @@ fn validate_composite_strips_empty_rows() {
     form.composite_values.insert(
         "recipe".to_string(),
         vec![
-            vec!["".to_string(), "".to_string(), "".to_string()],    // empty — stripped
+            vec!["".to_string(), "".to_string(), "".to_string()], // empty — stripped
             vec!["50".to_string(), "30".to_string(), "Bloom".to_string()], // valid
         ],
     );
@@ -305,11 +320,19 @@ fn validate_composite_catches_bad_number() {
 
     form.composite_values.insert(
         "recipe".to_string(),
-        vec![vec!["abc".to_string(), "30".to_string(), "Bloom".to_string()]],
+        vec![vec![
+            "abc".to_string(),
+            "30".to_string(),
+            "Bloom".to_string(),
+        ]],
     );
 
     let errors = App::validate_form(module, &form);
-    assert!(errors.iter().any(|e| e.contains("Pour (g)") && e.contains("number")));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("Pour (g)") && e.contains("number"))
+    );
 }
 
 #[test]

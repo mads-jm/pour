@@ -37,7 +37,8 @@ mode = "append"
 path = "Journal/%Y/%Y-%m-%d.md"
 display_name = "Journal"
 append_under_header = "## Log"
-append_template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}"
+callout_type = "note"
+append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
 
 [[modules.me.fields]]
 name = "title"

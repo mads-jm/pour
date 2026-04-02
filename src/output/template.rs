@@ -50,9 +50,7 @@ pub fn render_path(
     // Normalize to forward slashes so the API transport receives a consistent
     // vault-relative path, and PathBuf::join on Windows can handle it cleanly
     // when the fs transport joins against a backslash-style base path.
-    now.format(&result)
-        .to_string()
-        .replace('\\', "/")
+    now.format(&result).to_string().replace('\\', "/")
 }
 
 /// Render an append-mode template by replacing `{{field}}` placeholders
@@ -80,21 +78,28 @@ pub fn render_append_template(
     result = result.replace("{{time}}", &now.format("%H:%M").to_string());
     result = result.replace("{{date}}", &now.format("%Y-%m-%d").to_string());
 
+    // Replace {{callout}} with the module's configured callout type.
+    if let Some(ref callout) = module.callout_type {
+        result = result.replace("{{callout}}", callout);
+    }
+
     // Replace composite field placeholders with markdown tables.
     for field_cfg in &module.fields {
         if field_cfg.field_type == crate::config::FieldType::CompositeArray {
             let placeholder = format!("{{{{{}}}}}", field_cfg.name);
             if result.contains(&placeholder)
-                && let (Some(subs), Some(rows)) = (&field_cfg.sub_fields, composite_data.get(&field_cfg.name)) {
-                    // Strip empty rows
-                    let non_empty: Vec<Vec<String>> = rows
-                        .iter()
-                        .filter(|row| row.iter().any(|cell| !cell.trim().is_empty()))
-                        .cloned()
-                        .collect();
-                    let table = render_composite_table(subs, &non_empty);
-                    result = result.replace(&placeholder, &table);
-                }
+                && let (Some(subs), Some(rows)) =
+                    (&field_cfg.sub_fields, composite_data.get(&field_cfg.name))
+            {
+                // Strip empty rows
+                let non_empty: Vec<Vec<String>> = rows
+                    .iter()
+                    .filter(|row| row.iter().any(|cell| !cell.trim().is_empty()))
+                    .cloned()
+                    .collect();
+                let table = render_composite_table(subs, &non_empty);
+                result = result.replace(&placeholder, &table);
+            }
         }
     }
 

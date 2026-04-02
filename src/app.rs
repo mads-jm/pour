@@ -84,6 +84,34 @@ pub enum SettingKind {
     ListEditor,
     /// A TOML-key-safe identifier: alphanumeric, underscore, hyphen; no spaces or dots.
     Identifier,
+    /// A quick-select menu: each option has a hotkey char and label.
+    /// The value stored is the label string (e.g. "note", "tip").
+    /// An empty value means "none" (no selection).
+    QuickSelect(Vec<(char, String)>),
+}
+
+/// Obsidian callout types with unique hotkey assignments, ordered by frequency.
+pub const CALLOUT_OPTIONS: &[(char, &str)] = &[
+    ('n', "note"),
+    ('i', "info"),
+    ('t', "todo"),
+    ('p', "tip"),
+    ('w', "warning"),
+    ('q', "question"),
+    ('e', "example"),
+    ('u', "quote"),
+    ('s', "success"),
+    ('f', "failure"),
+    ('b', "bug"),
+    ('d', "danger"),
+];
+
+/// Build QuickSelect options for callout types.
+pub fn callout_quick_select() -> Vec<(char, String)> {
+    CALLOUT_OPTIONS
+        .iter()
+        .map(|&(c, s)| (c, s.to_string()))
+        .collect()
 }
 
 /// A single editable setting in the configure screen.
@@ -108,11 +136,18 @@ pub struct BrowserState {
 #[derive(Debug, Clone)]
 pub enum PendingConfirm {
     /// Delete the field at the given index (into module.fields).
-    DeleteField { field_index: usize, field_name: String },
+    DeleteField {
+        field_index: usize,
+        field_name: String,
+    },
     /// Delete the entire module.
     DeleteModule { module_key: String },
     /// Delete the sub-field at the given index within a composite_array field.
-    DeleteSubField { field_index: usize, sub_field_index: usize, sub_field_name: String },
+    DeleteSubField {
+        field_index: usize,
+        sub_field_index: usize,
+        sub_field_name: String,
+    },
 }
 
 /// State for the module configure screen.
@@ -147,6 +182,8 @@ pub struct ConfigureState {
     pub status_message: Option<String>,
     /// Whether the path placeholder help overlay is visible.
     pub help_overlay_open: bool,
+    /// Whether the quick-select overlay is open (for QuickSelect fields).
+    pub quick_select_open: bool,
 }
 
 /// Central application state, holding config, transport, and all screen state.
@@ -309,12 +346,23 @@ impl App {
             });
         }
 
+        // Callout type — useful for both modes (append template or field-level)
+        settings.push(ConfigSetting {
+            label: "Callout Type".to_string(),
+            key: "callout_type".to_string(),
+            value: module.callout_type.clone().unwrap_or_default(),
+            kind: SettingKind::QuickSelect(callout_quick_select()),
+        });
+
         // Navigation link to the field list
         let field_count = module.fields.len();
         settings.push(ConfigSetting {
             label: "Fields".to_string(),
             key: "fields".to_string(),
-            value: format!("{field_count} field{}", if field_count == 1 { "" } else { "s" }),
+            value: format!(
+                "{field_count} field{}",
+                if field_count == 1 { "" } else { "s" }
+            ),
             kind: SettingKind::NavLink,
         });
 
@@ -338,6 +386,7 @@ impl App {
             settings,
             status_message: None,
             help_overlay_open: false,
+            quick_select_open: false,
         })
     }
 
@@ -445,8 +494,21 @@ impl App {
             settings.push(ConfigSetting {
                 label: "Sub-fields".to_string(),
                 key: "sub_fields".to_string(),
-                value: format!("{sub_count} column{}", if sub_count == 1 { "" } else { "s" }),
+                value: format!(
+                    "{sub_count} column{}",
+                    if sub_count == 1 { "" } else { "s" }
+                ),
                 kind: SettingKind::NavLink,
+            });
+        }
+
+        // Callout wrapping — only for textarea fields targeting body
+        if field.field_type == FieldType::Textarea {
+            settings.push(ConfigSetting {
+                label: "Callout".to_string(),
+                key: "callout".to_string(),
+                value: field.callout.clone().unwrap_or_default(),
+                kind: SettingKind::QuickSelect(callout_quick_select()),
             });
         }
 
@@ -454,7 +516,9 @@ impl App {
     }
 
     /// Build settings list for editing a specific sub-field's properties.
-    pub fn build_sub_field_settings(sub_field: &crate::config::SubFieldConfig) -> Vec<ConfigSetting> {
+    pub fn build_sub_field_settings(
+        sub_field: &crate::config::SubFieldConfig,
+    ) -> Vec<ConfigSetting> {
         use crate::config::SubFieldType;
 
         let type_str = match sub_field.field_type {
@@ -539,10 +603,7 @@ impl App {
             ConfigSetting {
                 label: "API Port".to_string(),
                 key: "api_port".to_string(),
-                value: vault
-                    .api_port
-                    .map(|p| p.to_string())
-                    .unwrap_or_default(),
+                value: vault.api_port.map(|p| p.to_string()).unwrap_or_default(),
                 kind: SettingKind::Text,
             },
             ConfigSetting {
@@ -554,7 +615,10 @@ impl App {
             ConfigSetting {
                 label: "Date Format".to_string(),
                 key: "date_format".to_string(),
-                value: vault.date_format.clone().unwrap_or_else(|| "%Y%m%d".to_string()),
+                value: vault
+                    .date_format
+                    .clone()
+                    .unwrap_or_else(|| "%Y%m%d".to_string()),
                 kind: SettingKind::Text,
             },
         ];
@@ -579,6 +643,7 @@ impl App {
             settings,
             status_message: None,
             help_overlay_open: false,
+            quick_select_open: false,
         }
     }
 
@@ -634,6 +699,7 @@ impl App {
             settings,
             status_message: None,
             help_overlay_open: false,
+            quick_select_open: false,
         }
     }
 

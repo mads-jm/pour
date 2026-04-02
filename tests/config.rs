@@ -448,7 +448,9 @@ fn module_path_rejects_windows_drive_forward_slash() {
 
 #[test]
 fn module_path_rejects_unc_backslash() {
-    let result = Config::from_toml(&config_with_module_path("\\\\\\\\server\\\\share\\\\note.md"));
+    let result = Config::from_toml(&config_with_module_path(
+        "\\\\\\\\server\\\\share\\\\note.md",
+    ));
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("UNC"), "got: {msg}");
@@ -556,7 +558,10 @@ fn composite_array_parses() {
     assert_eq!(recipe.field_type, FieldType::CompositeArray);
     assert_eq!(recipe.name, "recipe");
 
-    let subs = recipe.sub_fields.as_ref().expect("sub_fields should be Some");
+    let subs = recipe
+        .sub_fields
+        .as_ref()
+        .expect("sub_fields should be Some");
     assert_eq!(subs.len(), 3);
 
     assert_eq!(subs[0].name, "pour");
@@ -613,10 +618,7 @@ sub_fields = []
     let result = Config::from_toml(toml_str);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("must not be empty"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("must not be empty"), "got: {msg}");
 }
 
 #[test]
@@ -688,4 +690,61 @@ fn existing_sample_toml_still_parses_with_composite_array() {
     let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should still parse");
     assert!(config.modules.contains_key("me"));
     assert!(config.modules.contains_key("coffee"));
+}
+
+#[test]
+fn callout_type_parses_on_module() {
+    let toml = r###"
+[vault]
+base_path = "/tmp"
+
+[modules.journal]
+mode = "append"
+path = "Journal/daily.md"
+append_under_header = "## Log"
+callout_type = "tip"
+
+[[modules.journal.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+"###;
+    let config = Config::from_toml(toml).unwrap();
+    let module = &config.modules["journal"];
+    assert_eq!(module.callout_type.as_deref(), Some("tip"));
+}
+
+#[test]
+fn callout_parses_on_field() {
+    let toml = r#"
+[vault]
+base_path = "/tmp"
+
+[modules.test]
+mode = "create"
+path = "Test/note.md"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "warning"
+"#;
+    let config = Config::from_toml(toml).unwrap();
+    let field = &config.modules["test"].fields[0];
+    assert_eq!(field.callout.as_deref(), Some("warning"));
+}
+
+#[test]
+fn callout_fields_default_to_none() {
+    let config = Config::from_toml(SAMPLE_TOML).unwrap();
+    let me = &config.modules["me"];
+    assert!(
+        me.callout_type.is_none(),
+        "callout_type should default to None"
+    );
+    assert!(
+        me.fields[0].callout.is_none(),
+        "field callout should default to None"
+    );
 }

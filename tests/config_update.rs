@@ -1,4 +1,7 @@
-use pour::config::{Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig, ModuleUpdates, VaultUpdates, WriteMode};
+use pour::config::{
+    Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig,
+    ModuleUpdates, VaultUpdates, WriteMode,
+};
 use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
@@ -63,6 +66,7 @@ fn update_preserves_comments() {
         display_name: None,
         mode: None,
         append_under_header: None,
+        callout_type: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("update should succeed");
@@ -75,10 +79,7 @@ fn update_preserves_comments() {
         written.contains("# Vault configuration"),
         "top-level comment was lost"
     );
-    assert!(
-        written.contains("# Modules"),
-        "modules comment was lost"
-    );
+    assert!(written.contains("# Modules"), "modules comment was lost");
 
     // Path must be updated.
     assert!(
@@ -102,6 +103,7 @@ fn update_mode_toggle() {
         display_name: None,
         mode: Some(WriteMode::Create),
         append_under_header: Some(None), // remove the header key so validation passes
+        callout_type: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("mode toggle should succeed");
@@ -111,7 +113,10 @@ fn update_mode_toggle() {
 
     // Parse result and check mode.
     let config = Config::from_toml(&written).expect("updated config should be valid");
-    let journal = config.modules.get("journal").expect("journal module missing");
+    let journal = config
+        .modules
+        .get("journal")
+        .expect("journal module missing");
     assert_eq!(
         journal.mode,
         WriteMode::Create,
@@ -137,6 +142,7 @@ fn update_validation_prevents_bad_writes() {
         display_name: None,
         mode: None,
         append_under_header: Some(None),
+        callout_type: None,
     };
 
     let result = Config::update_module_on_disk("journal", &updates);
@@ -165,6 +171,7 @@ fn update_nonexistent_module_errors() {
         display_name: None,
         mode: None,
         append_under_header: None,
+        callout_type: None,
     };
 
     let result = Config::update_module_on_disk("nonexistent", &updates);
@@ -213,6 +220,7 @@ fn update_field_name_and_prompt() {
         options: None,
         source: None,
         target: None,
+        callout: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("field update should succeed");
@@ -240,6 +248,7 @@ fn update_field_type_with_options() {
         options: Some(Some(vec!["Good".to_string(), "Bad".to_string()])),
         source: None,
         target: Some(Some(FieldTarget::Frontmatter)),
+        callout: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("type change should succeed");
@@ -264,6 +273,7 @@ fn update_field_preserves_comments() {
         options: None,
         source: None,
         target: None,
+        callout: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
@@ -293,6 +303,7 @@ fn update_field_validation_rejects_select_without_options() {
         options: None, // not providing options — should fail validation
         source: None,
         target: None,
+        callout: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 1, &updates);
@@ -303,7 +314,10 @@ fn update_field_validation_rejects_select_without_options() {
 
     // File must be unchanged
     let after = std::fs::read_to_string(&config_path).unwrap();
-    assert_eq!(original, after, "file was modified despite validation failure");
+    assert_eq!(
+        original, after,
+        "file was modified despite validation failure"
+    );
 }
 
 #[test]
@@ -319,10 +333,14 @@ fn update_field_out_of_range_errors() {
         options: None,
         source: None,
         target: None,
+        callout: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 99, &updates);
-    assert!(result.is_err(), "expected error for out-of-range field index");
+    assert!(
+        result.is_err(),
+        "expected error for out-of-range field index"
+    );
 }
 
 #[test]
@@ -339,6 +357,7 @@ fn update_field_remove_optional_keys() {
         options: None,
         source: None,
         target: None,
+        callout: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("remove should succeed");
@@ -365,8 +384,7 @@ fn update_vault_base_path() {
 
     let config = Config::load().expect("reload should succeed");
     assert_eq!(
-        config.vault.base_path,
-        "D:/my-vault",
+        config.vault.base_path, "D:/my-vault",
         "base_path was not updated"
     );
 }
@@ -452,6 +470,7 @@ fn add_field_appends_to_module() {
         source: None,
         target: None,
         sub_fields: None,
+        callout: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -486,6 +505,7 @@ fn add_field_to_nonexistent_module_errors() {
         source: None,
         target: None,
         sub_fields: None,
+        callout: None,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -538,7 +558,10 @@ prompt = "The only field"
 
     // File must be unchanged.
     let after = std::fs::read_to_string(&config_path).unwrap();
-    assert_eq!(original, after, "file was modified despite validation failure");
+    assert_eq!(
+        original, after,
+        "file was modified despite validation failure"
+    );
 }
 
 #[test]
@@ -555,6 +578,7 @@ fn add_field_preserves_comments() {
         source: None,
         target: None,
         sub_fields: None,
+        callout: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -577,6 +601,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         display_name: None,
         append_under_header: None,
         append_template: None,
+        callout_type: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,
@@ -587,6 +612,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             source: None,
             target: None,
             sub_fields: None,
+            callout: None,
         }],
     }
 }
@@ -599,10 +625,19 @@ fn test_add_module_on_disk() {
     Config::add_module_on_disk("tea", &new_module).expect("add_module should succeed");
 
     let config = Config::load().expect("reload should succeed");
-    assert!(config.modules.contains_key("tea"), "tea module not found after add");
+    assert!(
+        config.modules.contains_key("tea"),
+        "tea module not found after add"
+    );
     // Original modules must still be present.
-    assert!(config.modules.contains_key("journal"), "journal module was lost");
-    assert!(config.modules.contains_key("coffee"), "coffee module was lost");
+    assert!(
+        config.modules.contains_key("journal"),
+        "journal module was lost"
+    );
+    assert!(
+        config.modules.contains_key("coffee"),
+        "coffee module was lost"
+    );
 
     let tea = &config.modules["tea"];
     assert_eq!(tea.path, "Tea/log.md");
@@ -649,7 +684,9 @@ prompt = "Note?"
     Config::add_module_on_disk("new_mod", &new_module).expect("add_module should succeed");
 
     let config = Config::load().expect("reload should succeed");
-    let order = config.module_order.expect("module_order should still exist");
+    let order = config
+        .module_order
+        .expect("module_order should still exist");
     assert!(
         order.contains(&"existing".to_string()),
         "existing key missing from module_order"
@@ -670,8 +707,13 @@ fn test_update_module_order_on_disk() {
     Config::update_module_order_on_disk(&new_order).expect("update_module_order should succeed");
 
     let config = Config::load().expect("reload should succeed");
-    let order = config.module_order.expect("module_order should have been set");
-    assert_eq!(order, new_order, "persisted order does not match what was written");
+    let order = config
+        .module_order
+        .expect("module_order should have been set");
+    assert_eq!(
+        order, new_order,
+        "persisted order does not match what was written"
+    );
 }
 
 #[test]
@@ -721,14 +763,20 @@ fn test_check_paths_missing_parent_dir() {
     let config = Config::from_toml(&config_str).expect("parse should succeed");
     let warnings = config.check_paths(vault_dir.path());
 
-    assert_eq!(warnings.len(), 1, "expected exactly one warning, got: {warnings:?}");
+    assert_eq!(
+        warnings.len(),
+        1,
+        "expected exactly one warning, got: {warnings:?}"
+    );
     assert!(
         warnings[0].contains("test_mod"),
-        "warning should name the module: {}", warnings[0]
+        "warning should name the module: {}",
+        warnings[0]
     );
     assert!(
         warnings[0].contains("parent directory not found"),
-        "warning should mention missing parent: {}", warnings[0]
+        "warning should mention missing parent: {}",
+        warnings[0]
     );
 }
 
@@ -775,14 +823,20 @@ source = "Beans/Origins"
     let config = Config::from_toml(&config_str).expect("parse should succeed");
     let warnings = config.check_paths(vault_dir.path());
 
-    assert_eq!(warnings.len(), 1, "expected exactly one warning, got: {warnings:?}");
+    assert_eq!(
+        warnings.len(),
+        1,
+        "expected exactly one warning, got: {warnings:?}"
+    );
     assert!(
         warnings[0].contains("source"),
-        "warning should mention source: {}", warnings[0]
+        "warning should mention source: {}",
+        warnings[0]
     );
     assert!(
         warnings[0].contains("directory not found"),
-        "warning should mention missing directory: {}", warnings[0]
+        "warning should mention missing directory: {}",
+        warnings[0]
     );
 }
 
@@ -863,7 +917,9 @@ prompt = "Bean used?"
     Config::delete_module_on_disk("coffee").expect("delete should succeed");
 
     let config = Config::load().expect("reload should succeed");
-    let order = config.module_order.expect("module_order should still be present");
+    let order = config
+        .module_order
+        .expect("module_order should still be present");
     assert!(
         !order.contains(&"coffee".to_string()),
         "coffee should have been removed from module_order"
@@ -914,5 +970,8 @@ fn test_reorder_fields_invalid_permutation() {
 
     // File must be unchanged.
     let after = std::fs::read_to_string(&config_path).unwrap();
-    assert_eq!(original, after, "file should not be modified on invalid permutation");
+    assert_eq!(
+        original, after,
+        "file should not be modified on invalid permutation"
+    );
 }

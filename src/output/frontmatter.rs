@@ -107,7 +107,11 @@ fn format_composite_row(sub_fields: &[SubFieldConfig], row: &[String], lines: &m
             format_scalar(cell)
         };
 
-        if i == 0 || lines.last().is_none_or(|l| !l.starts_with("  - ") && !l.starts_with("    ")) {
+        if i == 0
+            || lines
+                .last()
+                .is_none_or(|l| !l.starts_with("  - ") && !l.starts_with("    "))
+        {
             // First field in row: sequence item prefix
             lines.push(format!("  - {}: {formatted}", sub.name));
         } else {

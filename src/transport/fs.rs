@@ -233,9 +233,8 @@ impl FsWriter {
             .with_context(|| format!("FS: failed to read directory {}", full_path.display()))?;
 
         for entry in dir_entries {
-            let entry = entry.with_context(|| {
-                format!("FS: failed to read entry in {}", full_path.display())
-            })?;
+            let entry = entry
+                .with_context(|| format!("FS: failed to read entry in {}", full_path.display()))?;
 
             let path = entry.path();
             let name = match path.file_name().and_then(|n| n.to_str()) {

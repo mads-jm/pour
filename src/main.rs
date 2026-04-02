@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use pour::app::{App, BrowserState, ConfigureLevel, Screen, SummaryState};
-use pour::config::{Config, ConfigError, FieldConfig, FieldType, FieldUpdates, ModuleConfig, SubFieldConfig, SubFieldType, SubFieldUpdates, VaultUpdates, WriteMode};
+use pour::config::{
+    Config, ConfigError, FieldConfig, FieldType, FieldUpdates, ModuleConfig, SubFieldConfig,
+    SubFieldType, SubFieldUpdates, VaultUpdates, WriteMode,
+};
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
 use pour::data::history::History;
@@ -49,8 +52,9 @@ async fn main() {
     let mut app = App::new(config, transport, history);
 
     // Check for path issues at startup; shown as a dismissable overlay on the dashboard
-    app.startup_warnings =
-        app.config.check_paths(std::path::Path::new(&app.config.vault.base_path));
+    app.startup_warnings = app
+        .config
+        .check_paths(std::path::Path::new(&app.config.vault.base_path));
 
     // Load cache for dynamic selects
     let mut cache = Cache::load();
@@ -145,9 +149,7 @@ async fn run_loop(
                         .map(|s| s.level == ConfigureLevel::VaultSettings)
                         .unwrap_or(false);
 
-                    if !is_vault_settings
-                        && let Some(ref state) = app.configure_state
-                    {
+                    if !is_vault_settings && let Some(ref state) = app.configure_state {
                         let path = state
                             .settings
                             .iter()
@@ -263,7 +265,10 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             return;
         }
 
-        (form_state.field_values.clone(), form_state.composite_values.clone())
+        (
+            form_state.field_values.clone(),
+            form_state.composite_values.clone(),
+        )
     };
 
     // Clear validation errors
@@ -275,8 +280,26 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     // Execute write based on module mode
     let date_fmt = app.config.vault.date_format.as_deref();
     let write_result = match module.mode {
-        WriteMode::Create => output::write_create(&app.transport, module, &field_values, &composite_data, date_fmt).await,
-        WriteMode::Append => output::write_append(&app.transport, module, &field_values, &composite_data, date_fmt).await,
+        WriteMode::Create => {
+            output::write_create(
+                &app.transport,
+                module,
+                &field_values,
+                &composite_data,
+                date_fmt,
+            )
+            .await
+        }
+        WriteMode::Append => {
+            output::write_append(
+                &app.transport,
+                module,
+                &field_values,
+                &composite_data,
+                date_fmt,
+            )
+            .await
+        }
     };
 
     // Transition to summary screen
@@ -455,6 +478,7 @@ fn handle_add_field(app: &mut App) {
         source: None,
         target: None,
         sub_fields: None,
+        callout: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -598,7 +622,8 @@ fn handle_delete_module(app: &mut App) {
                 app.config = new_config;
 
                 // Rebuild module_keys from the fresh config, preserving existing order
-                app.module_keys.retain(|k| app.config.modules.contains_key(k.as_str()));
+                app.module_keys
+                    .retain(|k| app.config.modules.contains_key(k.as_str()));
 
                 // Clamp selected_module to a valid index
                 if !app.module_keys.is_empty() && app.selected_module >= app.module_keys.len() {
@@ -632,11 +657,15 @@ fn handle_reorder_modules(app: &mut App, dir: pour::tui::dashboard::MoveDirectio
     let idx = app.selected_module;
     let new_idx = match dir {
         pour::tui::dashboard::MoveDirection::Up => {
-            if idx == 0 { return; }
+            if idx == 0 {
+                return;
+            }
             idx - 1
         }
         pour::tui::dashboard::MoveDirection::Down => {
-            if idx + 1 >= app.module_keys.len() { return; }
+            if idx + 1 >= app.module_keys.len() {
+                return;
+            }
             idx + 1
         }
     };
@@ -734,6 +763,7 @@ fn handle_save_new_module(app: &mut App) {
         append_under_header: None,
         append_template: None,
         display_name,
+        callout_type: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -744,6 +774,7 @@ fn handle_save_new_module(app: &mut App) {
             source: None,
             target: None,
             sub_fields: None,
+            callout: None,
         }],
     };
 
@@ -974,6 +1005,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut display_name: Option<Option<String>> = None;
     let mut mode: Option<WriteMode> = None;
     let mut append_under_header: Option<Option<String>> = None;
+    let mut callout_type: Option<Option<String>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -999,6 +1031,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     Some(setting.value.clone())
                 });
             }
+            "callout_type" => {
+                callout_type = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -1008,6 +1047,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         display_name,
         mode,
         append_under_header,
+        callout_type,
     }
 }
 
@@ -1023,7 +1063,9 @@ fn validate_vault_settings(state: &pour::app::ConfigureState) -> Result<(), Stri
             "api_port" => {
                 let trimmed = setting.value.trim();
                 if !trimmed.is_empty() && trimmed.parse::<u16>().is_err() {
-                    return Err(format!("API Port must be a number (1-65535), got '{trimmed}'"));
+                    return Err(format!(
+                        "API Port must be a number (1-65535), got '{trimmed}'"
+                    ));
                 }
             }
             _ => {}

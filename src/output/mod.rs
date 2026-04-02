@@ -24,7 +24,8 @@ pub async fn write_create(
         bail!("write_create called on a non-create module");
     }
 
-    let (fm_fields, fm_composites, body_parts) = partition_fields(module, field_values, composite_data);
+    let (fm_fields, fm_composites, body_parts) =
+        partition_fields(module, field_values, composite_data);
 
     let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
 
@@ -107,7 +108,11 @@ fn partition_fields<'a>(
     module: &'a ModuleConfig,
     field_values: &HashMap<String, String>,
     composite_data: &CompositeData,
-) -> (Vec<(String, String)>, Vec<FrontmatterComposite<'a>>, Vec<String>) {
+) -> (
+    Vec<(String, String)>,
+    Vec<FrontmatterComposite<'a>>,
+    Vec<String>,
+) {
     let mut fm_fields: Vec<(String, String)> = Vec::new();
     let mut fm_composites: Vec<FrontmatterComposite<'a>> = Vec::new();
     let mut body_parts: Vec<String> = Vec::new();
@@ -115,7 +120,9 @@ fn partition_fields<'a>(
     for field_cfg in &module.fields {
         // Composite array fields
         if field_cfg.field_type == FieldType::CompositeArray {
-            if let (Some(subs), Some(rows)) = (&field_cfg.sub_fields, composite_data.get(&field_cfg.name)) {
+            if let (Some(subs), Some(rows)) =
+                (&field_cfg.sub_fields, composite_data.get(&field_cfg.name))
+            {
                 // Strip empty rows
                 let non_empty: Vec<Vec<String>> = rows
                     .iter()
@@ -125,7 +132,11 @@ fn partition_fields<'a>(
 
                 if !non_empty.is_empty() {
                     // composite_array defaults to frontmatter
-                    let target = field_cfg.target.as_ref().cloned().unwrap_or(FieldTarget::Frontmatter);
+                    let target = field_cfg
+                        .target
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or(FieldTarget::Frontmatter);
                     match target {
                         FieldTarget::Frontmatter => {
                             fm_composites.push((field_cfg.name.clone(), subs, non_empty));
@@ -162,7 +173,17 @@ fn partition_fields<'a>(
             }
             FieldTarget::Body => {
                 if !value.is_empty() {
-                    body_parts.push(value);
+                    if let Some(ref callout) = field_cfg.callout {
+                        // Wrap in Obsidian callout: prefix each line with "> "
+                        let mut block = format!("> [!{callout}]");
+                        for line in value.lines() {
+                            block.push_str("\n> ");
+                            block.push_str(line);
+                        }
+                        body_parts.push(block);
+                    } else {
+                        body_parts.push(value);
+                    }
                 }
             }
         }

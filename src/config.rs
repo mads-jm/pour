@@ -59,6 +59,8 @@ pub struct ModuleConfig {
     pub append_template: Option<String>,
     pub fields: Vec<FieldConfig>,
     pub display_name: Option<String>,
+    /// Obsidian callout type used for `{{callout}}` in templates.
+    pub callout_type: Option<String>,
 }
 
 /// Whether a module appends to an existing note or creates a new one.
@@ -85,6 +87,8 @@ pub struct FieldConfig {
     pub target: Option<FieldTarget>,
     /// Column definitions for `composite_array` fields.
     pub sub_fields: Option<Vec<SubFieldConfig>>,
+    /// Obsidian callout type to wrap this field's body output in (e.g. "note", "tip").
+    pub callout: Option<String>,
 }
 
 /// The kind of input widget for a field.
@@ -142,6 +146,8 @@ pub struct ModuleUpdates {
     pub mode: Option<WriteMode>,
     /// New append-under-header value. `Some(None)` removes the key.
     pub append_under_header: Option<Option<String>>,
+    /// New callout type. `Some(None)` removes the key.
+    pub callout_type: Option<Option<String>>,
 }
 
 /// Partial updates to apply to the vault section of the config file.
@@ -172,6 +178,8 @@ pub struct FieldUpdates {
     pub options: Option<Option<Vec<String>>>,
     pub source: Option<Option<String>>,
     pub target: Option<Option<FieldTarget>>,
+    /// Obsidian callout type. `Some(None)` removes the key.
+    pub callout: Option<Option<String>>,
 }
 
 /// Partial updates to apply to a single sub-field within a composite_array field.
@@ -326,8 +334,7 @@ impl Config {
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
 
-        let original =
-            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
 
         let mut doc: DocumentMut = original
             .parse()
@@ -375,6 +382,17 @@ impl Config {
             }
         }
 
+        if let Some(ref callout_update) = updates.callout_type {
+            match callout_update {
+                Some(v) => {
+                    module["callout_type"] = toml_edit::value(v.as_str());
+                }
+                None => {
+                    module.remove("callout_type");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing — never touch the file if the result is invalid.
@@ -401,8 +419,7 @@ impl Config {
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
 
-        let original =
-            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
 
         let mut doc: DocumentMut = original
             .parse()
@@ -448,14 +465,18 @@ impl Config {
         if let Some(ref required_update) = updates.required {
             match required_update {
                 Some(v) => field["required"] = toml_edit::value(*v),
-                None => { field.remove("required"); }
+                None => {
+                    field.remove("required");
+                }
             }
         }
 
         if let Some(ref default_update) = updates.default {
             match default_update {
                 Some(v) => field["default"] = toml_edit::value(v.as_str()),
-                None => { field.remove("default"); }
+                None => {
+                    field.remove("default");
+                }
             }
         }
 
@@ -468,14 +489,18 @@ impl Config {
                     }
                     field["options"] = toml_edit::value(arr);
                 }
-                None => { field.remove("options"); }
+                None => {
+                    field.remove("options");
+                }
             }
         }
 
         if let Some(ref source_update) = updates.source {
             match source_update {
                 Some(v) => field["source"] = toml_edit::value(v.as_str()),
-                None => { field.remove("source"); }
+                None => {
+                    field.remove("source");
+                }
             }
         }
 
@@ -488,7 +513,18 @@ impl Config {
                     };
                     field["target"] = toml_edit::value(target_str);
                 }
-                None => { field.remove("target"); }
+                None => {
+                    field.remove("target");
+                }
+            }
+        }
+
+        if let Some(ref callout_update) = updates.callout {
+            match callout_update {
+                Some(v) => field["callout"] = toml_edit::value(v.as_str()),
+                None => {
+                    field.remove("callout");
+                }
             }
         }
 
@@ -640,10 +676,7 @@ impl Config {
     /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
     /// Returns `ConfigError::ValidationError` if `field_index` is out of range
     /// or if removing the field would leave the module with zero fields.
-    pub fn remove_field_on_disk(
-        module_key: &str,
-        field_index: usize,
-    ) -> Result<(), ConfigError> {
+    pub fn remove_field_on_disk(module_key: &str, field_index: usize) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
 
         let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
@@ -701,8 +734,7 @@ impl Config {
     pub fn update_vault_on_disk(updates: &VaultUpdates) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
 
-        let original =
-            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
 
         let mut doc: DocumentMut = original
             .parse()
@@ -819,6 +851,10 @@ impl Config {
             module_table["append_template"] = toml_edit::value(tmpl.as_str());
         }
 
+        if let Some(ref callout) = module.callout_type {
+            module_table["callout_type"] = toml_edit::value(callout.as_str());
+        }
+
         // Build fields as an ArrayOfTables.
         let mut fields_aot = toml_edit::ArrayOfTables::new();
 
@@ -864,6 +900,10 @@ impl Config {
                     FieldTarget::Body => "body",
                 };
                 ft["target"] = toml_edit::value(target_str);
+            }
+
+            if let Some(ref callout) = field.callout {
+                ft["callout"] = toml_edit::value(callout.as_str());
             }
 
             if let Some(ref subs) = field.sub_fields {
@@ -1064,9 +1104,7 @@ impl Config {
             && let Some(arr) = order_item.as_array_mut()
         {
             // Find and remove the matching entry by value.
-            let pos = arr
-                .iter()
-                .position(|v| v.as_str() == Some(module_key));
+            let pos = arr.iter().position(|v| v.as_str() == Some(module_key));
             if let Some(idx) = pos {
                 arr.remove(idx);
             }
@@ -1539,7 +1577,9 @@ impl Config {
 
         // Reject Unix absolute paths
         if trimmed.starts_with('/') {
-            errors.push(format!("{label}: path must be vault-relative, not absolute"));
+            errors.push(format!(
+                "{label}: path must be vault-relative, not absolute"
+            ));
             return;
         }
 
@@ -1556,7 +1596,9 @@ impl Config {
 
         // Reject UNC paths (\\server\share or //server/share)
         if trimmed.starts_with("\\\\") || trimmed.starts_with("//") {
-            errors.push(format!("{label}: path must be vault-relative, not a UNC path"));
+            errors.push(format!(
+                "{label}: path must be vault-relative, not a UNC path"
+            ));
             return;
         }
 

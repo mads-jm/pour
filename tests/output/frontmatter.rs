@@ -169,46 +169,63 @@ fn composite_frontmatter_sequence_of_mappings() {
         vec!["50".to_string(), "30".to_string(), "Bloom".to_string()],
         vec!["100".to_string(), "45".to_string(), "Spiral".to_string()],
     ];
-    let composites: Vec<FrontmatterComposite<'_>> =
-        vec![("recipe".to_string(), &subs, rows)];
+    let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
     let result = generate_frontmatter(&[], &composites);
 
     assert!(result.contains("recipe:"), "should have recipe key");
     assert!(result.contains("  - pour: 50"), "first row pour");
     assert!(result.contains("    time: 30"), "first row time");
-    assert!(result.contains("    technique: Bloom"), "first row technique");
+    assert!(
+        result.contains("    technique: Bloom"),
+        "first row technique"
+    );
     assert!(result.contains("  - pour: 100"), "second row pour");
     assert!(result.contains("    time: 45"), "second row time");
-    assert!(result.contains("    technique: Spiral"), "second row technique");
+    assert!(
+        result.contains("    technique: Spiral"),
+        "second row technique"
+    );
 }
 
 #[test]
 fn composite_numbers_serialize_unquoted() {
     let subs = recipe_sub_fields();
-    let rows = vec![vec!["42".to_string(), "10".to_string(), "Bloom".to_string()]];
-    let composites: Vec<FrontmatterComposite<'_>> =
-        vec![("recipe".to_string(), &subs, rows)];
+    let rows = vec![vec![
+        "42".to_string(),
+        "10".to_string(),
+        "Bloom".to_string(),
+    ]];
+    let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
     let result = generate_frontmatter(&[], &composites);
 
     // Numbers should NOT be quoted
     assert!(result.contains("pour: 42"), "number should be unquoted");
-    assert!(!result.contains("pour: \"42\""), "number should not be quoted");
+    assert!(
+        !result.contains("pour: \"42\""),
+        "number should not be quoted"
+    );
 }
 
 #[test]
 fn composite_mixed_with_scalar_fields() {
     let subs = recipe_sub_fields();
-    let rows = vec![vec!["50".to_string(), "30".to_string(), "Bloom".to_string()]];
+    let rows = vec![vec![
+        "50".to_string(),
+        "30".to_string(),
+        "Bloom".to_string(),
+    ]];
 
     let scalars = vec![("bean".to_string(), "Ethiopian Yirgacheffe".to_string())];
-    let composites: Vec<FrontmatterComposite<'_>> =
-        vec![("recipe".to_string(), &subs, rows)];
+    let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
     let result = generate_frontmatter(&scalars, &composites);
 
-    assert!(result.contains("bean: Ethiopian Yirgacheffe"), "scalar field");
+    assert!(
+        result.contains("bean: Ethiopian Yirgacheffe"),
+        "scalar field"
+    );
     assert!(result.contains("recipe:"), "composite field");
     assert!(result.contains("  - pour: 50"), "composite row");
 }
@@ -217,10 +234,12 @@ fn composite_mixed_with_scalar_fields() {
 fn composite_empty_rows_skipped() {
     let subs = recipe_sub_fields();
     let rows: Vec<Vec<String>> = vec![];
-    let composites: Vec<FrontmatterComposite<'_>> =
-        vec![("recipe".to_string(), &subs, rows)];
+    let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
     let result = generate_frontmatter(&[], &composites);
 
-    assert!(!result.contains("recipe:"), "empty composite should be skipped");
+    assert!(
+        !result.contains("recipe:"),
+        "empty composite should be skipped"
+    );
 }

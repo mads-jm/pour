@@ -13,8 +13,7 @@ fn generated_config_is_valid_toml() {
 #[test]
 fn windows_path_escaping() {
     let content = generate_config(r"C:\Users\Joseph\vault");
-    let config =
-        Config::from_toml(&content).expect("windows path should be escaped correctly");
+    let config = Config::from_toml(&content).expect("windows path should be escaped correctly");
     assert_eq!(config.vault.base_path, r"C:\Users\Joseph\vault");
 }
 
@@ -33,9 +32,9 @@ fn default_modules_structure() {
     let me = &config.modules["me"];
     assert_eq!(me.mode, WriteMode::Append);
     assert!(me.append_under_header.is_some());
-    assert_eq!(me.fields.len(), 1);
+    assert_eq!(me.fields.len(), 2);
 
     let coffee = &config.modules["coffee"];
     assert_eq!(coffee.mode, WriteMode::Create);
-    assert_eq!(coffee.fields.len(), 4);
+    assert_eq!(coffee.fields.len(), 6);
 }

@@ -1,7 +1,6 @@
 use chrono::{Duration, Utc};
 use pour::data::history::{History, HistoryData, HistoryEntry, format_relative};
 
-
 /// Create a History with the given entries, backed by a temp file.
 fn history_with_entries(entries: Vec<HistoryEntry>) -> (History, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -44,10 +43,7 @@ fn empty_history_returns_none_and_zeros() {
 
 #[test]
 fn last_pour_returns_most_recent() {
-    let (h, _dir) = history_with_entries(vec![
-        entry("coffee", 5),
-        entry("me", 1),
-    ]);
+    let (h, _dir) = history_with_entries(vec![entry("coffee", 5), entry("me", 1)]);
     let last = h.last_pour().expect("should have entries");
     assert_eq!(last.module_key, "me");
 }
@@ -55,8 +51,8 @@ fn last_pour_returns_most_recent() {
 #[test]
 fn today_count_only_counts_today() {
     let (h, _dir) = history_with_entries(vec![
-        entry("coffee", 1),      // ~1h ago, today
-        entry("me", 2),          // ~2h ago, today
+        entry("coffee", 1),         // ~1h ago, today
+        entry("me", 2),             // ~2h ago, today
         entry_days_ago("music", 2), // 2 days ago
     ]);
     // The first two should be today (unless test runs at midnight)
@@ -78,10 +74,10 @@ fn week_count_includes_this_week() {
 #[test]
 fn streak_consecutive_days() {
     let (h, _dir) = history_with_entries(vec![
-        entry("coffee", 1),           // today
-        entry_days_ago("me", 1),       // yesterday
-        entry_days_ago("music", 2),    // 2 days ago
-        entry_days_ago("coffee", 5),   // gap — 5 days ago
+        entry("coffee", 1),          // today
+        entry_days_ago("me", 1),     // yesterday
+        entry_days_ago("music", 2),  // 2 days ago
+        entry_days_ago("coffee", 5), // gap — 5 days ago
     ]);
     // Streak should be 3 (today, yesterday, 2 days ago)
     assert_eq!(h.streak(), 3);
@@ -89,9 +85,7 @@ fn streak_consecutive_days() {
 
 #[test]
 fn streak_zero_when_no_recent_captures() {
-    let (h, _dir) = history_with_entries(vec![
-        entry_days_ago("coffee", 5),
-    ]);
+    let (h, _dir) = history_with_entries(vec![entry_days_ago("coffee", 5)]);
     assert_eq!(h.streak(), 0);
 }
 
@@ -111,11 +105,8 @@ fn per_module_today_groups_correctly() {
 
 #[test]
 fn recent_returns_most_recent_first() {
-    let (h, _dir) = history_with_entries(vec![
-        entry("coffee", 5),
-        entry("me", 3),
-        entry("music", 1),
-    ]);
+    let (h, _dir) =
+        history_with_entries(vec![entry("coffee", 5), entry("me", 3), entry("music", 1)]);
     let recent = h.recent(2);
     assert_eq!(recent.len(), 2);
     assert_eq!(recent[0].module_key, "music");
@@ -124,11 +115,8 @@ fn recent_returns_most_recent_first() {
 
 #[test]
 fn last_per_module_tracks_each_module() {
-    let (h, _dir) = history_with_entries(vec![
-        entry("coffee", 5),
-        entry("coffee", 1),
-        entry("me", 3),
-    ]);
+    let (h, _dir) =
+        history_with_entries(vec![entry("coffee", 5), entry("coffee", 1), entry("me", 3)]);
     let map = h.last_per_module();
     assert!(map.contains_key("coffee"));
     assert!(map.contains_key("me"));

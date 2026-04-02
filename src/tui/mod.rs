@@ -132,9 +132,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 app.screen = Screen::Configure;
                 Action::Navigate(Screen::Configure)
             }
-            dashboard::DashboardAction::ReorderModule(dir) => {
-                Action::ReorderModules(dir)
-            }
+            dashboard::DashboardAction::ReorderModule(dir) => Action::ReorderModules(dir),
             dashboard::DashboardAction::NewModule => Action::NewModule,
             dashboard::DashboardAction::None => Action::None,
         },
@@ -183,7 +181,9 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             configure::ConfigureAction::SaveNewModule => Action::SaveNewModule,
             configure::ConfigureAction::AddSubField(fi) => Action::AddSubField(fi),
             configure::ConfigureAction::RemoveSubField(fi, si) => Action::RemoveSubField(fi, si),
-            configure::ConfigureAction::ReorderSubFields(fi, a, b) => Action::ReorderSubFields(fi, a, b),
+            configure::ConfigureAction::ReorderSubFields(fi, a, b) => {
+                Action::ReorderSubFields(fi, a, b)
+            }
             configure::ConfigureAction::None => Action::None,
         },
     }
