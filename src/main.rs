@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use pour::app::{App, BrowserState, ConfigureLevel, Screen, SummaryState};
-use pour::config::{Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig, SubFieldConfig, SubFieldType, SubFieldUpdates, VaultUpdates, WriteMode};
+use pour::config::{Config, ConfigError, FieldConfig, FieldType, FieldUpdates, ModuleConfig, SubFieldConfig, SubFieldType, SubFieldUpdates, VaultUpdates, WriteMode};
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
 use pour::data::history::History;
@@ -1083,81 +1083,7 @@ fn build_vault_updates(state: &pour::app::ConfigureState) -> VaultUpdates {
 
 /// Extract FieldUpdates from the current configure settings.
 fn build_field_updates(state: &pour::app::ConfigureState) -> FieldUpdates {
-    let mut name: Option<String> = None;
-    let mut field_type: Option<FieldType> = None;
-    let mut prompt: Option<String> = None;
-    let mut required: Option<Option<bool>> = None;
-    let mut default: Option<Option<String>> = None;
-    let mut options: Option<Option<Vec<String>>> = None;
-    let mut source: Option<Option<String>> = None;
-    let mut target: Option<Option<FieldTarget>> = None;
-
-    for setting in &state.settings {
-        match setting.key.as_str() {
-            "name" => name = Some(setting.value.clone()),
-            "prompt" => prompt = Some(setting.value.clone()),
-            "field_type" => {
-                field_type = Some(match setting.value.as_str() {
-                    "text" => FieldType::Text,
-                    "textarea" => FieldType::Textarea,
-                    "number" => FieldType::Number,
-                    "static_select" => FieldType::StaticSelect,
-                    "dynamic_select" => FieldType::DynamicSelect,
-                    "composite_array" => FieldType::CompositeArray,
-                    _ => FieldType::Text,
-                });
-            }
-            "required" => {
-                required = Some(if setting.value == "true" {
-                    Some(true)
-                } else {
-                    None // false is the default, remove the key
-                });
-            }
-            "default" => {
-                default = Some(if setting.value.is_empty() {
-                    None
-                } else {
-                    Some(setting.value.clone())
-                });
-            }
-            "options" => {
-                let items: Vec<String> = setting
-                    .value
-                    .lines()
-                    .filter(|l| !l.is_empty())
-                    .map(|l| l.to_string())
-                    .collect();
-                options = Some(if items.is_empty() { None } else { Some(items) });
-            }
-            "source" => {
-                source = Some(if setting.value.is_empty() {
-                    None
-                } else {
-                    Some(setting.value.clone())
-                });
-            }
-            "target" => {
-                target = Some(match setting.value.as_str() {
-                    "frontmatter" => Some(FieldTarget::Frontmatter),
-                    "body" => Some(FieldTarget::Body),
-                    _ => None,
-                });
-            }
-            _ => {}
-        }
-    }
-
-    FieldUpdates {
-        name,
-        field_type,
-        prompt,
-        required,
-        default,
-        options,
-        source,
-        target,
-    }
+    pour::tui::configure::build_field_updates_from_settings(&state.settings)
 }
 
 /// Fetch a directory listing and populate the browser state.

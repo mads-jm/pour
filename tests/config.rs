@@ -2,7 +2,7 @@ use pour::config::Config;
 use pour::config::{FieldTarget, FieldType, SubFieldType, WriteMode};
 
 /// A representative config string that exercises every struct and enum variant.
-const SAMPLE_TOML: &str = r####"
+const SAMPLE_TOML: &str = r#####"
 [vault]
 base_path = "C:/Users/Joseph/obsidian-vault"
 api_port = 27124
@@ -12,8 +12,14 @@ api_key = "secret-token"
 mode = "append"
 path = "Journal/%Y/%Y-%m-%d.md"
 append_under_header = "## Log"
-append_template = "> [!note] {{time}}\n> {{body}}"
+append_template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}"
 display_name = "Journal"
+
+[[modules.me.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title (optional)"
+target = "body"
 
 [[modules.me.fields]]
 name = "body"
@@ -52,7 +58,7 @@ name = "notes"
 field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
-"####;
+"#####;
 
 #[test]
 fn round_trip_sample_config() {
@@ -72,9 +78,11 @@ fn round_trip_sample_config() {
     assert_eq!(me.mode, WriteMode::Append);
     assert_eq!(me.append_under_header.as_deref(), Some("## Log"));
     assert!(me.append_template.is_some());
-    assert_eq!(me.fields.len(), 1);
-    assert_eq!(me.fields[0].field_type, FieldType::Textarea);
+    assert_eq!(me.fields.len(), 2);
+    assert_eq!(me.fields[0].field_type, FieldType::Text);
     assert_eq!(me.fields[0].target, Some(FieldTarget::Body));
+    assert_eq!(me.fields[1].field_type, FieldType::Textarea);
+    assert_eq!(me.fields[1].target, Some(FieldTarget::Body));
 
     // Module: coffee
     let coffee = &config.modules["coffee"];

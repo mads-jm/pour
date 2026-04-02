@@ -53,6 +53,202 @@ fn sync_scroll_offset(state: &mut ConfigureState, term_cols: u16) {
     }
 }
 
+/// Auto-save dirty module-level settings to disk and reload the config.
+///
+/// Called before navigating away from `ModuleSettings` into a sub-screen
+/// (field list, field editor) so that edits to path, mode, etc. are not
+/// silently lost.  Returns `true` on success, `false` on error (in which
+/// case a status message is set on the configure state).
+fn auto_save_module_settings(app: &mut App) -> bool {
+    let state = match &app.configure_state {
+        Some(s) if s.dirty => s,
+        _ => return true, // nothing to save
+    };
+
+    let module_key = state.module_key.clone();
+
+    // Build ModuleUpdates from the current settings
+    let mut path: Option<String> = None;
+    let mut display_name: Option<Option<String>> = None;
+    let mut mode: Option<crate::config::WriteMode> = None;
+    let mut append_under_header: Option<Option<String>> = None;
+
+    for setting in &state.settings {
+        match setting.key.as_str() {
+            "path" => path = Some(setting.value.clone()),
+            "display_name" => {
+                display_name = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
+            "mode" => {
+                mode = Some(if setting.value == "append" {
+                    crate::config::WriteMode::Append
+                } else {
+                    crate::config::WriteMode::Create
+                });
+            }
+            "append_under_header" => {
+                append_under_header = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let updates = crate::config::ModuleUpdates {
+        path,
+        display_name,
+        mode,
+        append_under_header,
+    };
+
+    match crate::config::Config::update_module_on_disk(&module_key, &updates) {
+        Ok(()) => match crate::config::Config::load() {
+            Ok(new_config) => {
+                app.config = new_config;
+                if let Some(ref mut s) = app.configure_state {
+                    s.dirty = false;
+                    s.status_message = None;
+                }
+                true
+            }
+            Err(e) => {
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = Some(format!("Auto-save reload failed: {e}"));
+                }
+                false
+            }
+        },
+        Err(e) => {
+            if let Some(ref mut s) = app.configure_state {
+                s.status_message = Some(format!("Auto-save failed: {e}"));
+            }
+            false
+        }
+    }
+}
+
+/// Auto-save dirty field-level settings to disk and reload the config.
+///
+/// Called before navigating from `FieldEditor` into a sub-screen (e.g.
+/// sub-field list) so that field edits are not silently lost.
+fn auto_save_field_settings(app: &mut App, field_idx: usize) {
+    let state = match &app.configure_state {
+        Some(s) if s.dirty => s,
+        _ => return,
+    };
+    let module_key = state.module_key.clone();
+
+    let updates = build_field_updates_from_settings(&state.settings);
+
+    match crate::config::Config::update_field_on_disk(&module_key, field_idx, &updates) {
+        Ok(()) => match crate::config::Config::load() {
+            Ok(new_config) => {
+                app.config = new_config;
+                if let Some(ref mut s) = app.configure_state {
+                    s.dirty = false;
+                    s.status_message = None;
+                }
+            }
+            Err(e) => {
+                if let Some(ref mut s) = app.configure_state {
+                    s.status_message = Some(format!("Auto-save reload failed: {e}"));
+                }
+            }
+        },
+        Err(e) => {
+            if let Some(ref mut s) = app.configure_state {
+                s.status_message = Some(format!("Auto-save failed: {e}"));
+            }
+        }
+    }
+}
+
+/// Build `FieldUpdates` from the current configure settings.
+pub fn build_field_updates_from_settings(
+    settings: &[crate::app::ConfigSetting],
+) -> crate::config::FieldUpdates {
+    use crate::config::{FieldTarget, FieldType};
+
+    let mut name: Option<String> = None;
+    let mut field_type: Option<FieldType> = None;
+    let mut prompt: Option<String> = None;
+    let mut required: Option<Option<bool>> = None;
+    let mut default: Option<Option<String>> = None;
+    let mut options: Option<Option<Vec<String>>> = None;
+    let mut source: Option<Option<String>> = None;
+    let mut target: Option<Option<FieldTarget>> = None;
+
+    for setting in settings {
+        match setting.key.as_str() {
+            "name" => name = Some(setting.value.clone()),
+            "prompt" => prompt = Some(setting.value.clone()),
+            "field_type" => {
+                field_type = Some(match setting.value.as_str() {
+                    "text" => FieldType::Text,
+                    "textarea" => FieldType::Textarea,
+                    "number" => FieldType::Number,
+                    "static_select" => FieldType::StaticSelect,
+                    "dynamic_select" => FieldType::DynamicSelect,
+                    "composite_array" => FieldType::CompositeArray,
+                    _ => FieldType::Text,
+                });
+            }
+            "required" => {
+                required = Some(if setting.value == "true" { Some(true) } else { None });
+            }
+            "default" => {
+                default = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
+            "options" => {
+                let items: Vec<String> = setting
+                    .value
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| l.to_string())
+                    .collect();
+                options = Some(if items.is_empty() { None } else { Some(items) });
+            }
+            "source" => {
+                source = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
+            "target" => {
+                target = Some(match setting.value.as_str() {
+                    "frontmatter" => Some(FieldTarget::Frontmatter),
+                    "body" => Some(FieldTarget::Body),
+                    _ => None,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    crate::config::FieldUpdates {
+        name,
+        field_type,
+        prompt,
+        required,
+        default,
+        options,
+        source,
+        target,
+    }
+}
+
 /// Preview a path template by expanding only date/time tokens and strftime
 /// specifiers, leaving `{{field}}` placeholders visible so the user can see
 /// which parts are dynamic.
@@ -1805,8 +2001,18 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
             if let Some(setting) = state.settings.get(state.active_field) {
                 match &setting.kind.clone() {
                     SettingKind::Path => {
-                        // Open vault browser at current path's directory
-                        let browse_path = dir_of(&setting.value);
+                        // Open vault browser at current path's directory.
+                        // For field-level source paths, default to the
+                        // module's path directory when the source is empty.
+                        let browse_path = if setting.value.is_empty() {
+                            app.config
+                                .modules
+                                .get(&state.module_key)
+                                .map(|m| dir_of(&m.path))
+                                .unwrap_or_default()
+                        } else {
+                            dir_of(&setting.value)
+                        };
                         return ConfigureAction::BrowseDirectory(browse_path);
                     }
                     SettingKind::Text | SettingKind::Identifier => {
@@ -1889,15 +2095,30 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                         }
                     }
                     SettingKind::NavLink => {
-                        // Navigate to the linked sub-screen
-                        let key = setting.key.clone();
-                        if key == "fields" {
-                            state.level = ConfigureLevel::FieldList;
-                            state.active_field = 0;
-                        } else if key == "sub_fields" {
-                            if let ConfigureLevel::FieldEditor(field_idx) = state.level {
-                                state.level = ConfigureLevel::SubFieldList(field_idx);
-                                state.active_field = 0;
+                        // Navigate to the linked sub-screen.
+                        // Auto-save dirty settings before transitioning so
+                        // edits (path, mode, etc.) are not silently lost.
+                        let nav_key = setting.key.clone();
+                        let current_level = state.level.clone();
+                        let is_dirty = state.dirty;
+
+                        if nav_key == "fields" {
+                            if is_dirty {
+                                auto_save_module_settings(app);
+                            }
+                            if let Some(ref mut s) = app.configure_state {
+                                s.level = ConfigureLevel::FieldList;
+                                s.active_field = 0;
+                            }
+                        } else if nav_key == "sub_fields" {
+                            if let ConfigureLevel::FieldEditor(field_idx) = current_level {
+                                if is_dirty {
+                                    auto_save_field_settings(app, field_idx);
+                                }
+                                if let Some(ref mut s) = app.configure_state {
+                                    s.level = ConfigureLevel::SubFieldList(field_idx);
+                                    s.active_field = 0;
+                                }
                             }
                         }
                     }
