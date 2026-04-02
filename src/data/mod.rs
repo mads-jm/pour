@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod history;
 
 use crate::transport::Transport;
 use cache::Cache;
