@@ -1,8 +1,27 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
+
+/// Atomically replace `dst` with `src` by writing to a temp file first.
+///
+/// On Unix, `std::fs::rename` overwrites the target atomically.
+/// On Windows, `rename` fails if the target exists, so we must remove it first.
+/// This leaves a small window where `dst` doesn't exist — acceptable for a
+/// user-local config file (the temp file is the recovery copy).
+fn atomic_replace(src: &Path, dst: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // Remove old file first; ignore "not found" errors.
+        match std::fs::remove_file(dst) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    std::fs::rename(src, dst)
+}
 
 /// Top-level configuration, deserialized from `config.toml`.
 #[derive(Debug, Deserialize)]
@@ -22,6 +41,9 @@ pub struct VaultConfig {
     #[serde(default = "default_api_port")]
     pub api_port: Option<u16>,
     pub api_key: Option<String>,
+    /// strftime format string used to render a date-based filename when the
+    /// browser picks a directory for an append-mode path. Defaults to `%Y%m%d`.
+    pub date_format: Option<String>,
 }
 
 fn default_api_port() -> Option<u16> {
@@ -61,6 +83,8 @@ pub struct FieldConfig {
     pub source: Option<String>,
     /// Where this field's value is written. Defaults depend on `field_type`.
     pub target: Option<FieldTarget>,
+    /// Column definitions for `composite_array` fields.
+    pub sub_fields: Option<Vec<SubFieldConfig>>,
 }
 
 /// The kind of input widget for a field.
@@ -72,6 +96,28 @@ pub enum FieldType {
     Number,
     StaticSelect,
     DynamicSelect,
+    CompositeArray,
+}
+
+/// Allowed sub-field types within a `composite_array` field.
+///
+/// Restricted to simple input types — no nesting or dynamic data.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubFieldType {
+    Text,
+    Number,
+    StaticSelect,
+}
+
+/// A single column definition within a `composite_array` field.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SubFieldConfig {
+    pub name: String,
+    pub field_type: SubFieldType,
+    pub prompt: String,
+    /// Valid only for `static_select` sub-fields.
+    pub options: Option<Vec<String>>,
 }
 
 /// Controls whether a field value goes into YAML frontmatter or the Markdown body.
@@ -98,6 +144,36 @@ pub struct ModuleUpdates {
     pub append_under_header: Option<Option<String>>,
 }
 
+/// Partial updates to apply to the vault section of the config file.
+///
+/// Each field is an `Option`; `None` means "leave unchanged".
+/// For optional fields (`api_port`, `api_key`, `date_format`), `Some(None)` means "remove the key".
+pub struct VaultUpdates {
+    pub base_path: Option<String>,
+    /// `Some(None)` removes the key; `Some(Some(port))` sets it.
+    pub api_port: Option<Option<u16>>,
+    /// `Some(None)` removes the key; `Some(Some(key))` sets it.
+    pub api_key: Option<Option<String>>,
+    /// `Some(None)` removes the key; `Some(Some(fmt))` sets it.
+    pub date_format: Option<Option<String>>,
+}
+
+/// Partial updates to apply to a single field in a module's config.
+///
+/// Each field is an `Option`; `None` means "leave unchanged".
+/// For optional keys (`required`, `default`, `options`, `source`, `target`),
+/// `Some(None)` means "remove the key from the config".
+pub struct FieldUpdates {
+    pub name: Option<String>,
+    pub field_type: Option<FieldType>,
+    pub prompt: Option<String>,
+    pub required: Option<Option<bool>>,
+    pub default: Option<Option<String>>,
+    pub options: Option<Option<Vec<String>>>,
+    pub source: Option<Option<String>>,
+    pub target: Option<Option<FieldTarget>>,
+}
+
 /// Errors that can occur when loading or validating configuration.
 #[derive(Debug)]
 pub enum ConfigError {
@@ -111,6 +187,8 @@ pub enum ConfigError {
     ValidationError(Vec<String>),
     /// The named module key was not found in the config.
     ModuleNotFound(String),
+    /// A module with the given key already exists in the config.
+    DuplicateModule(String),
     /// Failed to write the updated config back to disk.
     WriteError(std::io::Error),
     /// The config document could not be parsed by the structure-preserving editor.
@@ -138,6 +216,9 @@ impl fmt::Display for ConfigError {
             }
             ConfigError::ModuleNotFound(key) => {
                 write!(f, "module '{key}' not found in config")
+            }
+            ConfigError::DuplicateModule(key) => {
+                write!(f, "module '{key}' already exists in config")
             }
             ConfigError::WriteError(err) => write!(f, "failed to write config: {err}"),
             ConfigError::EditParseError(msg) => {
@@ -286,15 +367,786 @@ impl Config {
         let new_content = doc.to_string();
 
         // Validate before writing — never touch the file if the result is invalid.
-        if let Err(e) = Self::from_toml(&new_content) {
-            return Err(e);
-        }
+        Self::from_toml(&new_content)?;
 
         // Atomic write: write to a sibling temp file, then rename over the original.
         // This prevents partial writes from bricking the config on crash.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        std::fs::rename(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Apply partial updates to a single field in a module's config file.
+    ///
+    /// Navigates to `doc["modules"][module_key]["fields"][field_index]` using
+    /// `toml_edit` so comments and formatting are preserved. Validates the
+    /// result before writing. Uses atomic write (temp file + rename).
+    pub fn update_field_on_disk(
+        module_key: &str,
+        field_index: usize,
+        updates: &FieldUpdates,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original =
+            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Navigate to the fields array-of-tables for this module.
+        let field = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )])
+            })?;
+
+        // Apply each update.
+        if let Some(ref name) = updates.name {
+            field["name"] = toml_edit::value(name.as_str());
+        }
+
+        if let Some(ref ft) = updates.field_type {
+            let type_str = match ft {
+                FieldType::Text => "text",
+                FieldType::Textarea => "textarea",
+                FieldType::Number => "number",
+                FieldType::StaticSelect => "static_select",
+                FieldType::DynamicSelect => "dynamic_select",
+                FieldType::CompositeArray => "composite_array",
+            };
+            field["field_type"] = toml_edit::value(type_str);
+        }
+
+        if let Some(ref prompt) = updates.prompt {
+            field["prompt"] = toml_edit::value(prompt.as_str());
+        }
+
+        if let Some(ref required_update) = updates.required {
+            match required_update {
+                Some(v) => field["required"] = toml_edit::value(*v),
+                None => { field.remove("required"); }
+            }
+        }
+
+        if let Some(ref default_update) = updates.default {
+            match default_update {
+                Some(v) => field["default"] = toml_edit::value(v.as_str()),
+                None => { field.remove("default"); }
+            }
+        }
+
+        if let Some(ref options_update) = updates.options {
+            match options_update {
+                Some(opts) => {
+                    let mut arr = toml_edit::Array::new();
+                    for opt in opts {
+                        arr.push(opt.as_str());
+                    }
+                    field["options"] = toml_edit::value(arr);
+                }
+                None => { field.remove("options"); }
+            }
+        }
+
+        if let Some(ref source_update) = updates.source {
+            match source_update {
+                Some(v) => field["source"] = toml_edit::value(v.as_str()),
+                None => { field.remove("source"); }
+            }
+        }
+
+        if let Some(ref target_update) = updates.target {
+            match target_update {
+                Some(t) => {
+                    let target_str = match t {
+                        FieldTarget::Frontmatter => "frontmatter",
+                        FieldTarget::Body => "body",
+                    };
+                    field["target"] = toml_edit::value(target_str);
+                }
+                None => { field.remove("target"); }
+            }
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Append a new field to a module's fields array on disk.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting. Validates the
+    /// result before writing. Uses atomic write (temp file + rename).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if the resulting config is invalid
+    /// (e.g. `static_select` without `options`).
+    pub fn add_field_on_disk(module_key: &str, field: &FieldConfig) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Verify the module exists before touching anything.
+        doc.get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
+
+        // Build the new table entry.
+        let mut new_table = toml_edit::Table::new();
+
+        let type_str = match field.field_type {
+            FieldType::Text => "text",
+            FieldType::Textarea => "textarea",
+            FieldType::Number => "number",
+            FieldType::StaticSelect => "static_select",
+            FieldType::DynamicSelect => "dynamic_select",
+            FieldType::CompositeArray => "composite_array",
+        };
+
+        new_table["name"] = toml_edit::value(field.name.as_str());
+        new_table["field_type"] = toml_edit::value(type_str);
+        new_table["prompt"] = toml_edit::value(field.prompt.as_str());
+
+        if let Some(required) = field.required {
+            new_table["required"] = toml_edit::value(required);
+        }
+
+        if let Some(ref default) = field.default {
+            new_table["default"] = toml_edit::value(default.as_str());
+        }
+
+        if let Some(ref opts) = field.options {
+            let mut arr = toml_edit::Array::new();
+            for opt in opts {
+                arr.push(opt.as_str());
+            }
+            new_table["options"] = toml_edit::value(arr);
+        }
+
+        if let Some(ref source) = field.source {
+            new_table["source"] = toml_edit::value(source.as_str());
+        }
+
+        if let Some(ref target) = field.target {
+            let target_str = match target {
+                FieldTarget::Frontmatter => "frontmatter",
+                FieldTarget::Body => "body",
+            };
+            new_table["target"] = toml_edit::value(target_str);
+        }
+
+        // sub_fields skipped — composite_array is Phase 5.
+
+        // Navigate to the fields array-of-tables and push the new entry.
+        // If the key doesn't exist yet, create it.
+        let module = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .expect("module existence already verified above");
+
+        if !module.contains_array_of_tables("fields") {
+            module["fields"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+        }
+
+        module["fields"]
+            .as_array_of_tables_mut()
+            .expect("fields is an array of tables")
+            .push(new_table);
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Remove a field at `field_index` from a module's fields array on disk.
+    ///
+    /// Validates the result before writing — this catches the "module must have
+    /// at least one field" rule when removing the last field. Uses atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if `field_index` is out of range
+    /// or if removing the field would leave the module with zero fields.
+    pub fn remove_field_on_disk(
+        module_key: &str,
+        field_index: usize,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Navigate to the fields array-of-tables.
+        let fields = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': no fields array found"
+                )])
+            })?;
+
+        if field_index >= fields.len() {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "field index {field_index} out of range for module '{module_key}'"
+            )]));
+        }
+
+        if fields.len() == 1 {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "module '{module_key}': must have at least one field"
+            )]));
+        }
+
+        fields.remove(field_index);
+
+        let new_content = doc.to_string();
+
+        // Validate — catches the zero-fields case.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Update vault-level settings in-place on disk, preserving comments and formatting.
+    ///
+    /// Uses `toml_edit` to navigate to `doc["vault"]`. Validates the result before
+    /// writing. Uses atomic write (temp file + rename).
+    pub fn update_vault_on_disk(updates: &VaultUpdates) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original =
+            std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let vault = doc
+            .get_mut("vault")
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| {
+                ConfigError::EditParseError("missing [vault] table in config".to_string())
+            })?;
+
+        if let Some(ref base_path) = updates.base_path {
+            vault["base_path"] = toml_edit::value(base_path.as_str());
+        }
+
+        if let Some(ref port_update) = updates.api_port {
+            match port_update {
+                Some(port) => {
+                    vault["api_port"] = toml_edit::value(*port as i64);
+                }
+                None => {
+                    vault.remove("api_port");
+                }
+            }
+        }
+
+        if let Some(ref key_update) = updates.api_key {
+            match key_update {
+                Some(k) => {
+                    vault["api_key"] = toml_edit::value(k.as_str());
+                }
+                None => {
+                    vault.remove("api_key");
+                }
+            }
+        }
+
+        if let Some(ref fmt_update) = updates.date_format {
+            match fmt_update {
+                Some(fmt) => {
+                    vault["date_format"] = toml_edit::value(fmt.as_str());
+                }
+                None => {
+                    vault.remove("date_format");
+                }
+            }
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Add a new module to the config file on disk.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting. Validates the result
+    /// before writing. Uses atomic write (temp file + rename).
+    ///
+    /// If `doc` contains a top-level `module_order` array, `module_key` is appended
+    /// to it automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::DuplicateModule` if `module_key` already exists.
+    /// Returns `ConfigError::ValidationError` if the resulting config is invalid.
+    pub fn add_module_on_disk(module_key: &str, module: &ModuleConfig) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Reject duplicate module key.
+        let already_exists = doc
+            .get("modules")
+            .and_then(|m| m.as_table())
+            .map(|t| t.contains_key(module_key))
+            .unwrap_or(false);
+
+        if already_exists {
+            return Err(ConfigError::DuplicateModule(module_key.to_string()));
+        }
+
+        // Build the module table.
+        let mut module_table = toml_edit::Table::new();
+
+        let mode_str = match module.mode {
+            WriteMode::Append => "append",
+            WriteMode::Create => "create",
+        };
+        module_table["mode"] = toml_edit::value(mode_str);
+        module_table["path"] = toml_edit::value(module.path.as_str());
+
+        if let Some(ref display_name) = module.display_name {
+            module_table["display_name"] = toml_edit::value(display_name.as_str());
+        }
+
+        if let Some(ref header) = module.append_under_header {
+            module_table["append_under_header"] = toml_edit::value(header.as_str());
+        }
+
+        if let Some(ref tmpl) = module.append_template {
+            module_table["append_template"] = toml_edit::value(tmpl.as_str());
+        }
+
+        // Build fields as an ArrayOfTables.
+        let mut fields_aot = toml_edit::ArrayOfTables::new();
+
+        for field in &module.fields {
+            let mut ft = toml_edit::Table::new();
+
+            let type_str = match field.field_type {
+                FieldType::Text => "text",
+                FieldType::Textarea => "textarea",
+                FieldType::Number => "number",
+                FieldType::StaticSelect => "static_select",
+                FieldType::DynamicSelect => "dynamic_select",
+                FieldType::CompositeArray => "composite_array",
+            };
+
+            ft["name"] = toml_edit::value(field.name.as_str());
+            ft["field_type"] = toml_edit::value(type_str);
+            ft["prompt"] = toml_edit::value(field.prompt.as_str());
+
+            if let Some(required) = field.required {
+                ft["required"] = toml_edit::value(required);
+            }
+
+            if let Some(ref default) = field.default {
+                ft["default"] = toml_edit::value(default.as_str());
+            }
+
+            if let Some(ref opts) = field.options {
+                let mut arr = toml_edit::Array::new();
+                for opt in opts {
+                    arr.push(opt.as_str());
+                }
+                ft["options"] = toml_edit::value(arr);
+            }
+
+            if let Some(ref source) = field.source {
+                ft["source"] = toml_edit::value(source.as_str());
+            }
+
+            if let Some(ref target) = field.target {
+                let target_str = match target {
+                    FieldTarget::Frontmatter => "frontmatter",
+                    FieldTarget::Body => "body",
+                };
+                ft["target"] = toml_edit::value(target_str);
+            }
+
+            // sub_fields skipped — composite_array is Phase 5.
+
+            fields_aot.push(ft);
+        }
+
+        module_table["fields"] = toml_edit::Item::ArrayOfTables(fields_aot);
+
+        // Insert into doc["modules"][module_key].
+        doc["modules"][module_key] = toml_edit::Item::Table(module_table);
+
+        // If a top-level module_order array exists, append the new key to it.
+        if let Some(order_item) = doc.get_mut("module_order")
+            && let Some(arr) = order_item.as_array_mut()
+        {
+            arr.push(module_key);
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Overwrite the top-level `module_order` array on disk.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting elsewhere in the file.
+    /// Validates the result before writing. Uses atomic write (temp file + rename).
+    pub fn update_module_order_on_disk(order: &[String]) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let mut arr = toml_edit::Array::new();
+        for key in order {
+            arr.push(key.as_str());
+        }
+
+        doc["module_order"] = toml_edit::value(arr);
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Non-blocking path validation against the actual filesystem.
+    ///
+    /// Unlike `validate()`, which enforces structural rules and blocks loading,
+    /// this method checks whether the paths referenced in the config actually
+    /// exist on disk. It returns human-readable warnings (not errors) so the
+    /// caller can surface them without preventing the app from starting.
+    ///
+    /// Checks performed:
+    /// - For `create` mode modules: the parent directory of `module.path` must exist.
+    /// - For `append` mode modules: the file at `module.path` must exist.
+    /// - For `dynamic_select` fields with a `source`: the source directory must exist.
+    ///
+    /// Paths containing `{{` (template variables) are skipped entirely — they
+    /// cannot be resolved at config-load time.
+    pub fn check_paths(&self, vault_base: &Path) -> Vec<String> {
+        let mut warnings = Vec::new();
+
+        for (module_key, module) in &self.modules {
+            // Skip paths containing template variables or strftime specifiers —
+            // unresolvable at config time.
+            if !module.path.contains("{{") && !module.path.contains('%') {
+                let full_path = vault_base.join(&module.path);
+
+                match module.mode {
+                    WriteMode::Create => {
+                        // For create mode, the parent directory must exist.
+                        let parent = full_path.parent().unwrap_or(vault_base);
+                        if !parent.exists() {
+                            warnings.push(format!(
+                                "module '{}': path '{}' — parent directory not found",
+                                module_key, module.path
+                            ));
+                        }
+                    }
+                    WriteMode::Append => {
+                        // For append mode, the target file must exist.
+                        if !full_path.exists() {
+                            warnings.push(format!(
+                                "module '{}': path '{}' — file not found",
+                                module_key, module.path
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Check dynamic_select source directories.
+            for field in &module.fields {
+                if field.field_type == FieldType::DynamicSelect
+                    && let Some(ref source) = field.source
+                    && !source.contains("{{")
+                {
+                    let source_path = vault_base.join(source);
+                    if !source_path.exists() {
+                        warnings.push(format!(
+                            "module '{}', field '{}': source '{}' — directory not found",
+                            module_key, field.name, source
+                        ));
+                    }
+                }
+            }
+        }
+
+        warnings
+    }
+
+    /// Delete a module from the config file on disk.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting for remaining modules.
+    /// Validates the result before writing. Uses atomic write (temp file + rename).
+    ///
+    /// If `module_order` exists, the deleted module key is removed from it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if this is the last module.
+    pub fn delete_module_on_disk(module_key: &str) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Navigate to the modules table and verify the key exists.
+        let modules = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .ok_or_else(|| {
+                ConfigError::EditParseError("missing [modules] table in config".to_string())
+            })?;
+
+        if !modules.contains_key(module_key) {
+            return Err(ConfigError::ModuleNotFound(module_key.to_string()));
+        }
+
+        // Guard: cannot delete the last module.
+        let module_count = modules.iter().count();
+        if module_count <= 1 {
+            return Err(ConfigError::ValidationError(vec![
+                "cannot delete last module".to_string(),
+            ]));
+        }
+
+        modules.remove(module_key);
+
+        // Remove from module_order if present.
+        if let Some(order_item) = doc.get_mut("module_order")
+            && let Some(arr) = order_item.as_array_mut()
+        {
+            // Find and remove the matching entry by value.
+            let pos = arr
+                .iter()
+                .position(|v| v.as_str() == Some(module_key));
+            if let Some(idx) = pos {
+                arr.remove(idx);
+            }
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Reorder the fields of a module on disk using a permutation index slice.
+    ///
+    /// `new_order` must be a permutation of `0..fields.len()`: same length,
+    /// each index appearing exactly once. The fields are rewritten in the
+    /// order specified by `new_order[0], new_order[1], ...`.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting. Validates the
+    /// result before writing. Uses atomic write (temp file + rename).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if `new_order` is not a valid
+    /// permutation of the fields indices.
+    pub fn reorder_fields_on_disk(
+        module_key: &str,
+        new_order: &[usize],
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        // Navigate to the module table.
+        let module = doc
+            .get_mut("modules")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(module_key))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
+
+        let fields_aot = module
+            .get_mut("fields")
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': no fields array found"
+                )])
+            })?
+            .as_array_of_tables_mut()
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': fields is not an array of tables"
+                )])
+            })?;
+
+        let field_count = fields_aot.len();
+
+        // Validate permutation: correct length.
+        if new_order.len() != field_count {
+            return Err(ConfigError::ValidationError(vec![format!(
+                "module '{module_key}': new_order length {} does not match field count {}",
+                new_order.len(),
+                field_count
+            )]));
+        }
+
+        // Validate permutation: each index in range and no duplicates.
+        let mut seen = vec![false; field_count];
+        for &idx in new_order {
+            if idx >= field_count {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': index {idx} out of range (field count {field_count})"
+                )]));
+            }
+            if seen[idx] {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': duplicate index {idx} in new_order"
+                )]));
+            }
+            seen[idx] = true;
+        }
+
+        // toml_edit serializes tables in position order. Swapping positions causes
+        // the formatter to emit them in the new order while preserving all content.
+        //
+        // Collect the original doc positions for each field table. Position `i` in
+        // new_order means "the table that was at old index new_order[i] should now
+        // appear at slot i". So old table new_order[i] gets positions[i].
+        let original_positions: Vec<Option<usize>> =
+            fields_aot.iter().map(|t| t.position()).collect();
+
+        // Build assignments: (old_index -> new_position).
+        // new_order[i] = old_idx  =>  old_idx gets original_positions[i].
+        let mut assignments: Vec<(usize, Option<usize>)> = new_order
+            .iter()
+            .enumerate()
+            .map(|(slot, &old_idx)| (old_idx, original_positions[slot]))
+            .collect();
+        // Sort by old_index so we can look up by index directly.
+        assignments.sort_by_key(|&(old_i, _)| old_i);
+
+        for (old_idx, new_pos) in assignments {
+            let t = fields_aot.get_mut(old_idx).ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {old_idx} out of range during reorder"
+                )])
+            })?;
+            let pos = new_pos.ok_or_else(|| {
+                ConfigError::EditParseError(
+                    "field table has no document position; cannot reorder".to_string(),
+                )
+            })?;
+            t.set_position(pos);
+        }
+
+        let new_content = doc.to_string();
+
+        // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        // Atomic write.
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -384,6 +1236,55 @@ impl Config {
                             ));
                         }
                         _ => {}
+                    }
+                }
+
+                // composite_array must have non-empty sub_fields with unique names
+                if field.field_type == FieldType::CompositeArray {
+                    match &field.sub_fields {
+                        None => {
+                            errors.push(format!(
+                                "module '{name}', field '{}': composite_array requires 'sub_fields'",
+                                field.name
+                            ));
+                        }
+                        Some(subs) if subs.is_empty() => {
+                            errors.push(format!(
+                                "module '{name}', field '{}': composite_array 'sub_fields' must not be empty",
+                                field.name
+                            ));
+                        }
+                        Some(subs) => {
+                            // Check for duplicate sub-field names
+                            let mut seen = std::collections::HashSet::new();
+                            for sub in subs {
+                                if !seen.insert(&sub.name) {
+                                    errors.push(format!(
+                                        "module '{name}', field '{}': duplicate sub_field name '{}'",
+                                        field.name, sub.name
+                                    ));
+                                }
+
+                                // static_select sub-fields must have options
+                                if sub.field_type == SubFieldType::StaticSelect {
+                                    match &sub.options {
+                                        None => {
+                                            errors.push(format!(
+                                                "module '{name}', field '{}', sub_field '{}': static_select requires 'options'",
+                                                field.name, sub.name
+                                            ));
+                                        }
+                                        Some(opts) if opts.is_empty() => {
+                                            errors.push(format!(
+                                                "module '{name}', field '{}', sub_field '{}': static_select 'options' must not be empty",
+                                                field.name, sub.name
+                                            ));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

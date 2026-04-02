@@ -1,5 +1,5 @@
 use pour::config::Config;
-use pour::config::{FieldTarget, FieldType, WriteMode};
+use pour::config::{FieldTarget, FieldType, SubFieldType, WriteMode};
 
 /// A representative config string that exercises every struct and enum variant.
 const SAMPLE_TOML: &str = r####"
@@ -499,4 +499,185 @@ fn source_path_rejects_traversal() {
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("traversal"), "got: {msg}");
+}
+
+// --- composite_array tests ---
+
+const COMPOSITE_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "text"
+prompt = "Bean"
+
+[[modules.coffee.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Brew stages"
+
+[[modules.coffee.fields.sub_fields]]
+name = "pour"
+field_type = "number"
+prompt = "Pour (g)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "time"
+field_type = "number"
+prompt = "Time (s)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "technique"
+field_type = "static_select"
+prompt = "Technique"
+options = ["Bloom", "Spiral", "Center", "Pulse"]
+"####;
+
+#[test]
+fn composite_array_parses() {
+    let config = Config::from_toml(COMPOSITE_TOML).expect("should parse composite_array config");
+    let coffee = &config.modules["coffee"];
+    assert_eq!(coffee.fields.len(), 2);
+
+    let recipe = &coffee.fields[1];
+    assert_eq!(recipe.field_type, FieldType::CompositeArray);
+    assert_eq!(recipe.name, "recipe");
+
+    let subs = recipe.sub_fields.as_ref().expect("sub_fields should be Some");
+    assert_eq!(subs.len(), 3);
+
+    assert_eq!(subs[0].name, "pour");
+    assert_eq!(subs[0].field_type, SubFieldType::Number);
+
+    assert_eq!(subs[1].name, "time");
+    assert_eq!(subs[1].field_type, SubFieldType::Number);
+
+    assert_eq!(subs[2].name, "technique");
+    assert_eq!(subs[2].field_type, SubFieldType::StaticSelect);
+    assert_eq!(subs[2].options.as_ref().unwrap().len(), 4);
+}
+
+#[test]
+fn composite_array_without_sub_fields_fails() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Stages"
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("composite_array requires 'sub_fields'"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn composite_array_with_empty_sub_fields_fails() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Stages"
+sub_fields = []
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("must not be empty"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn composite_array_select_sub_field_without_options_fails() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Stages"
+
+[[modules.test.fields.sub_fields]]
+name = "technique"
+field_type = "static_select"
+prompt = "Technique"
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("sub_field 'technique': static_select requires 'options'"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn composite_array_duplicate_sub_field_names_fails() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Stages"
+
+[[modules.test.fields.sub_fields]]
+name = "pour"
+field_type = "number"
+prompt = "Pour"
+
+[[modules.test.fields.sub_fields]]
+name = "pour"
+field_type = "number"
+prompt = "Pour again"
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("duplicate sub_field name 'pour'"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn existing_sample_toml_still_parses_with_composite_array() {
+    // Regression guard: the original SAMPLE_TOML must still parse.
+    let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should still parse");
+    assert!(config.modules.contains_key("me"));
+    assert!(config.modules.contains_key("coffee"));
 }
