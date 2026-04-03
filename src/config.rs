@@ -4,30 +4,13 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
-/// Atomically replace `dst` with `src` by writing to a temp file first.
-///
-/// On Unix, `std::fs::rename` overwrites the target atomically.
-/// On Windows, `rename` fails if the target exists, so we must remove it first.
-/// This leaves a small window where `dst` doesn't exist — acceptable for a
-/// user-local config file (the temp file is the recovery copy).
-fn atomic_replace(src: &Path, dst: &Path) -> std::io::Result<()> {
-    #[cfg(windows)]
-    {
-        // Remove old file first; ignore "not found" errors.
-        match std::fs::remove_file(dst) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e),
-        }
-    }
-    std::fs::rename(src, dst)
-}
-
 /// Top-level configuration, deserialized from `config.toml`.
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub vault: VaultConfig,
     pub modules: HashMap<String, ModuleConfig>,
+    #[serde(default)]
+    pub templates: Option<HashMap<String, TemplateConfig>>,
     /// Optional ordering for dashboard display. Modules not listed appear
     /// alphabetically after the listed ones.
     pub module_order: Option<Vec<String>>,
@@ -89,6 +72,21 @@ pub struct FieldConfig {
     pub sub_fields: Option<Vec<SubFieldConfig>>,
     /// Obsidian callout type to wrap this field's body output in (e.g. "note", "tip").
     pub callout: Option<String>,
+    /// When `true`, allows the user to create new entries inline during selection.
+    /// Only valid on `dynamic_select` fields.
+    #[serde(default)]
+    pub allow_create: Option<bool>,
+    /// When `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`.
+    /// Applies to `text`, `static_select`, and `dynamic_select` field types.
+    /// No-ops if the value is already wrapped. Defaults to `false`.
+    #[serde(default)]
+    pub wikilink: Option<bool>,
+    /// Template name (from `[templates]`) used to create a new note when `allow_create` fires.
+    #[serde(default)]
+    pub create_template: Option<String>,
+    /// Obsidian command URI to execute after inline note creation (e.g. `"templater:run"` ).
+    #[serde(default)]
+    pub post_create_command: Option<String>,
 }
 
 /// The kind of input widget for a field.
@@ -122,6 +120,33 @@ pub struct SubFieldConfig {
     pub prompt: String,
     /// Valid only for `static_select` sub-fields.
     pub options: Option<Vec<String>>,
+}
+
+/// Allowed field types within a template definition. Restricted to simple input types.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateFieldType {
+    Text,
+    Number,
+    StaticSelect,
+}
+
+/// A single field definition within a template.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TemplateFieldConfig {
+    pub name: String,
+    pub field_type: TemplateFieldType,
+    pub prompt: String,
+    /// Valid only for `static_select`.
+    pub options: Option<Vec<String>>,
+    pub default: Option<String>,
+}
+
+/// A template definition for auto-created notes.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TemplateConfig {
+    pub path: String,
+    pub fields: Vec<TemplateFieldConfig>,
 }
 
 /// Controls whether a field value goes into YAML frontmatter or the Markdown body.
@@ -402,7 +427,7 @@ impl Config {
         // This prevents partial writes from bricking the config on crash.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -536,7 +561,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -661,7 +686,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -722,7 +747,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -792,7 +817,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -953,7 +978,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -986,7 +1011,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -1118,7 +1143,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -1239,7 +1264,7 @@ impl Config {
         // Atomic write.
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
 
         Ok(())
     }
@@ -1330,7 +1355,7 @@ impl Config {
         Self::from_toml(&new_content)?;
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
         Ok(())
     }
 
@@ -1396,7 +1421,7 @@ impl Config {
         Self::from_toml(&new_content)?;
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
         Ok(())
     }
 
@@ -1473,7 +1498,7 @@ impl Config {
         Self::from_toml(&new_content)?;
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
         Ok(())
     }
 
@@ -1559,7 +1584,7 @@ impl Config {
         Self::from_toml(&new_content)?;
         let tmp_path = path.with_extension("toml.tmp");
         std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
         Ok(())
     }
 
@@ -1720,6 +1745,113 @@ impl Config {
                             &format!("module '{name}', field '{}', source", field.name),
                             &mut errors,
                         );
+                    }
+                }
+
+                // allow_create is only valid on dynamic_select
+                if field.allow_create.is_some() && field.field_type != FieldType::DynamicSelect {
+                    errors.push(format!(
+                        "module '{name}', field '{}': allow_create is only valid on dynamic_select fields",
+                        field.name
+                    ));
+                }
+
+                // create_template validation
+                if let Some(ref tpl_name) = field.create_template {
+                    // Rule 1: only valid on dynamic_select
+                    if field.field_type != FieldType::DynamicSelect {
+                        errors.push(format!(
+                            "module '{name}', field '{}': create_template is only valid on dynamic_select fields",
+                            field.name
+                        ));
+                    }
+                    // Rule 2: requires allow_create = true
+                    if field.allow_create != Some(true) {
+                        errors.push(format!(
+                            "module '{name}', field '{}': create_template requires allow_create = true",
+                            field.name
+                        ));
+                    }
+                    // Rule 3: referenced template must exist
+                    let template_exists = self
+                        .templates
+                        .as_ref()
+                        .and_then(|t| t.get(tpl_name.as_str()))
+                        .is_some();
+                    if !template_exists {
+                        errors.push(format!(
+                            "module '{name}', field '{}': create_template references unknown template '{tpl_name}'",
+                            field.name
+                        ));
+                    }
+                }
+
+                // post_create_command requires create_template
+                if field.post_create_command.is_some() && field.create_template.is_none() {
+                    errors.push(format!(
+                        "module '{name}', field '{}': post_create_command requires create_template to be set",
+                        field.name
+                    ));
+                }
+            }
+        }
+
+        // Validate templates
+        if let Some(ref templates) = self.templates {
+            for (name, template) in templates {
+                // Template path must contain {{name}}
+                if !template.path.contains("{{name}}") {
+                    errors.push(format!(
+                        "template '{name}': path must contain the {{{{name}}}} placeholder"
+                    ));
+                }
+
+                // Template path must be vault-relative
+                Self::validate_vault_relative_path(
+                    &template.path,
+                    &format!("template '{name}', path"),
+                    &mut errors,
+                );
+
+                // Template must have at least one field
+                if template.fields.is_empty() {
+                    errors.push(format!("template '{name}': must have at least one field"));
+                }
+
+                // Check for duplicate and reserved field names
+                const RESERVED_TEMPLATE_FIELDS: &[&str] = &["date", "name"];
+                let mut seen = std::collections::HashSet::new();
+                for field in &template.fields {
+                    if RESERVED_TEMPLATE_FIELDS.contains(&field.name.as_str()) {
+                        errors.push(format!(
+                            "template '{name}', field '{}': '{}' is reserved (auto-generated in frontmatter)",
+                            field.name, field.name
+                        ));
+                    }
+                    if !seen.insert(&field.name) {
+                        errors.push(format!(
+                            "template '{name}': duplicate field name '{}'",
+                            field.name
+                        ));
+                    }
+
+                    // static_select template fields must have non-empty options
+                    if field.field_type == TemplateFieldType::StaticSelect {
+                        match &field.options {
+                            None => {
+                                errors.push(format!(
+                                    "template '{name}', field '{}': static_select requires 'options'",
+                                    field.name
+                                ));
+                            }
+                            Some(opts) if opts.is_empty() => {
+                                errors.push(format!(
+                                    "template '{name}', field '{}': static_select 'options' must not be empty",
+                                    field.name
+                                ));
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
