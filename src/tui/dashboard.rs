@@ -76,14 +76,44 @@ pub fn render(app: &App, frame: &mut Frame) {
         crate::transport::TransportMode::Api => Color::Green,
         crate::transport::TransportMode::FileSystem => Color::Yellow,
     };
-    let header = Paragraph::new(Line::from(vec![Span::styled(
-        " ▽ pour",
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    )]))
+
+    // Vault name: last component of base_path
+    let vault_name = std::path::Path::new(&app.config.vault.base_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("vault");
+
+    let clock = chrono::Local::now().format("%H:%M").to_string();
+
+    let header = Paragraph::new(Line::from(vec![
+        Span::styled(
+            " pour",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ›  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            vault_name.to_string(),
+            Style::default().fg(Color::White),
+        ),
+    ]))
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, chunks[0]);
+
+    // Clock — centered on the header row
+    let clock_widget = Paragraph::new(Line::from(Span::styled(
+        clock,
+        Style::default().fg(Color::DarkGray),
+    )))
+    .alignment(Alignment::Center);
+    let clock_area = Rect {
+        x: chunks[0].x,
+        y: chunks[0].y,
+        width: chunks[0].width,
+        height: 1,
+    };
+    frame.render_widget(clock_widget, clock_area);
 
     // Transport mode — right-aligned on the header row
     let mode_text = format!("[{mode}] ");
@@ -92,7 +122,6 @@ pub fn render(app: &App, frame: &mut Frame) {
         Style::default().fg(mode_color),
     )))
     .alignment(Alignment::Right);
-    // Render on the first row of the header area (above the border)
     let mode_area = Rect {
         x: chunks[0].x,
         y: chunks[0].y,
@@ -217,8 +246,8 @@ pub fn render(app: &App, frame: &mut Frame) {
             if let Some(label) = entry.first_field.as_deref() {
                 if !label.is_empty() {
                     // Available space for label: total width minus fixed parts
-                    let avail = (area.width as usize)
-                        .saturating_sub(prefix_width + 3 + 2 + time_width);
+                    let avail =
+                        (area.width as usize).saturating_sub(prefix_width + 3 + 2 + time_width);
                     let trimmed = if label.len() > avail && avail > 0 {
                         format!("{}..", &label[..avail.saturating_sub(2)])
                     } else {
@@ -274,12 +303,14 @@ pub fn render(app: &App, frame: &mut Frame) {
         footer_spans.push(Span::styled("r", Style::default().fg(Color::Yellow)));
         footer_spans.push(Span::raw(" refresh  "));
     }
+    footer_spans.push(Span::styled("o", Style::default().fg(Color::Yellow)));
+    footer_spans.push(Span::raw(" open  "));
     footer_spans.push(Span::styled("?", Style::default().fg(Color::Yellow)));
     footer_spans.push(Span::raw(" help  "));
     footer_spans.push(Span::styled("q", Style::default().fg(Color::Yellow)));
     footer_spans.push(Span::raw(" quit"));
-    let footer = Paragraph::new(Line::from(footer_spans))
-    .block(Block::default().borders(Borders::TOP));
+    let footer =
+        Paragraph::new(Line::from(footer_spans)).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[4]);
 
     // Overlays — rendered on top of everything else
@@ -326,6 +357,10 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from(vec![
             Span::styled("  Ctrl+↑↓   ", key_style),
             Span::styled("reorder modules", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  o         ", key_style),
+            Span::styled("open vault in Obsidian", desc_style),
         ]),
         Line::from(vec![
             Span::styled("  r         ", key_style),
@@ -425,6 +460,8 @@ pub enum DashboardAction {
     NewModule,
     /// Re-attempt the API connection.
     RefreshTransport,
+    /// Open the vault in Obsidian.
+    OpenInObsidian,
 }
 
 /// Handle a key event while on the dashboard.
@@ -504,6 +541,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> DashboardAc
         KeyCode::Char('n') => DashboardAction::NewModule,
         // r — retry API connection
         KeyCode::Char('r') => DashboardAction::RefreshTransport,
+        // o — open vault in Obsidian
+        KeyCode::Char('o') => DashboardAction::OpenInObsidian,
 
         KeyCode::Up => {
             if !app.module_keys.is_empty() {
