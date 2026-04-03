@@ -108,14 +108,29 @@ async fn run_loop(
     app: &mut App,
     cache: &mut Cache,
 ) -> io::Result<()> {
-    loop {
+    'main: loop {
         // Draw
         terminal.draw(|frame| tui::render(app, frame))?;
 
         // Poll for events with a short timeout to keep the UI responsive
-        if event::poll(Duration::from_millis(100))?
-            && let Event::Key(key_event) = event::read()?
-        {
+        if !event::poll(Duration::from_millis(100))? {
+            continue;
+        }
+
+        // Collect key events from this poll. A Paste event is expanded into
+        // synthetic Char key events so pasted text (e.g. API keys) is handled
+        // the same as typed text.
+        let ev = event::read()?;
+        let key_events: Vec<crossterm::event::KeyEvent> = match ev {
+            Event::Key(k) => vec![k],
+            Event::Paste(text) => text
+                .chars()
+                .map(|c| crossterm::event::KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+                .collect(),
+            _ => continue,
+        };
+
+        for key_event in key_events {
             if !pour::should_handle_key_event(key_event) {
                 continue;
             }
@@ -124,13 +139,13 @@ async fn run_loop(
             if key_event.modifiers.contains(KeyModifiers::CONTROL)
                 && key_event.code == KeyCode::Char('c')
             {
-                break;
+                break 'main;
             }
 
             let action = tui::handle_event(app, key_event);
 
             match action {
-                tui::Action::Quit => break,
+                tui::Action::Quit => break 'main,
 
                 tui::Action::Navigate(Screen::Form) => {
                     // Screen transition already happened inside handle_event.
