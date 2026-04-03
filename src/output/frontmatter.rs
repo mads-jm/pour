@@ -122,10 +122,14 @@ fn format_composite_row(sub_fields: &[SubFieldConfig], row: &[String], lines: &m
 }
 
 /// Format a single scalar value, quoting if necessary.
-fn format_scalar(value: &str) -> String {
+pub fn format_scalar(value: &str) -> String {
     if needs_quoting(value) {
-        // Escape any existing double-quotes inside the value.
-        let escaped = value.replace('"', "\\\"");
+        // Order matters: backslashes first, then double-quotes, then newlines.
+        let escaped = value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r");
         format!("\"{escaped}\"")
     } else {
         value.to_string()
@@ -133,16 +137,31 @@ fn format_scalar(value: &str) -> String {
 }
 
 /// Format a value for a `key: value` line.
-fn format_value(value: &str) -> String {
+pub fn format_value(value: &str) -> String {
     format_scalar(value)
 }
+
+/// YAML bare words that must be quoted to prevent type coercion.
+const YAML_RESERVED: &[&str] = &["true", "false", "null", "yes", "no", "on", "off"];
 
 /// Determine whether a YAML scalar needs quoting.
 fn needs_quoting(value: &str) -> bool {
     if value.is_empty() {
         return false;
     }
+    // Reserved bare words (case-insensitive).
+    if YAML_RESERVED.iter().any(|&w| value.eq_ignore_ascii_case(w)) {
+        return true;
+    }
+    // Numeric-looking strings would be parsed as numbers by a YAML parser.
+    if value.trim().parse::<f64>().is_ok() {
+        return true;
+    }
     if value.starts_with(YAML_SPECIAL_START) {
+        return true;
+    }
+    // Literal newlines or carriage returns require quoting.
+    if value.contains('\n') || value.contains('\r') {
         return true;
     }
     value.chars().any(|c| YAML_SPECIAL.contains(&c))

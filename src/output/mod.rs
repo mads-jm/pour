@@ -139,10 +139,16 @@ fn partition_fields<'a>(
                         .unwrap_or(FieldTarget::Frontmatter);
                     match target {
                         FieldTarget::Frontmatter => {
+                            // Emit to both frontmatter (YAML array for Dataview)
+                            // and body (markdown table for readability).
+                            let table = render_composite_table(subs, &non_empty);
+                            if !table.is_empty() {
+                                body_parts.push(table);
+                            }
                             fm_composites.push((field_cfg.name.clone(), subs, non_empty));
                         }
                         FieldTarget::Body => {
-                            // Render as markdown table for body target
+                            // Body-only: render as markdown table
                             let table = render_composite_table(subs, &non_empty);
                             if !table.is_empty() {
                                 body_parts.push(table);
@@ -154,9 +160,15 @@ fn partition_fields<'a>(
             continue;
         }
 
-        let value = match field_values.get(&field_cfg.name) {
+        let raw = match field_values.get(&field_cfg.name) {
             Some(v) => v.clone(),
             None => continue,
+        };
+
+        let value = if field_cfg.wikilink == Some(true) {
+            apply_wikilink(raw)
+        } else {
+            raw
         };
 
         let target = field_cfg.target.as_ref().cloned().unwrap_or_else(|| {
@@ -190,6 +202,31 @@ fn partition_fields<'a>(
     }
 
     (fm_fields, fm_composites, body_parts)
+}
+
+/// Wrap a value in Obsidian wikilink syntax: `[[value]]`.
+///
+/// Handles comma-separated values by wrapping each item individually,
+/// so `"Onyx, Stumptown"` becomes `"[[Onyx]], [[Stumptown]]"`.
+/// No-ops on items already wrapped (starts with `[[` and ends with `]]`).
+pub fn apply_wikilink(value: String) -> String {
+    if value.contains(", ") {
+        value
+            .split(", ")
+            .map(|item| wrap_single_wikilink(item))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        wrap_single_wikilink(&value)
+    }
+}
+
+fn wrap_single_wikilink(value: &str) -> String {
+    if value.starts_with("[[") && value.ends_with("]]") {
+        value.to_string()
+    } else {
+        format!("[[{value}]]")
+    }
 }
 
 /// Render composite rows as a markdown table.

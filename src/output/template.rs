@@ -50,7 +50,14 @@ pub fn render_path(
     // Normalize to forward slashes so the API transport receives a consistent
     // vault-relative path, and PathBuf::join on Windows can handle it cleanly
     // when the fs transport joins against a backslash-style base path.
-    now.format(&result).to_string().replace('\\', "/")
+    let expanded = now.format(&result).to_string().replace('\\', "/");
+
+    // Sanitize the filename portion (everything after the last `/`) to replace
+    // characters that are illegal on Windows filesystems. Directory components
+    // are left untouched — only the filename stem + extension are sanitized.
+    // This handles cases like {{time}} resolving to "19:30" which contains
+    // a colon, illegal on Windows.
+    sanitize_path_filename(&expanded)
 }
 
 /// Render an append-mode template by replacing `{{field}}` placeholders
@@ -103,12 +110,68 @@ pub fn render_append_template(
         }
     }
 
-    // Replace field placeholders.
+    // Replace field placeholders, applying wikilink wrapping if configured.
     for (key, value) in fields {
         let placeholder = format!("{{{{{key}}}}}");
-        result = result.replace(&placeholder, value);
+        let wrapped = if module
+            .fields
+            .iter()
+            .any(|f| f.name == *key && f.wikilink == Some(true))
+        {
+            super::apply_wikilink(value.clone())
+        } else {
+            value.clone()
+        };
+        result = result.replace(&placeholder, &wrapped);
     }
 
     // Evaluate any strftime specifiers (e.g. %H:%M, %Y-%m-%d) left in the template.
     now.format(&result).to_string()
+}
+
+/// Sanitize the filename portion of a vault-relative path.
+///
+/// Splits on the last `/`, sanitizes only the filename part by replacing
+/// characters illegal on Windows (`?`, `*`, `<`, `>`, `|`, `"`, `:`) with `-`,
+/// and collapses consecutive dashes. Directory components are preserved as-is.
+///
+/// Note: `\` and `/` are NOT replaced here — they are path separators, not
+/// part of the filename. The input should already be forward-slash normalized.
+fn sanitize_path_filename(path: &str) -> String {
+    match path.rfind('/') {
+        Some(pos) => {
+            let dir = &path[..=pos];
+            let filename = &path[pos + 1..];
+            format!("{dir}{}", sanitize_filename_chars(filename))
+        }
+        None => sanitize_filename_chars(path),
+    }
+}
+
+/// Replace filesystem-illegal characters in a filename with `-` and collapse
+/// consecutive dashes.
+fn sanitize_filename_chars(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| match c {
+            ':' | '?' | '*' | '<' | '>' | '|' | '"' => '-',
+            _ => c,
+        })
+        .collect();
+
+    // Collapse consecutive dashes
+    let mut result = String::with_capacity(sanitized.len());
+    let mut prev_dash = false;
+    for c in sanitized.chars() {
+        if c == '-' {
+            if !prev_dash {
+                result.push(c);
+            }
+            prev_dash = true;
+        } else {
+            result.push(c);
+            prev_dash = false;
+        }
+    }
+    result
 }
