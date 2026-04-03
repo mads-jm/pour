@@ -69,6 +69,21 @@ pub fn render(app: &App, frame: &mut Frame) {
         ),
     ]));
 
+    // Auto-created notes section
+    if !summary.auto_created_notes.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  auto-created notes:",
+            Style::default().fg(Color::DarkGray),
+        )));
+        for note in &summary.auto_created_notes {
+            lines.push(Line::from(vec![
+                Span::styled("    + ", Style::default().fg(Color::Green)),
+                Span::styled(note.vault_path.clone(), Style::default().fg(Color::Cyan)),
+            ]));
+        }
+    }
+
     let body = Paragraph::new(lines).wrap(Wrap { trim: false });
     frame.render_widget(body, chunks[1]);
 
@@ -78,6 +93,8 @@ pub fn render(app: &App, frame: &mut Frame) {
         Span::raw(" dashboard  "),
         Span::styled("a", Style::default().fg(Color::Yellow)),
         Span::raw(" another entry  "),
+        Span::styled("o", Style::default().fg(Color::Yellow)),
+        Span::raw(" open  "),
         Span::styled("q", Style::default().fg(Color::Yellow)),
         Span::raw(" quit"),
     ]))
@@ -92,6 +109,7 @@ pub enum SummaryAction {
     Quit,
     Dashboard,
     AnotherEntry,
+    OpenInObsidian,
 }
 
 /// Handle a key event while on the summary screen.
@@ -101,6 +119,7 @@ pub fn handle_key(key: crossterm::event::KeyEvent) -> SummaryAction {
     match key.code {
         KeyCode::Enter => SummaryAction::Dashboard,
         KeyCode::Char('a') => SummaryAction::AnotherEntry,
+        KeyCode::Char('o') => SummaryAction::OpenInObsidian,
         KeyCode::Char('q') => SummaryAction::Quit,
         _ => SummaryAction::None,
     }

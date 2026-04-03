@@ -230,8 +230,31 @@ async fn run_loop(
                 }
 
                 tui::Action::RefreshTransport => {
-                    app.transport =
-                        pour::transport::Transport::connect(&app.config).await;
+                    app.transport = pour::transport::Transport::connect(&app.config).await;
+                }
+
+                tui::Action::CreateFromTemplate {
+                    field_name,
+                    template_name,
+                    note_name,
+                    field_values,
+                } => {
+                    handle_create_from_template(
+                        app,
+                        cache,
+                        &field_name,
+                        &template_name,
+                        &note_name,
+                        &field_values,
+                    )
+                    .await;
+                }
+
+                tui::Action::OpenInObsidian(file_path) => {
+                    let uri = obsidian_uri(&app.config.vault.base_path, file_path.as_deref());
+                    if let Err(e) = open::that(&uri) {
+                        eprintln!("pour: failed to open Obsidian: {e}");
+                    }
                 }
 
                 tui::Action::None => {}
@@ -1180,5 +1203,25 @@ async fn fetch_dynamic_options(app: &mut App, module_key: &str, cache: &mut Cach
         if let Some(ref mut fs) = app.form_state {
             fs.field_options.insert(field_name, options);
         }
+    }
+}
+
+/// Build an `obsidian://open` URI for the given vault and optional file path.
+fn obsidian_uri(vault_base_path: &str, file_path: Option<&str>) -> String {
+    use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+
+    let vault_name = std::path::Path::new(vault_base_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("vault");
+    let encoded_vault = utf8_percent_encode(vault_name, NON_ALPHANUMERIC);
+
+    match file_path {
+        Some(path) => {
+            let clean = path.strip_suffix(".md").unwrap_or(path);
+            let encoded_path = utf8_percent_encode(clean, NON_ALPHANUMERIC);
+            format!("obsidian://open?vault={encoded_vault}&file={encoded_path}")
+        }
+        None => format!("obsidian://open?vault={encoded_vault}"),
     }
 }

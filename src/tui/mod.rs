@@ -92,6 +92,15 @@ pub enum Action {
     RemoveSubField(usize, usize),
     /// Swap two sub-fields at (field_index, a, b).
     ReorderSubFields(usize, usize, usize),
+    /// Open in Obsidian. Carries optional vault-relative file path.
+    OpenInObsidian(Option<String>),
+    /// Create a note from the sub-form template overlay.
+    CreateFromTemplate {
+        field_name: String,
+        template_name: String,
+        note_name: String,
+        field_values: std::collections::HashMap<String, String>,
+    },
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -137,6 +146,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             dashboard::DashboardAction::ReorderModule(dir) => Action::ReorderModules(dir),
             dashboard::DashboardAction::NewModule => Action::NewModule,
             dashboard::DashboardAction::RefreshTransport => Action::RefreshTransport,
+            dashboard::DashboardAction::OpenInObsidian => Action::OpenInObsidian(None),
             dashboard::DashboardAction::None => Action::None,
         },
 
@@ -147,6 +157,17 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 Action::Navigate(Screen::Dashboard)
             }
             form::FormAction::Submit => Action::Submit,
+            form::FormAction::CreateFromTemplate {
+                field_name,
+                template_name,
+                note_name,
+                field_values,
+            } => Action::CreateFromTemplate {
+                field_name,
+                template_name,
+                note_name,
+                field_values,
+            },
             form::FormAction::None => Action::None,
         },
 
@@ -165,6 +186,13 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 }
                 app.summary_state = None;
                 Action::Navigate(Screen::Form)
+            }
+            summary::SummaryAction::OpenInObsidian => {
+                let file_path = app
+                    .summary_state
+                    .as_ref()
+                    .and_then(|s| s.file_path.clone());
+                Action::OpenInObsidian(file_path)
             }
             summary::SummaryAction::None => Action::None,
         },
