@@ -1,5 +1,5 @@
 use pour::config::Config;
-use pour::config::{FieldTarget, FieldType, SubFieldType, WriteMode};
+use pour::config::{FieldTarget, FieldType, SubFieldType, TemplateFieldType, WriteMode};
 
 /// A representative config string that exercises every struct and enum variant.
 const SAMPLE_TOML: &str = r#####"
@@ -735,6 +735,93 @@ callout = "warning"
     assert_eq!(field.callout.as_deref(), Some("warning"));
 }
 
+// --- allow_create tests ---
+
+#[test]
+fn allow_create_on_dynamic_select_is_valid() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Select bean"
+source = "Coffee/Beans"
+allow_create = true
+"####;
+    let config =
+        Config::from_toml(toml_str).expect("allow_create on dynamic_select should be valid");
+    let field = &config.modules["test"].fields[0];
+    assert_eq!(field.allow_create, Some(true));
+}
+
+#[test]
+fn allow_create_on_text_field_fails_validation() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+allow_create = true
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("allow_create is only valid on dynamic_select"),
+        "expected allow_create type restriction error, got: {msg}"
+    );
+}
+
+#[test]
+fn allow_create_false_on_non_dynamic_select_fails_validation() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+allow_create = false
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("allow_create is only valid on dynamic_select"),
+        "expected allow_create type restriction error, got: {msg}"
+    );
+}
+
+#[test]
+fn allow_create_absent_defaults_to_none() {
+    // Backward compat: existing configs without allow_create must parse identically.
+    let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should parse");
+    let bean = &config.modules["coffee"].fields[1];
+    assert_eq!(bean.field_type, FieldType::DynamicSelect);
+    assert_eq!(
+        bean.allow_create, None,
+        "allow_create should default to None"
+    );
+}
+
 #[test]
 fn callout_fields_default_to_none() {
     let config = Config::from_toml(SAMPLE_TOML).unwrap();
@@ -747,4 +834,346 @@ fn callout_fields_default_to_none() {
         me.fields[0].callout.is_none(),
         "field callout should default to None"
     );
+}
+
+// --- Template tests ---
+
+/// Helper: build a minimal valid config with a template section appended.
+fn config_with_template(template_toml: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "Test/{{{{title}}}}.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+
+{template_toml}
+"#
+    )
+}
+
+#[test]
+fn config_with_templates_parses() {
+    let toml = config_with_template(
+        r#"
+[templates.bean_template]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bean_template.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin country"
+
+[[templates.bean_template.fields]]
+name = "roast"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Medium", "Dark"]
+"#,
+    );
+    let config = Config::from_toml(&toml).unwrap();
+    let templates = config.templates.as_ref().expect("templates should be Some");
+    let bean = &templates["bean_template"];
+    assert_eq!(bean.fields.len(), 2);
+    assert_eq!(bean.path, "Coffee/Beans/{{name}}.md");
+    assert_eq!(bean.fields[0].field_type, TemplateFieldType::Text);
+    assert_eq!(bean.fields[1].field_type, TemplateFieldType::StaticSelect);
+}
+
+#[test]
+fn config_without_templates_parses() {
+    let config = Config::from_toml(SAMPLE_TOML).unwrap();
+    assert!(config.templates.is_none());
+}
+
+#[test]
+fn template_path_without_name_placeholder_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/Beans/test.md"
+
+[[templates.bad.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("path must contain"),
+        "expected path placeholder error, got: {err}"
+    );
+}
+
+#[test]
+fn template_path_with_traversal_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/../Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains(".."),
+        "expected path traversal error, got: {err}"
+    );
+}
+
+#[test]
+fn template_with_no_fields_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/Beans/{{name}}.md"
+fields = []
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("must have at least one field"),
+        "expected empty fields error, got: {err}"
+    );
+}
+
+#[test]
+fn template_with_duplicate_field_names_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin"
+
+[[templates.bad.fields]]
+name = "origin"
+field_type = "number"
+prompt = "Origin again"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("duplicate field name"),
+        "expected duplicate field error, got: {err}"
+    );
+}
+
+#[test]
+fn template_static_select_without_options_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "roast"
+field_type = "static_select"
+prompt = "Roast level"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("static_select requires"),
+        "expected missing options error, got: {err}"
+    );
+}
+
+#[test]
+fn template_static_select_with_empty_options_fails() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "roast"
+field_type = "static_select"
+prompt = "Roast level"
+options = []
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("must not be empty"),
+        "expected empty options error, got: {err}"
+    );
+}
+
+// --- create_template cross-reference validation tests ---
+
+/// Helper: config with a dynamic_select field and optionally a template section.
+fn config_with_create_template(field_extra: &str, template_section: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "Test/test.md"
+
+[[modules.test.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+{field_extra}
+
+{template_section}
+"#
+    )
+}
+
+const VALID_TEMPLATE: &str = r#"
+[templates.bean_template]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bean_template.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin"
+"#;
+
+#[test]
+fn create_template_on_non_dynamic_select_fails() {
+    let toml = format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "Test/test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+allow_create = true
+create_template = "bean_template"
+
+{VALID_TEMPLATE}
+"#
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("create_template is only valid on dynamic_select"),
+        "expected field type error, got: {err}"
+    );
+}
+
+#[test]
+fn create_template_without_allow_create_fails() {
+    let toml =
+        config_with_create_template(r#"create_template = "bean_template""#, VALID_TEMPLATE);
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("create_template requires allow_create = true"),
+        "expected allow_create requirement error, got: {err}"
+    );
+}
+
+#[test]
+fn create_template_referencing_nonexistent_template_fails() {
+    let toml = config_with_create_template(
+        r#"allow_create = true
+create_template = "nonexistent""#,
+        VALID_TEMPLATE,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("create_template references unknown template 'nonexistent'"),
+        "expected unknown template error, got: {err}"
+    );
+}
+
+#[test]
+fn post_create_command_without_create_template_fails() {
+    let toml = config_with_create_template(
+        r#"allow_create = true
+post_create_command = "templater:run""#,
+        VALID_TEMPLATE,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("post_create_command requires create_template to be set"),
+        "expected post_create_command error, got: {err}"
+    );
+}
+
+#[test]
+fn valid_create_template_with_allow_create_and_existing_template_passes() {
+    let toml = config_with_create_template(
+        r#"allow_create = true
+create_template = "bean_template""#,
+        VALID_TEMPLATE,
+    );
+    Config::from_toml(&toml).expect("valid create_template config should pass");
+}
+
+#[test]
+fn template_field_named_date_is_rejected() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "date"
+field_type = "text"
+prompt = "Date"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("'date' is reserved"),
+        "expected reserved field name error, got: {err}"
+    );
+}
+
+#[test]
+fn template_field_named_name_is_rejected() {
+    let toml = config_with_template(
+        r#"
+[templates.bad]
+path = "Beans/{{name}}.md"
+
+[[templates.bad.fields]]
+name = "name"
+field_type = "text"
+prompt = "Name"
+"#,
+    );
+    let err = Config::from_toml(&toml).unwrap_err().to_string();
+    assert!(
+        err.contains("'name' is reserved"),
+        "expected reserved field name error, got: {err}"
+    );
+}
+
+#[test]
+fn valid_create_template_with_post_create_command_passes() {
+    let toml = config_with_create_template(
+        r#"allow_create = true
+create_template = "bean_template"
+post_create_command = "templater:run""#,
+        VALID_TEMPLATE,
+    );
+    Config::from_toml(&toml).expect("valid create_template + post_create_command should pass");
 }

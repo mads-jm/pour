@@ -1,4 +1,6 @@
-use crate::config::{Config, FieldType, ModuleConfig, SubFieldType, WriteMode};
+use crate::config::{
+    Config, FieldType, ModuleConfig, SubFieldType, TemplateConfig, TemplateFieldType, WriteMode,
+};
 use crate::data::history::History;
 use crate::transport::{Transport, TransportMode, VaultEntry};
 use std::collections::HashMap;
@@ -40,6 +42,76 @@ pub struct FormState {
     pub composite_row: usize,
     /// Currently selected column in the composite overlay.
     pub composite_col: usize,
+    /// Typed search/filter text for `dynamic_select` fields with `allow_create = true`.
+    /// Keyed by field name. Non-empty means the user is filtering or typing a novel value.
+    pub search_buffers: HashMap<String, String>,
+    /// Active sub-form overlay for template-driven inline note creation.
+    pub sub_form: Option<SubFormState>,
+}
+
+/// State for the template-driven sub-form overlay.
+///
+/// When a user enters a novel value on a `dynamic_select` field with
+/// `create_template` configured, a sub-form opens to collect template fields
+/// before creating the note.
+#[derive(Debug)]
+pub struct SubFormState {
+    /// Name of the template being used (key in `config.templates`).
+    pub template_name: String,
+    /// The raw value the user typed that triggered creation.
+    pub note_name: String,
+    /// Current values for each template field, keyed by field name.
+    pub field_values: HashMap<String, String>,
+    /// Available options for `static_select` template fields, keyed by field name.
+    pub field_options: HashMap<String, Vec<String>>,
+    /// Index of the currently active template field.
+    pub active_field: usize,
+    /// Cursor position within the active text/number input.
+    pub cursor_position: usize,
+    /// Whether the dropdown for the current `static_select` field is open.
+    pub dropdown_open: bool,
+    /// Name of the parent field that triggered this sub-form.
+    pub parent_field_name: String,
+}
+
+impl SubFormState {
+    /// Create a new sub-form state from a template definition.
+    ///
+    /// Pre-fills `field_values` with defaults and populates `field_options`
+    /// for `StaticSelect` fields.
+    pub fn new(
+        template_name: String,
+        note_name: String,
+        parent_field_name: String,
+        template: &TemplateConfig,
+    ) -> Self {
+        let mut field_values = HashMap::new();
+        let mut field_options = HashMap::new();
+
+        for field in &template.fields {
+            field_values.insert(
+                field.name.clone(),
+                field.default.clone().unwrap_or_default(),
+            );
+
+            if field.field_type == TemplateFieldType::StaticSelect {
+                if let Some(opts) = &field.options {
+                    field_options.insert(field.name.clone(), opts.clone());
+                }
+            }
+        }
+
+        Self {
+            template_name,
+            note_name,
+            field_values,
+            field_options,
+            active_field: 0,
+            cursor_position: 0,
+            dropdown_open: false,
+            parent_field_name,
+        }
+    }
 }
 
 /// State for the post-write summary screen.
@@ -51,6 +123,8 @@ pub struct SummaryState {
     pub file_path: Option<String>,
     /// Which transport backend was used for the write.
     pub transport_mode: TransportMode,
+    /// Notes that were auto-created for novel dynamic_select values.
+    pub auto_created_notes: Vec<crate::autocreate::AutoCreatedNote>,
 }
 
 /// Which level of the configure screen is active.
@@ -300,6 +374,8 @@ impl App {
             composite_open: false,
             composite_row: 0,
             composite_col: 0,
+            search_buffers: HashMap::new(),
+            sub_form: None,
         })
     }
 

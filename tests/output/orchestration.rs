@@ -4,6 +4,64 @@ use pour::transport::Transport;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
+/// Build a Config with a create-mode module containing a wikilink field.
+fn wikilink_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.brew]
+mode = "create"
+path = "Brew/note.md"
+display_name = "Brew"
+
+[[modules.brew.fields]]
+name = "roaster"
+field_type = "static_select"
+prompt = "Roaster"
+options = ["Onyx", "Stumptown"]
+wikilink = true
+
+[[modules.brew.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Origin"
+wikilink = false
+
+[[modules.brew.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+target = "body"
+wikilink = true
+"####
+    );
+    Config::from_toml(&toml).expect("test wikilink config should parse")
+}
+
+/// Build a Config with a create-mode module for testing pre-wrapped values.
+fn wikilink_prewrapped_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.brew]
+mode = "create"
+path = "Brew/note.md"
+display_name = "Brew"
+
+[[modules.brew.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster"
+wikilink = true
+"####
+    );
+    Config::from_toml(&toml).expect("test pre-wrapped config should parse")
+}
+
 /// Build a Config with a create-mode coffee module pointing at a temp vault.
 fn create_config(base_path: &str) -> Config {
     let toml = format!(
@@ -97,8 +155,8 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
         "should have brew_method in frontmatter"
     );
     assert!(
-        content.contains("rating: 4"),
-        "should have rating in frontmatter"
+        content.contains("rating: \"4\""),
+        "should have rating in frontmatter (quoted numeric)"
     );
     assert!(content.contains("date:"), "should have auto-injected date");
 
@@ -185,6 +243,161 @@ async fn write_append_rejects_create_module() {
     assert!(
         result.unwrap_err().to_string().contains("non-append"),
         "error should mention non-append"
+    );
+}
+
+#[tokio::test]
+async fn wikilink_true_wraps_frontmatter_value() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = wikilink_config(&base);
+    let module = &config.modules["brew"];
+
+    std::fs::create_dir_all(tmp.path().join("Brew")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("roaster".to_string(), "Onyx".to_string());
+    fields.insert("origin".to_string(), "Ethiopia".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
+
+    assert!(
+        content.contains(r#"roaster: "[[Onyx]]""#),
+        "wikilink=true field should be wrapped and quoted, got: {content}"
+    );
+    assert!(
+        content.contains("origin: Ethiopia"),
+        "wikilink=false field should be plain, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn wikilink_true_wraps_body_value() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = wikilink_config(&base);
+    let module = &config.modules["brew"];
+
+    std::fs::create_dir_all(tmp.path().join("Brew")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("roaster".to_string(), "Onyx".to_string());
+    fields.insert("notes".to_string(), "Very bright.".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
+
+    let parts: Vec<&str> = content.splitn(3, "---\n").collect();
+    let body = parts.get(2).copied().unwrap_or("");
+    assert!(
+        body.contains("[[Very bright.]]"),
+        "wikilink=true textarea body should be wrapped, got body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn wikilink_no_double_wrap() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = wikilink_prewrapped_config(&base);
+    let module = &config.modules["brew"];
+
+    std::fs::create_dir_all(tmp.path().join("Brew")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    // Value is already wrapped
+    fields.insert("roaster".to_string(), "[[Onyx]]".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
+
+    // Should appear exactly once, not as [[[[Onyx]]]]
+    assert!(
+        content.contains(r#"roaster: "[[Onyx]]""#),
+        "pre-wrapped value should not be double-wrapped, got: {content}"
+    );
+    assert!(
+        !content.contains("[[[["),
+        "should not double-wrap, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn wikilink_default_false_no_behavior_change() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    // The existing create_config has no wikilink field — default behavior
+    let config = create_config(&base);
+    let module = &config.modules["coffee"];
+
+    std::fs::create_dir_all(tmp.path().join("Coffee")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("brew_method".to_string(), "V60".to_string());
+    fields.insert("rating".to_string(), "4".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Coffee/note.md")).unwrap();
+
+    assert!(
+        content.contains("brew_method: V60"),
+        "without wikilink, value should be plain, got: {content}"
+    );
+    assert!(
+        !content.contains("[["),
+        "without wikilink, no brackets should appear, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn wikilink_wraps_each_comma_separated_item() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = wikilink_config(&base);
+    let module = &config.modules["brew"];
+
+    std::fs::create_dir_all(tmp.path().join("Brew")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("roaster".to_string(), "Onyx, Stumptown".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
+
+    // Each item should be individually wrapped, producing a YAML list
+    assert!(
+        content.contains("[[Onyx]]") && content.contains("[[Stumptown]]"),
+        "comma-separated values should each be wrapped individually, got: {content}"
+    );
+    assert!(
+        !content.contains("[[Onyx, Stumptown]]"),
+        "should not wrap the entire comma-separated string as one wikilink, got: {content}"
     );
 }
 

@@ -471,6 +471,10 @@ fn add_field_appends_to_module() {
         target: None,
         sub_fields: None,
         callout: None,
+        allow_create: None,
+        wikilink: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -506,6 +510,10 @@ fn add_field_to_nonexistent_module_errors() {
         target: None,
         sub_fields: None,
         callout: None,
+        allow_create: None,
+        wikilink: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -579,6 +587,10 @@ fn add_field_preserves_comments() {
         target: None,
         sub_fields: None,
         callout: None,
+        allow_create: None,
+        wikilink: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -613,6 +625,10 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             target: None,
             sub_fields: None,
             callout: None,
+            allow_create: None,
+            wikilink: None,
+            create_template: None,
+            post_create_command: None,
         }],
     }
 }

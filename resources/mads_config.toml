@@ -79,6 +79,10 @@ field_type = "dynamic_select"
 prompt = "Bean"
 source = "02 - Areas/204 - Cooking/Coffee/Beans"
 target = "frontmatter"
+wikilink = true
+allow_create = true
+create_template = "bean"
+post_create_command = "templater:run"
 
 [[modules.coffee.fields]]
 name = "dose_g"
@@ -124,4 +128,46 @@ name = "notes"
 field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
+
+# ─── Templates ───────────────────────────────────────────────────────────────
+# Templates define the note structure created when a user adds a new entry via
+# a dynamic_select field with `allow_create = true`. The `path` is relative to
+# the vault base_path and supports {{name}} as the value the user typed.
+# Fields are prompted in order before the note is written.
+
+[templates.bean]
+# {{name}} is replaced with the value the user typed into the dynamic_select.
+path = "02 - Areas/204 - Cooking/Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster"
+# wikilink wrapping happens on the parent field (bean), not template fields
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen", "Blend"]
+
+[[templates.bean.fields]]
+name = "process"
+field_type = "static_select"
+prompt = "Process"
+options = ["Washed", "Natural", "Honey", "Anaerobic", "Wet Hulled"]
+default = "Washed"
+
+[[templates.bean.fields]]
+name = "roast_level"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Light-Medium", "Medium", "Medium-Dark", "Dark"]
+default = "Light"
+
+[[templates.bean.fields]]
+name = "bag_weight_g"
+field_type = "number"
+prompt = "Bag weight (g)"
+default = "250"
 

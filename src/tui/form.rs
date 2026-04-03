@@ -6,8 +6,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, FormState};
-use crate::config::{FieldConfig, FieldType, SubFieldType};
+use crate::app::{App, FormState, SubFormState};
+use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 
 /// Render the form view for the currently selected module.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -80,6 +80,15 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
+
+    // Sub-form overlay renders LAST so it paints over footer and fields
+    if let Some(sub_form) = &form_state.sub_form {
+        if let Some(templates) = &app.config.templates {
+            if let Some(template) = templates.get(&sub_form.template_name) {
+                render_sub_form(frame, area, sub_form, template);
+            }
+        }
+    }
 }
 
 /// Render the vertical list of form fields plus a submit button row.
@@ -105,9 +114,25 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                 Style::default().fg(Color::DarkGray)
             };
 
+            // Track whether this field is in active search/filter mode.
+            let field_search_active = is_active
+                && field.field_type == FieldType::DynamicSelect
+                && field.allow_create.unwrap_or(false)
+                && form_state
+                    .search_buffers
+                    .get(&field.name)
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
+
             let value_display = match &field.field_type {
                 FieldType::StaticSelect | FieldType::DynamicSelect => {
-                    let label = if value.is_empty() {
+                    let display_text = if field_search_active {
+                        form_state
+                            .search_buffers
+                            .get(&field.name)
+                            .cloned()
+                            .unwrap_or_default()
+                    } else if value.is_empty() {
                         "<select>".to_string()
                     } else {
                         value.to_string()
@@ -115,12 +140,12 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                     // Show open/closed chevron when the field is active
                     if is_active {
                         if form_state.dropdown_open {
-                            format!("{label} [^]")
+                            format!("{display_text} [^]")
                         } else {
-                            format!("{label} [v]")
+                            format!("{display_text} [v]")
                         }
                     } else {
-                        label
+                        display_text
                     }
                 }
                 FieldType::Textarea => {
@@ -187,20 +212,24 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
             let indicator = if is_active { "▸" } else { " " };
 
+            // Search-mode gets a distinct style so the user knows they're filtering.
+            let value_style = if field_search_active {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::ITALIC)
+            } else if is_active {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+
             let line = Line::from(vec![
                 Span::styled(format!("{indicator} "), prompt_style),
                 Span::styled(
                     format!("{}{}: ", field.prompt, required_marker),
                     prompt_style,
                 ),
-                Span::styled(
-                    value_display,
-                    if is_active {
-                        Style::default().fg(Color::White)
-                    } else {
-                        Style::default().fg(Color::Gray)
-                    },
-                ),
+                Span::styled(value_display, value_style),
             ]);
 
             ListItem::new(line)
@@ -249,7 +278,18 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
             FieldType::StaticSelect | FieldType::DynamicSelect
         )
     {
-        render_select_options(frame, area, field, form_state);
+        let search = if field.field_type == FieldType::DynamicSelect
+            && field.allow_create.unwrap_or(false)
+        {
+            form_state
+                .search_buffers
+                .get(&field.name)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        render_select_options(frame, area, field, form_state, &search);
     }
 
     // If active field is a textarea AND the editor is open, render the text editor overlay
@@ -270,15 +310,33 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 }
 
 /// Render a scrollable options list for select fields.
+///
+/// `search` is the current search buffer text. When non-empty, only options
+/// matching the search (case-insensitive substring) are shown. An empty
+/// `search` means show all options (the standard closed-list behaviour).
 fn render_select_options(
     frame: &mut Frame,
     area: Rect,
     field: &FieldConfig,
     form_state: &FormState,
+    search: &str,
 ) {
-    let options = match form_state.field_options.get(&field.name) {
+    let all_options = match form_state.field_options.get(&field.name) {
         Some(opts) if !opts.is_empty() => opts,
         _ => return,
+    };
+
+    // Apply search filter when the buffer is non-empty.
+    let filtered: Vec<&String>;
+    let options: &[&String] = if search.is_empty() {
+        filtered = all_options.iter().collect();
+        &filtered
+    } else {
+        filtered = all_options
+            .iter()
+            .filter(|o| o.to_lowercase().contains(&search.to_lowercase()))
+            .collect();
+        &filtered
     };
 
     let current_value = form_state
@@ -287,8 +345,46 @@ fn render_select_options(
         .map(|s| s.as_str())
         .unwrap_or("");
 
-    // Position the options list below the active field row
+    // Position the options list below the active field row.
     let y_offset = (form_state.active_field as u16).min(area.height.saturating_sub(1));
+
+    // When searching and no options match, show a "+ Create" affordance hint.
+    if options.is_empty() {
+        let hint_area = Rect {
+            x: area.x + 4,
+            y: area.y + y_offset + 1,
+            width: area.width.saturating_sub(8).min(40),
+            height: 3,
+        };
+        if hint_area.y + hint_area.height > area.y + area.height {
+            return;
+        }
+        let create_line = Line::from(vec![
+            Span::styled(
+                "  + ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Create ", Style::default().fg(Color::Green)),
+            Span::styled(
+                format!("\"{search}\""),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]);
+        let hint = Paragraph::new(create_line).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" New ")
+                .border_style(Style::default().fg(Color::Green)),
+        );
+        frame.render_widget(Clear, hint_area);
+        frame.render_widget(hint, hint_area);
+        return;
+    }
+
     let options_area = Rect {
         x: area.x + 4,
         y: area.y + y_offset + 1,
@@ -303,8 +399,8 @@ fn render_select_options(
     let items: Vec<ListItem> = options
         .iter()
         .map(|opt| {
-            let is_selected = opt == current_value;
-            let style = if is_selected {
+            let is_selected = opt.as_str() == current_value;
+            let base_style = if is_selected {
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD)
@@ -312,7 +408,56 @@ fn render_select_options(
                 Style::default().fg(Color::White)
             };
             let marker = if is_selected { "▸ " } else { "  " };
-            ListItem::new(Line::from(Span::styled(format!("{marker}{opt}"), style)))
+
+            // When filtering, highlight the matched portion within the option text.
+            // We use char-level comparison to find the match position in the original
+            // string, avoiding byte-index misalignment from case folding.
+            if !search.is_empty() {
+                let search_chars: Vec<char> =
+                    search.chars().flat_map(|c| c.to_lowercase()).collect();
+                let match_pos = opt
+                    .char_indices()
+                    .enumerate()
+                    .find_map(|(_, (byte_idx, _))| {
+                        let remaining = &opt[byte_idx..];
+                        let mut opt_chars = remaining.chars();
+                        let mut matched_bytes = 0usize;
+                        for &sc in &search_chars {
+                            match opt_chars.next() {
+                                Some(oc) if oc.to_lowercase().next() == Some(sc) => {
+                                    matched_bytes += oc.len_utf8();
+                                }
+                                _ => return None,
+                            }
+                        }
+                        Some((byte_idx, matched_bytes))
+                    });
+                if let Some((match_start, match_len)) = match_pos {
+                    let before = &opt[..match_start];
+                    let matched = &opt[match_start..match_start + match_len];
+                    let after = &opt[match_start + match_len..];
+                    let highlight_style = if is_selected {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    } else {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    };
+                    let line = Line::from(vec![
+                        Span::styled(format!("{marker}{before}"), base_style),
+                        Span::styled(matched, highlight_style),
+                        Span::styled(after, base_style),
+                    ]);
+                    return ListItem::new(line);
+                }
+            }
+
+            ListItem::new(Line::from(Span::styled(
+                format!("{marker}{opt}"),
+                base_style,
+            )))
         })
         .collect();
 
@@ -331,7 +476,10 @@ fn render_select_options(
         width: options_area.width.saturating_sub(2),
         height: options_area.height.saturating_sub(2),
     };
-    let selected_idx = options.iter().position(|o| o == current_value).unwrap_or(0);
+    let selected_idx = options
+        .iter()
+        .position(|o| o.as_str() == current_value)
+        .unwrap_or(0);
     let scroll = selected_idx.saturating_sub(inner.height as usize - 1);
     super::render_overflow_hints(frame, inner, options.len(), scroll);
 }
@@ -594,6 +742,173 @@ fn render_composite_editor(
     frame.render_widget(editor, editor_area);
 }
 
+/// Render a centered modal overlay for template-driven inline note creation.
+///
+/// Shows the template fields with the same visual style as the main form.
+/// A `[ create ]` button at the bottom submits the sub-form.
+fn render_sub_form(
+    frame: &mut Frame,
+    area: Rect,
+    sub_form: &SubFormState,
+    template: &crate::config::TemplateConfig,
+) {
+    // Graceful degradation: skip if terminal is too small
+    if area.height < 10 || area.width < 30 {
+        return;
+    }
+
+    // Centered modal: 60% width, height to fit fields + chrome
+    let field_count = template.fields.len();
+    let modal_height = (field_count as u16 + 5).min(area.height.saturating_sub(4)); // fields + title + button + hints + borders
+    let modal_width = (area.width * 3 / 5).max(30).min(area.width.saturating_sub(4));
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Clear background and draw bordered box
+    frame.render_widget(Clear, modal_area);
+
+    let title = format!(" New: {} ", sub_form.note_name);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, modal_area);
+
+    // Inner area (inside borders)
+    let inner = Rect::new(
+        modal_area.x + 1,
+        modal_area.y + 1,
+        modal_area.width.saturating_sub(2),
+        modal_area.height.saturating_sub(2),
+    );
+
+    // Render each template field
+    let on_submit_button = sub_form.active_field == field_count;
+    for (i, tfield) in template.fields.iter().enumerate() {
+        let row_y = inner.y + i as u16;
+        if row_y >= inner.y + inner.height.saturating_sub(2) {
+            break; // leave room for button + hints
+        }
+
+        let is_active = i == sub_form.active_field;
+        let value = sub_form
+            .field_values
+            .get(&tfield.name)
+            .map(|s| s.as_str())
+            .unwrap_or("");
+
+        // Prompt label
+        let label_width = 14u16;
+        let label_area = Rect::new(inner.x, row_y, label_width.min(inner.width), 1);
+        let label_style = if is_active {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let indicator = if is_active { "▸ " } else { "  " };
+        let label_text = format!("{indicator}{}", tfield.prompt);
+        let label = Paragraph::new(Line::from(Span::styled(
+            if label_text.chars().count() > label_width as usize {
+                let truncated: String = label_text
+                    .chars()
+                    .take(label_width as usize - 1)
+                    .collect();
+                format!("{truncated}…")
+            } else {
+                // Pad with spaces to fill label_width (char-aware)
+                let char_count = label_text.chars().count();
+                let padding = label_width as usize - char_count;
+                format!("{label_text}{}", " ".repeat(padding))
+            },
+            label_style,
+        )));
+        frame.render_widget(label, label_area);
+
+        // Value
+        let value_x = inner.x + label_width;
+        let value_width = inner.width.saturating_sub(label_width);
+        let value_area = Rect::new(value_x, row_y, value_width, 1);
+
+        let (display_val, value_style) =
+            if tfield.field_type == TemplateFieldType::StaticSelect {
+                let inner_val = if value.is_empty() { "select" } else { value };
+                let text = if is_active {
+                    format!("◂ {inner_val} ▸")
+                } else {
+                    inner_val.to_string()
+                };
+                let style = if is_active {
+                    Style::default().fg(Color::White)
+                } else if value.is_empty() {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+                (text, style)
+            } else {
+                let text = if value.is_empty() {
+                    "…".to_string()
+                } else {
+                    value.to_string()
+                };
+                let style = if is_active {
+                    Style::default().fg(Color::White)
+                } else if value.is_empty() {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+                (text, style)
+            };
+        let val_widget = Paragraph::new(Line::from(Span::styled(display_val, value_style)));
+        frame.render_widget(val_widget, value_area);
+
+        // Place cursor for active text/number fields
+        if is_active && tfield.field_type != TemplateFieldType::StaticSelect {
+            let cx = value_x + sub_form.cursor_position as u16;
+            if cx < value_x + value_width {
+                frame.set_cursor_position(Position::new(cx, row_y));
+            }
+        }
+    }
+
+    // Submit button row
+    let button_y = inner.y + inner.height.saturating_sub(2);
+    if button_y > inner.y {
+        let button_area = Rect::new(inner.x, button_y, inner.width, 1);
+        let button_style = if on_submit_button {
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let button = Paragraph::new(Line::from(Span::styled("  [ create ]", button_style)));
+        frame.render_widget(button, button_area);
+    }
+
+    // Hint line
+    let hint_y = inner.y + inner.height.saturating_sub(1);
+    if hint_y > inner.y {
+        let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
+        let hint = Paragraph::new(Line::from(vec![
+            Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
+            Span::raw(" navigate  "),
+            Span::styled("←→", Style::default().fg(Color::Yellow)),
+            Span::raw(" select  "),
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" submit  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" cancel"),
+        ]));
+        frame.render_widget(hint, hint_area);
+    }
+
+}
+
 /// Handle a key event while in Form view.
 ///
 /// Returns a `FormAction` signalling what the wiring layer should do next.
@@ -633,6 +948,15 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     let is_composite = active_field
         .map(|f| f.field_type == FieldType::CompositeArray)
         .unwrap_or(false);
+    // True only for dynamic_select fields that explicitly opt in to freetext creation.
+    let is_dynamic_allow_create = active_field
+        .map(|f| f.field_type == FieldType::DynamicSelect && f.allow_create.unwrap_or(false))
+        .unwrap_or(false);
+
+    // Sub-form overlay takes priority over all other overlays
+    if form_state.sub_form.is_some() {
+        return handle_sub_form_key(form_state, &app.config, key);
+    }
 
     // Composite overlay has its own key handling
     if is_composite && form_state.composite_open {
@@ -645,6 +969,20 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         //   2. current field has content → clear it
         //   3. field already empty → cancel form (back to dashboard)
         KeyCode::Esc => {
+            // If the search buffer has content, clear it first (without closing dropdown).
+            if is_dynamic_allow_create
+                && let Some(field) = active_field
+                && form_state
+                    .search_buffers
+                    .get(&field.name)
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false)
+            {
+                form_state
+                    .search_buffers
+                    .insert(field.name.clone(), String::new());
+                return FormAction::None;
+            }
             if form_state.dropdown_open {
                 form_state.dropdown_open = false;
                 FormAction::None
@@ -674,6 +1012,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
         // Tab: always move forward one field, close overlays
         KeyCode::Tab => {
+            if let Some(field) = active_field {
+                form_state.search_buffers.remove(&field.name);
+            }
             form_state.dropdown_open = false;
             form_state.textarea_open = false;
             form_state.textarea_scroll_offset = 0;
@@ -685,6 +1026,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
         // Shift+Tab: always move backward one field, close overlays
         KeyCode::BackTab => {
+            if let Some(field) = active_field {
+                form_state.search_buffers.remove(&field.name);
+            }
             form_state.dropdown_open = false;
             form_state.textarea_open = false;
             form_state.textarea_scroll_offset = 0;
@@ -702,7 +1046,16 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Up => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    cycle_select(form_state, &field.name, -1);
+                    let search = if is_dynamic_allow_create {
+                        form_state
+                            .search_buffers
+                            .get(&field.name)
+                            .cloned()
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    cycle_select_filtered(form_state, &field.name, -1, &search);
                 }
             } else if is_textarea && form_state.textarea_open {
                 // Move cursor up one line inside the editor
@@ -734,7 +1087,16 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Down => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    cycle_select(form_state, &field.name, 1);
+                    let search = if is_dynamic_allow_create {
+                        form_state
+                            .search_buffers
+                            .get(&field.name)
+                            .cloned()
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    cycle_select_filtered(form_state, &field.name, 1, &search);
                 }
             } else if is_textarea && form_state.textarea_open {
                 // Move cursor down one line inside the editor
@@ -768,6 +1130,82 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             if on_submit_button {
                 FormAction::Submit
             } else if is_select {
+                if is_dynamic_allow_create && let Some(field) = active_field {
+                    let search = form_state
+                        .search_buffers
+                        .get(&field.name)
+                        .cloned()
+                        .unwrap_or_default();
+                    if !search.is_empty() {
+                        // Collect filtered options to decide what Enter does.
+                        let filtered: Vec<String> = form_state
+                            .field_options
+                            .get(&field.name)
+                            .map(|opts| {
+                                opts.iter()
+                                    .filter(|o| o.to_lowercase().contains(&search.to_lowercase()))
+                                    .cloned()
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        if filtered.is_empty() {
+                            // No matches — novel value.
+                            // Check for create_template: open sub-form overlay
+                            if let Some(ref tpl_name) = field.create_template {
+                                let term_size = crossterm::terminal::size().unwrap_or((80, 24));
+                                if term_size.1 >= 10 && term_size.0 >= 30 {
+                                    // module already borrows app.config, so look up template through it
+                                    let template = module
+                                        .fields
+                                        .iter()
+                                        .find(|f| f.name == field.name)
+                                        .and_then(|f| f.create_template.as_ref())
+                                        .and_then(|tn| {
+                                            app.config
+                                                .templates
+                                                .as_ref()
+                                                .and_then(|t| t.get(tn.as_str()))
+                                        });
+                                    if let Some(template) = template {
+                                        let fname = field.name.clone();
+                                        form_state.dropdown_open = false;
+                                        form_state.sub_form =
+                                            Some(crate::app::SubFormState::new(
+                                                tpl_name.clone(),
+                                                search,
+                                                fname.clone(),
+                                                template,
+                                            ));
+                                        form_state.search_buffers.remove(&fname);
+                                        return FormAction::None;
+                                    }
+                                }
+                            }
+                            // Fallback: accept typed text as novel value (bare stub creation)
+                            let fname = field.name.clone();
+                            form_state.field_values.insert(fname.clone(), search);
+                            form_state.search_buffers.remove(&fname);
+                            form_state.dropdown_open = false;
+                            return FormAction::None;
+                        }
+                        // Matches exist — select the highlighted one and close.
+                        let current = form_state
+                            .field_values
+                            .get(&field.name)
+                            .cloned()
+                            .unwrap_or_default();
+                        let best = if filtered.contains(&current) {
+                            current
+                        } else {
+                            filtered.into_iter().next().unwrap_or_default()
+                        };
+                        let fname = field.name.clone();
+                        form_state.field_values.insert(fname.clone(), best);
+                        form_state.search_buffers.remove(&fname);
+                        form_state.dropdown_open = false;
+                        return FormAction::None;
+                    }
+                }
                 form_state.dropdown_open = !form_state.dropdown_open;
                 FormAction::None
             } else if is_composite {
@@ -804,6 +1242,20 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Char(c) => {
+            // For allow_create dynamic_select fields, route typing into the search buffer.
+            if is_dynamic_allow_create && let Some(field) = active_field {
+                let buf = form_state
+                    .search_buffers
+                    .entry(field.name.clone())
+                    .or_default();
+                // Cap search buffer at 100 chars to prevent unbounded growth.
+                if buf.len() < 100 {
+                    buf.push(c);
+                }
+                // Auto-open the dropdown so the user sees filtered options.
+                form_state.dropdown_open = true;
+                return FormAction::None;
+            }
             if on_submit_button
                 || is_select
                 || is_composite
@@ -844,6 +1296,15 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Backspace => {
+            // For allow_create dynamic_select, backspace trims the search buffer.
+            if is_dynamic_allow_create && let Some(field) = active_field {
+                let buf = form_state
+                    .search_buffers
+                    .entry(field.name.clone())
+                    .or_default();
+                buf.pop();
+                return FormAction::None;
+            }
             if on_submit_button
                 || is_select
                 || is_composite
@@ -929,14 +1390,36 @@ pub enum FormAction {
     None,
     Submit,
     Cancel,
+    /// User submitted the sub-form overlay for template-driven note creation.
+    CreateFromTemplate {
+        field_name: String,
+        template_name: String,
+        note_name: String,
+        field_values: std::collections::HashMap<String, String>,
+    },
 }
 
-/// Cycle the selected value in a select field by the given delta (-1 or +1).
-fn cycle_select(form_state: &mut FormState, field_name: &str, delta: i32) {
-    let options = match form_state.field_options.get(field_name) {
+/// Cycle the selected value within the subset of options matching `search`
+/// (case-insensitive substring). When `search` is empty all options are used.
+fn cycle_select_filtered(form_state: &mut FormState, field_name: &str, delta: i32, search: &str) {
+    let all_options = match form_state.field_options.get(field_name) {
         Some(opts) if !opts.is_empty() => opts,
         _ => return,
     };
+
+    let options: Vec<String> = if search.is_empty() {
+        all_options.clone()
+    } else {
+        all_options
+            .iter()
+            .filter(|o| o.to_lowercase().contains(&search.to_lowercase()))
+            .cloned()
+            .collect()
+    };
+
+    if options.is_empty() {
+        return;
+    }
 
     let current = form_state
         .field_values
@@ -1016,6 +1499,205 @@ fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u1
 /// Handle key events inside the composite array overlay.
 ///
 /// Uses local row/col indices to avoid split-borrow issues with `FormState`.
+/// Handle key events when the sub-form overlay is open.
+///
+/// All keys are consumed by the sub-form. Tab/Shift+Tab navigate fields,
+/// Enter submits or toggles dropdowns, Esc cancels.
+fn handle_sub_form_key(
+    form_state: &mut FormState,
+    config: &crate::config::Config,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crossterm::event::KeyCode;
+
+    let sub_form = match &mut form_state.sub_form {
+        Some(sf) => sf,
+        None => return FormAction::None,
+    };
+
+    let template = config
+        .templates
+        .as_ref()
+        .and_then(|t| t.get(&sub_form.template_name));
+    let template = match template {
+        Some(t) => t,
+        None => return FormAction::None,
+    };
+
+    let field_count = template.fields.len();
+    let navigable_count = field_count + 1; // +1 for submit button
+    let on_submit_button = sub_form.active_field == field_count;
+    let active_tfield = template.fields.get(sub_form.active_field);
+    let is_static_select = active_tfield
+        .map(|f| f.field_type == TemplateFieldType::StaticSelect)
+        .unwrap_or(false);
+
+    // Helper: advance cursor to end of the current field value after navigation
+    let sync_cursor = |sf: &mut SubFormState, tmpl: &crate::config::TemplateConfig| {
+        if let Some(tf) = tmpl.fields.get(sf.active_field) {
+            sf.cursor_position = sf
+                .field_values
+                .get(&tf.name)
+                .map(|v| v.chars().count())
+                .unwrap_or(0);
+        } else {
+            sf.cursor_position = 0;
+        }
+    };
+
+    match key.code {
+        // ── Cancel ───────────────────────────────────────────────────────────
+        KeyCode::Esc => {
+            form_state.sub_form = None;
+            FormAction::None
+        }
+
+        // ── Field navigation: Down / Tab ─────────────────────────────────────
+        KeyCode::Down | KeyCode::Tab => {
+            sub_form.active_field = (sub_form.active_field + 1) % navigable_count;
+            sync_cursor(sub_form, template);
+            FormAction::None
+        }
+
+        // ── Field navigation: Up / BackTab ───────────────────────────────────
+        KeyCode::Up | KeyCode::BackTab => {
+            sub_form.active_field = if sub_form.active_field == 0 {
+                navigable_count - 1
+            } else {
+                sub_form.active_field - 1
+            };
+            sync_cursor(sub_form, template);
+            FormAction::None
+        }
+
+        // ── Submit or advance ─────────────────────────────────────────────────
+        KeyCode::Enter => {
+            if on_submit_button {
+                // Emit the action with all data needed for note creation.
+                // Do NOT close the sub-form or set the parent value here —
+                // that happens in main.rs after successful transport write.
+                // This prevents data loss if the action is dropped or fails.
+                return FormAction::CreateFromTemplate {
+                    field_name: sub_form.parent_field_name.clone(),
+                    template_name: sub_form.template_name.clone(),
+                    note_name: sub_form.note_name.clone(),
+                    field_values: sub_form.field_values.clone(),
+                };
+            }
+            // Any field: advance to next
+            sub_form.active_field = (sub_form.active_field + 1) % navigable_count;
+            sync_cursor(sub_form, template);
+            FormAction::None
+        }
+
+        // ── Left: cycle static_select backward, or move text cursor ──────────
+        KeyCode::Left => {
+            if is_static_select {
+                if let Some(tf) = active_tfield {
+                    if let Some(opts) = sub_form.field_options.get(&tf.name) {
+                        if !opts.is_empty() {
+                            let current = sub_form
+                                .field_values
+                                .get(&tf.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                            let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
+                            sub_form
+                                .field_values
+                                .insert(tf.name.clone(), opts[new_idx].clone());
+                        }
+                    }
+                }
+            } else if sub_form.cursor_position > 0 {
+                sub_form.cursor_position -= 1;
+            }
+            FormAction::None
+        }
+
+        // ── Right: cycle static_select forward, or move text cursor ──────────
+        KeyCode::Right => {
+            if is_static_select {
+                if let Some(tf) = active_tfield {
+                    if let Some(opts) = sub_form.field_options.get(&tf.name) {
+                        if !opts.is_empty() {
+                            let current = sub_form
+                                .field_values
+                                .get(&tf.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                            let new_idx = (idx + 1) % opts.len();
+                            sub_form
+                                .field_values
+                                .insert(tf.name.clone(), opts[new_idx].clone());
+                        }
+                    }
+                }
+            } else if let Some(tf) = active_tfield {
+                let char_count = sub_form
+                    .field_values
+                    .get(&tf.name)
+                    .map(|v| v.chars().count())
+                    .unwrap_or(0);
+                if sub_form.cursor_position < char_count {
+                    sub_form.cursor_position += 1;
+                }
+            }
+            FormAction::None
+        }
+
+        // ── Text / number input ───────────────────────────────────────────────
+        KeyCode::Char(c) => {
+            if on_submit_button || is_static_select {
+                return FormAction::None;
+            }
+            if let Some(tf) = active_tfield {
+                // Number fields: only allow digits, decimal, minus
+                if tf.field_type == TemplateFieldType::Number
+                    && !c.is_ascii_digit()
+                    && c != '.'
+                    && c != '-'
+                {
+                    return FormAction::None;
+                }
+                let value = sub_form.field_values.entry(tf.name.clone()).or_default();
+                // cursor_position is a char index — convert to byte offset
+                let byte_pos = value
+                    .char_indices()
+                    .nth(sub_form.cursor_position)
+                    .map(|(i, _)| i)
+                    .unwrap_or(value.len());
+                value.insert(byte_pos, c);
+                sub_form.cursor_position += 1;
+            }
+            FormAction::None
+        }
+
+        KeyCode::Backspace => {
+            if on_submit_button || is_static_select {
+                return FormAction::None;
+            }
+            if let Some(tf) = active_tfield {
+                let value = sub_form.field_values.entry(tf.name.clone()).or_default();
+                if sub_form.cursor_position > 0 {
+                    // Convert char index to byte range for the char to remove
+                    let byte_pos = value
+                        .char_indices()
+                        .nth(sub_form.cursor_position - 1)
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    value.remove(byte_pos);
+                    sub_form.cursor_position -= 1;
+                }
+            }
+            FormAction::None
+        }
+
+        _ => FormAction::None,
+    }
+}
+
 fn handle_composite_key(
     form_state: &mut FormState,
     field: &FieldConfig,

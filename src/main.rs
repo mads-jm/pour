@@ -278,7 +278,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     };
 
     // Validate form and extract field values
-    let (field_values, composite_data) = {
+    let (field_values, field_options, composite_data) = {
         let form_state = match &app.form_state {
             Some(fs) => fs,
             None => return,
@@ -295,6 +295,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
 
         (
             form_state.field_values.clone(),
+            form_state.field_options.clone(),
             form_state.composite_values.clone(),
         )
     };
@@ -304,6 +305,18 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
         fs.validation_errors.clear();
     }
     let transport_mode = app.transport.mode();
+
+    // Auto-create bare notes for novel dynamic_select values (best-effort, before main write)
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let auto_created = pour::autocreate::run(
+        module,
+        &field_values,
+        &field_options,
+        &app.transport,
+        cache,
+        &today,
+    )
+    .await;
 
     // Execute write based on module mode
     let date_fmt = app.config.vault.date_format.as_deref();
@@ -345,6 +358,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 message: "Entry saved successfully.".to_string(),
                 file_path: Some(vault_path),
                 transport_mode,
+                auto_created_notes: auto_created,
             });
         }
         Err(e) => {
@@ -352,6 +366,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 message: format!("Write failed: {e}"),
                 file_path: None,
                 transport_mode,
+                auto_created_notes: auto_created,
             });
         }
     }
@@ -361,6 +376,109 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
 
     // Persist cache after write (best-effort)
     let _ = cache.save();
+}
+
+/// Handle a CreateFromTemplate action: create a templated note from the sub-form,
+/// then close the sub-form and set the parent field value on success.
+async fn handle_create_from_template(
+    app: &mut App,
+    cache: &mut Cache,
+    field_name: &str,
+    template_name: &str,
+    note_name: &str,
+    sub_form_values: &std::collections::HashMap<String, String>,
+) {
+    let template = match app
+        .config
+        .templates
+        .as_ref()
+        .and_then(|t| t.get(template_name))
+    {
+        Some(t) => t,
+        None => {
+            eprintln!("pour: template '{template_name}' not found");
+            return;
+        }
+    };
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    // Resolve the vault path from the template pattern
+    let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name) {
+        Some(p) => p,
+        None => {
+            eprintln!("pour: failed to resolve template path for '{note_name}'");
+            return;
+        }
+    };
+
+    // Build note content from template + sub-form values
+    let content =
+        pour::autocreate::build_templated_note_content(template, note_name, sub_form_values, &today);
+
+    // Look up post_create_command before the mutable borrow dance
+    let post_command = {
+        let module_key = app.module_keys.get(app.selected_module).cloned();
+        module_key
+            .as_ref()
+            .and_then(|mk| app.config.modules.get(mk))
+            .and_then(|m| m.fields.iter().find(|f| f.name == field_name))
+            .and_then(|f| f.post_create_command.clone())
+    };
+
+    // Write via transport (best-effort)
+    match app.transport.create_file(&vault_path, &content).await {
+        Ok(()) => {
+            // Fire post-creation command hook (best-effort)
+            if let Some(ref cmd) = post_command {
+                if let Err(e) = app.transport.execute_command(cmd).await {
+                    eprintln!("pour: post_create_command '{cmd}' failed: {e}");
+                }
+            }
+
+            // Update cache: derive source from the field config
+            let module_key = app.module_keys.get(app.selected_module).cloned();
+            if let Some(ref mk) = module_key {
+                if let Some(module) = app.config.modules.get(mk) {
+                    if let Some(field) = module.fields.iter().find(|f| f.name == field_name) {
+                        if let Some(ref source) = field.source {
+                            let stem = pour::autocreate::sanitize_filename(note_name)
+                                .unwrap_or_else(|| note_name.to_string());
+                            let mut cached = cache.get(source).unwrap_or_default();
+                            if !pour::autocreate::is_existing_option(&stem, &cached) {
+                                cached.push(stem.clone());
+                                cache.set(source, cached);
+                            }
+                            // Also add to live field_options so it appears in the dropdown
+                            if let Some(ref mut fs) = app.form_state {
+                                let opts = fs
+                                    .field_options
+                                    .entry(field_name.to_string())
+                                    .or_default();
+                                if !pour::autocreate::is_existing_option(&stem, opts) {
+                                    opts.push(stem);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Close sub-form and set parent field value
+            if let Some(ref mut fs) = app.form_state {
+                fs.field_values
+                    .insert(field_name.to_string(), note_name.to_string());
+                fs.sub_form = None;
+            }
+
+            // Persist cache (best-effort)
+            let _ = cache.save();
+        }
+        Err(e) => {
+            eprintln!("pour: template note creation failed for '{vault_path}': {e}");
+            // Sub-form stays open so the user can retry or cancel
+        }
+    }
 }
 
 /// Save configure state to disk and reload the config in memory.
@@ -455,11 +573,16 @@ async fn handle_save(app: &mut App) {
                                 value: vault.api_key.clone().unwrap_or_default(),
                                 kind: pour::app::SettingKind::Text,
                             },
+                            pour::app::ConfigSetting {
+                                label: "Date Format".to_string(),
+                                key: "date_format".to_string(),
+                                value: vault.date_format.clone().unwrap_or_default(),
+                                kind: pour::app::SettingKind::Text,
+                            },
                         ];
                     }
                     // Reconnect transport with updated vault settings
-                    app.transport =
-                        pour::transport::Transport::connect(&app.config).await;
+                    app.transport = pour::transport::Transport::connect(&app.config).await;
                 }
 
                 if let Some(ref mut s) = app.configure_state {
@@ -515,6 +638,10 @@ fn handle_add_field(app: &mut App) {
         target: None,
         sub_fields: None,
         callout: None,
+        allow_create: None,
+        wikilink: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -811,6 +938,10 @@ fn handle_save_new_module(app: &mut App) {
             target: None,
             sub_fields: None,
             callout: None,
+            allow_create: None,
+            wikilink: None,
+            create_template: None,
+            post_create_command: None,
         }],
     };
 
