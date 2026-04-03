@@ -4,13 +4,6 @@ use serde::Deserialize;
 
 use super::VaultEntry;
 
-/// JSON shape returned by `GET /vault/{path}` with
-/// `Accept: application/vnd.olrapi.document-map+json`.
-#[derive(Deserialize)]
-struct DocumentMap {
-    headings: Vec<String>,
-}
-
 /// HTTP client for the Obsidian Local REST API.
 ///
 /// Communicates over HTTPS with a self-signed certificate.
@@ -113,96 +106,63 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Fetch the document map for a vault file and resolve the full
-    /// `::` delimited heading path that ends with the given heading text.
-    ///
-    /// The Obsidian REST API requires heading targets to include their
-    /// full ancestor path (e.g. `Parent::Child`) rather than just the
-    /// leaf heading text. This method fetches the document map via
-    /// `Accept: application/vnd.olrapi.document-map+json` and finds
-    /// the first heading path whose final segment matches `heading_text`.
-    async fn resolve_heading_target(
-        &self,
-        vault_path: &str,
-        heading_text: &str,
-    ) -> Result<String> {
-        let url = format!("{}/vault/{}", self.base_url, vault_path);
-
-        let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.api_key)
-            .header("Accept", "application/vnd.olrapi.document-map+json")
-            .send()
-            .await
-            .context("API: failed to fetch document map")?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("API: failed to fetch document map ({}): {}", status, body);
-        }
-
-        let doc_map: DocumentMap = resp
-            .json()
-            .await
-            .context("API: failed to parse document map JSON")?;
-
-        // Find the first heading path whose leaf segment matches.
-        doc_map
-            .headings
-            .into_iter()
-            .find(|h| {
-                let leaf = h.rsplit("::").next().unwrap_or(h);
-                leaf == heading_text
-            })
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "API: heading {:?} not found in document map for {}",
-                    heading_text,
-                    vault_path
-                )
-            })
-    }
-
     /// Append content under a heading in an existing note.
     ///
-    /// The `heading` parameter is the raw config value (e.g. `"## Journal"`).
-    /// The `##` prefix is stripped to obtain the heading text, then the full
-    /// `::` delimited heading path is resolved via the document map before
-    /// sending the PATCH request.
+    /// Reads the file via API, splices the content under the target heading
+    /// (using the same logic as the FS transport), then writes the modified
+    /// file back. This avoids the `***` thematic break that the Obsidian REST
+    /// API inserts when using heading-targeted PATCH appends.
     pub async fn append_under_heading(
         &self,
         vault_path: &str,
         heading: &str,
         content: &str,
     ) -> Result<()> {
-        // Strip the markdown heading prefix ("## " → heading text).
-        let heading_text = heading.trim_start_matches('#').trim();
-
-        let target = self
-            .resolve_heading_target(vault_path, heading_text)
-            .await?;
-
         let url = format!("{}/vault/{}", self.base_url, vault_path);
 
+        // 1. Read current file content.
         let resp = self
             .client
-            .patch(&url)
+            .get(&url)
             .bearer_auth(&self.api_key)
-            .header("Content-Type", "text/markdown")
-            .header("Operation", "append")
-            .header("Target-Type", "heading")
-            .header("Target", &target)
-            .body(format!("\n{content}\n"))
+            .header("Accept", "text/markdown")
             .send()
             .await
-            .context("API: failed to send append_under_heading request")?;
+            .context("API: failed to read file for append")?;
 
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("API append_under_heading failed ({}): {}", status, body);
+            anyhow::bail!("API: failed to read file for append ({}): {}", status, body);
+        }
+
+        let raw = resp
+            .text()
+            .await
+            .context("API: failed to read response body")?;
+
+        // 2. Splice content under the heading.
+        let modified = splice_under_heading(&raw, heading, content)?;
+
+        // 3. Write modified content back.
+        let resp = self
+            .client
+            .put(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "text/markdown")
+            .body(modified)
+            .send()
+            .await
+            .context("API: failed to write file after append")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "API: failed to write file after append ({}): {}",
+                status,
+                body
+            );
         }
 
         Ok(())
@@ -301,4 +261,97 @@ impl ApiClient {
             .await
             .context("API: failed to parse directory listing JSON")
     }
+
+    /// Execute an Obsidian command by its ID.
+    ///
+    /// Sends a POST to `/commands/{command_id}/`. This can trigger plugin
+    /// commands like Templater's template processing.
+    pub async fn execute_command(&self, command_id: &str) -> Result<()> {
+        let url = format!("{}/commands/{}/", self.base_url, command_id);
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .context("API: failed to send execute_command request")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("API execute_command failed ({}): {}", status, body);
+        }
+
+        Ok(())
+    }
+}
+
+/// Splice `content` under `heading` in a markdown document, returning the
+/// modified document. Mirrors the logic in `FsClient::append_under_heading`.
+fn splice_under_heading(raw: &str, heading: &str, content: &str) -> Result<String> {
+    let heading_level = heading.chars().take_while(|&c| c == '#').count();
+    if heading_level == 0 {
+        anyhow::bail!("not a valid markdown heading: {:?}", heading);
+    }
+
+    let lines: Vec<&str> = raw.lines().collect();
+
+    let heading_idx = lines
+        .iter()
+        .position(|l| l.trim_end() == heading)
+        .ok_or_else(|| anyhow::anyhow!("heading {:?} not found in file", heading))?;
+
+    // Find the next heading of equal or higher level.
+    let insert_before = lines[heading_idx + 1..]
+        .iter()
+        .position(|l| {
+            let hashes = l.chars().take_while(|&c| c == '#').count();
+            hashes > 0 && l.chars().nth(hashes) == Some(' ') && hashes <= heading_level
+        })
+        .map(|rel| heading_idx + 1 + rel);
+
+    let mut result = String::with_capacity(raw.len() + content.len() + 2);
+
+    match insert_before {
+        Some(next_heading_idx) => {
+            let before_lines = &lines[..next_heading_idx];
+            let section_end = before_lines
+                .iter()
+                .rposition(|l| !l.trim().is_empty())
+                .map(|i| i + 1)
+                .unwrap_or(before_lines.len());
+
+            for line in &before_lines[..section_end] {
+                result.push_str(line);
+                result.push('\n');
+            }
+            result.push('\n');
+            result.push_str(content.trim_end_matches('\n'));
+            result.push('\n');
+            result.push('\n');
+
+            for line in &lines[next_heading_idx..] {
+                result.push_str(line);
+                result.push('\n');
+            }
+        }
+        None => {
+            let trimmed_end = lines
+                .iter()
+                .rposition(|l| !l.trim().is_empty())
+                .map(|i| i + 1)
+                .unwrap_or(lines.len());
+
+            for line in &lines[..trimmed_end] {
+                result.push_str(line);
+                result.push('\n');
+            }
+            result.push('\n');
+            result.push_str(content.trim_end_matches('\n'));
+            result.push('\n');
+        }
+    }
+
+    Ok(result)
 }

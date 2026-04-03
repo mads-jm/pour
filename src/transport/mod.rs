@@ -117,4 +117,16 @@ impl Transport {
             Transport::Fs(writer) => writer.list_directory_all(vault_dir_path),
         }
     }
+
+    /// Execute an Obsidian command by its ID.
+    ///
+    /// Only available via the API transport. On filesystem transport, this
+    /// is a no-op (returns `Ok(())`), since command execution requires the
+    /// Obsidian REST API.
+    pub async fn execute_command(&self, command_id: &str) -> Result<()> {
+        match self {
+            Transport::Api(client) => client.execute_command(command_id).await,
+            Transport::Fs(_) => Ok(()),
+        }
+    }
 }
