@@ -7,7 +7,7 @@ aliases:
   - the pour manifesto
   - manifesto
 date created: Tuesday, March 31st 2026, 12:24:04 am
-date modified: Thursday, April 2nd 2026, 9:18:43 am
+date modified: Friday, April 3rd 2026, 4:11:46 am
 ---
 
 # The Pour Manifesto: Why We Build
@@ -54,6 +54,7 @@ It is a terminal-native capture tool designed to be as fluid and instantaneous a
 ^user-story
 
 > As a developer and enthusiast, I want a frictionless, instant-booting terminal interface to log highly structured data (like coffee recipes and concert memories) directly into my Obsidian vault, so that I can capture the details of the things I love without breaking my workflow or wrestling with a GUI.
+
 
 
 

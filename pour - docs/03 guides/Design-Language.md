@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Thursday, April 2nd 2026, 9:18:46 am
+date modified: Friday, April 3rd 2026, 4:11:43 am
 ---
 
 # Pour Design Language
@@ -115,5 +115,6 @@ If the mark becomes an SVG for web or docs:
 - No mug handle, no steam, no dense detail
 
 Same geometry as `▽`, same restraint.
+
 
 

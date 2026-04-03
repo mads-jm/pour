@@ -3,7 +3,7 @@ tags:
   - index
   - architecture
 date created: Tuesday, March 31st 2026, 12:12:35 am
-date modified: Thursday, April 2nd 2026, 9:18:40 am
+date modified: Friday, April 3rd 2026, 4:11:40 am
 ---
 
 # Architecture
@@ -21,6 +21,8 @@ date modified: Thursday, April 2nd 2026, 9:18:40 am
 - [[ADR-001-Hybrid-Transport-Layer]] — Why Pour uses a dual API/filesystem transport
 - [[ADR-002-Custom-YAML-Serialization]] — Why frontmatter uses custom serialization instead of `serde_yaml`
 - [[ADR-003-Synchronous-TUI-Async-Operations]] — How sync TUI coexists with async network calls
+- [[ADR-004-API-Append-Read-Modify-Write]]
+
 
 
 

@@ -6,7 +6,7 @@ tags:
 aliases:
   - crossterm
 date created: Tuesday, March 31st 2026, 12:14:38 am
-date modified: Thursday, April 2nd 2026, 9:18:45 am
+date modified: Friday, April 3rd 2026, 4:11:45 am
 ---
 
 # Crossterm - Terminal Manipulation Reference

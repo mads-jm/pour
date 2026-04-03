@@ -4,7 +4,7 @@ tags:
   - tui
   - config
 date created: Tuesday, March 31st 2026, 10:04:48 pm
-date modified: Thursday, April 2nd 2026, 9:18:42 am
+date modified: Friday, April 3rd 2026, 4:11:47 am
 ---
 
 # Guide: Adding a New Field Type to the TUI
@@ -18,6 +18,7 @@ When extending the configuration schema, touch these layers in order so the new 
 5. __Output Layer (`src/output/mod.rs`)__: Ensure the field's data structure is properly routed to either `frontmatter` or `body` targets during submission.
 
 For the current TUI shape and event routing, see [[System-Architecture-Overview]] and [[sprint-5-tui-report]].
+
 
 
 

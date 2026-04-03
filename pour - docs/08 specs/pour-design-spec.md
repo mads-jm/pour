@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Thursday, April 2nd 2026, 9:18:47 am
+date modified: Friday, April 3rd 2026, 4:11:41 am
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -66,9 +66,23 @@ __API Authentication:__ The REST API plugin requires a Bearer token. Pour suppor
 
 3-tier fallback (API → disk scan → cache → freetext) with async background refresh.
 
+#### Inline Creation (`allow_create`)
+
+When `allow_create = true` on a `dynamic_select` field, the dropdown enters search mode as the user types — filtering options by case-insensitive substring match and showing a "Create new" affordance for unmatched text. Submitting a novel value auto-creates a bare note at `{source}/{sanitized_value}.md` (via the transport layer) before the module output is written. The new entry is appended to the in-memory cache immediately. *[Deviation: the original spec described dynamic_select as a closed list only; inline creation was added post-spec.]*
+
+#### Template-Driven Creation (`create_template` + `post_create_command`)
+
+When a `dynamic_select` field has `create_template` referencing a `[templates.<name>]` section, novel values trigger a __sub-form overlay__ instead of bare stub creation. The overlay prompts the user for template-defined fields (text, number, static_select), then writes a note with full YAML frontmatter. *[Deviation: not in original spec. Added to support richer inline-created notes without leaving the TUI.]*
+
+An optional `post_create_command` fires an Obsidian plugin command (e.g. `templater:run`) via the REST API's `/commands/` endpoint after note creation. This bridges Pour's structured data capture with Obsidian's plugin ecosystem — Pour handles frontmatter, the plugin handles body/presentation. The command is best-effort: silently skipped on filesystem transport. *[Deviation: command execution via REST API was not in original spec.]*
+
 ### __3.3 File Write Modes & Field → Output Mapping__
 
 Append vs. create modes, and how fields map to frontmatter/body.
+
+#### Wikilink Output (`wikilink`)
+
+When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, the output value is wrapped in Obsidian wikilink syntax (`[[value]]`) before being written to frontmatter. This creates graph edges between the current note and the named note. For comma-separated multi-values, each item is wrapped individually. *[Deviation: wikilink wrapping was not in the original field spec; added alongside inline creation.]*
 
 ## __4. Configuration, Field Types & Validation__
 
@@ -92,9 +106,17 @@ The following are explicitly __in scope__ for v0.1:
 - Hybrid transport layer (API → filesystem fallback)
 - Dynamic data fetching (API → disk scan → cache → freetext)
 - Configurable append templates with `{{callout}}` placeholder resolved from module-level `callout_type`; field-level `callout` wraps textarea body output in `> [!type]` blockquote syntax
+- `allow_create` on `dynamic_select` fields — inline creation with freetext filtering, "Create new" affordance, and auto-created bare notes
+- `wikilink` on `text`, `static_select`, and `dynamic_select` fields — wraps output in `[[...]]` for Obsidian graph connectivity
 - Configurable theme (accent color, border style) *[Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]*
 - Post-execution summary view
 - `required` field validation
+
+The following are explicitly __in scope__ for v0.2:
+
+- Template-driven inline creation with sub-form overlay (`create_template` + `[templates]`)
+- Post-creation command hook (`post_create_command`) for Obsidian plugin integration
+- Command execution via REST API transport (`/commands/{commandId}/`)
 
 The following are explicitly __deferred__:
 
@@ -102,6 +124,10 @@ The following are explicitly __deferred__:
 - Rich validation (min/max, regex)
 - Tag-based dynamic_select sources
 - Plugin/extension system
+- Nested templates / recursive sub-forms
+- Dynamic data sources in template fields (only static_select, not dynamic_select)
+- TUI configure screen support for `create_template` / `post_create_command` fields
+
 
 
 

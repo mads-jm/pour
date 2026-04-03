@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Thursday, April 2nd 2026, 9:18:47 am
+date modified: Friday, April 3rd 2026, 4:11:41 am
 ---
 
 # Field Types Reference
@@ -27,6 +27,10 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `target` | string | no | `"frontmatter"` or `"body"` — overrides the default routing |
 | `sub_fields` | array | conditional | Required for `composite_array`; column definitions |
 | `callout` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). When set on a `textarea` field targeting body, the output is wrapped in `> [!type]` blockquote syntax. |
+| `allow_create` | bool | no | Only valid on `dynamic_select`. When `true`, the user can type characters to filter options and enter a completely novel value if nothing matches. Defaults to `false` (closed list). |
+| `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Applies to `text`, `static_select`, and `dynamic_select` fields. No-ops if the value is already wrapped. Defaults to `false`. |
+| `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
+| `post_create_command` | string | no | Obsidian command ID to execute after template-driven note creation (e.g. `"templater:run"`). Only valid when `create_template` is set. Fires via the REST API `/commands/` endpoint; silently skipped on filesystem transport. |
 
 ## Output Target Defaults
 
@@ -55,7 +59,7 @@ prompt = "Bean origin"
 ```
 
 __TUI__: Inline text input with cursor. Accepts any characters.
-__Output__: Value written as-is to frontmatter (or body if overridden).
+__Output__: Value written as-is to frontmatter (or body if overridden). If `wikilink = true`, the value is wrapped in `[[...]]` before output.
 
 ## `textarea`
 
@@ -82,6 +86,7 @@ callout = "tip"
 ```
 
 Produces:
+
 ```markdown
 > [!tip]
 > First line of content
@@ -119,7 +124,7 @@ options = ["V60", "AeroPress", "Espresso", "French Press"]
 ```
 
 __TUI__: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
-__Output__: Selected string written to frontmatter.
+__Output__: Selected string written to frontmatter. If `wikilink = true`, the value is wrapped in `[[...]]` before output (e.g. `roaster: "[[Onyx]]"`), creating an Obsidian backlink to the named note.
 __Validation__: `options` must be present and non-empty. Config load fails otherwise.
 
 ## `dynamic_select`
@@ -135,9 +140,125 @@ source = "Coffee/Beans"
 ```
 
 __TUI__: Same dropdown interaction as `static_select`. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (`~/.cache/pour/state.json`), then freetext input if all fail.
-__Output__: Selected string written to frontmatter.
-__Validation__: `source` must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or `..` traversal paths). Config load fails otherwise.
+
+When `allow_create = true`, the user can type characters directly into the field to filter the dropdown options (case-insensitive substring match). If typing produces no matching options, `Enter` accepts the typed text as a novel value. `Backspace` trims the typed text. `Esc` clears the search buffer before closing the dropdown. Navigating away (Tab/Shift-Tab) discards any unsaved search text.
+
+__Output__: Selected (or typed) string written to frontmatter. If `wikilink = true`, the value is wrapped in `[[...]]` before output.
+__Validation__: `source` must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or `..` traversal paths). Config load fails otherwise. `allow_create` is only valid on `dynamic_select`; using it on any other field type fails config validation.
 __Source path__: Relative to the vault root. Example: `"Coffee/Beans"` resolves to `<vault_base_path>/Coffee/Beans/`.
+
+### Auto-create Behavior
+
+When `allow_create = true` and the submitted value is not in the existing options list (case-insensitive), Pour automatically creates a note at `{source}/{sanitized_value}.md` before writing the module output.
+
+__Without `create_template`__ — a bare stub note is created:
+
+```markdown
+---
+date: YYYY-MM-DD
+---
+```
+
+__With `create_template`__ — a sub-form overlay appears in the TUI, prompting the user to fill in the template's fields. The created note gets full frontmatter from the template. See [[#Template-Driven Creation]] below.
+
+The filename is sanitized: characters invalid on any platform (`:`  `?`  `*`  `<`  `>`  `|`  `"`  `\`  `/`) are replaced with `-`, consecutive dashes are collapsed, and Windows reserved device names (`CON`, `NUL`, `COM1`–`COM9`, etc.) are rejected. If the value sanitizes to an empty or reserved string, auto-creation is skipped silently.
+
+The new entry is appended to the in-memory cache so the next dropdown opens with the value available immediately. Creation is best-effort — a transport failure is logged to stderr but does not block form submission.
+
+### Combined Example (bare stub)
+
+```toml
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+wikilink = true
+```
+
+With this config, selecting or typing `"Ethiopia Guji"` writes `bean: "[[Ethiopia Guji]]"` to frontmatter and, if the value is novel, creates `Coffee/Beans/Ethiopia Guji.md` with a `date` frontmatter entry.
+
+### Template-Driven Creation
+
+When `create_template` references a `[templates.<name>]` section, novel values trigger a __sub-form overlay__ instead of creating a bare stub. This lets you capture structured metadata for the new note without leaving the TUI.
+
+#### Flow
+
+1. User types a value that doesn't match any existing option.
+2. The sub-form overlay appears with the template's fields (text, number, static_select).
+3. User fills in the fields. `Tab`/`Shift+Tab` navigates, `Enter` on the submit button creates the note.
+4. Pour writes the note with full YAML frontmatter: `date`, `name` (the typed value), and all template fields.
+5. If `post_create_command` is set and the API is connected, the Obsidian command fires (e.g. Templater processes the new file to add body content).
+6. The parent form field is populated with the new value.
+
+`Esc` cancels the sub-form without creating anything. If the terminal is too small for the overlay (< 10 rows or < 30 cols), Pour falls back to bare stub creation.
+
+#### Combined Example (template + Command hook)
+
+```toml
+# Field references the template
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "02 - Areas/204 - Cooking/Coffee/Beans"
+allow_create = true
+wikilink = true
+create_template = "bean"
+post_create_command = "templater:run"
+
+# Template defines the sub-form fields and output path
+[templates.bean]
+path = "02 - Areas/204 - Cooking/Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster"
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen", "Blend"]
+
+[[templates.bean.fields]]
+name = "process"
+field_type = "static_select"
+prompt = "Process"
+options = ["Washed", "Natural", "Honey", "Anaerobic", "Wet Hulled"]
+default = "Washed"
+
+[[templates.bean.fields]]
+name = "roast_level"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Light-Medium", "Medium", "Medium-Dark", "Dark"]
+default = "Light"
+
+[[templates.bean.fields]]
+name = "bag_weight_g"
+field_type = "number"
+prompt = "Bag weight (g)"
+default = "250"
+```
+
+Typing `"Ethiopia Guji"` opens the sub-form. After filling in roaster, origin, etc., Pour creates `Beans/Ethiopia Guji.md`:
+
+```markdown
+---
+date: 2026-04-02
+name: Ethiopia Guji
+roaster: Onyx
+origin: Ethiopia
+process: Washed
+roast_level: Light
+bag_weight_g: 250
+---
+```
+
+Then `post_create_command` fires `templater:run`, which can add body content (brew log table, tasting notes section, metadata) via an Obsidian Templater template.
 
 ## `composite_array`
 
@@ -216,3 +337,53 @@ These keys are set on the module itself, not on individual fields:
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var) |
 | `module_order` | string[] | Optional dashboard display ordering. Modules not listed appear alphabetically after listed ones |
+
+## Templates
+
+Templates define the note structure created when a `dynamic_select` field with `create_template` triggers inline creation. Each `[templates.<name>]` block specifies the output path and a set of fields that appear in a sub-form overlay.
+
+### Template Config Keys
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `path` | string | yes | Vault-relative output path for the created note. Must contain `{{name}}` (replaced with the user's typed value). Supports strftime tokens (`%Y`, `%m`, `%d`). Must not contain `..` path traversal. |
+| `fields` | array | yes | At least one field definition (see below) |
+
+### Template Field Keys
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `name` | string | yes | Field identifier, used as the YAML frontmatter key. Must not be `date` or `name` (these are auto-generated). |
+| `field_type` | string | yes | `text`, `number`, or `static_select` only |
+| `prompt` | string | yes | Label shown in the sub-form overlay |
+| `options` | string[] | conditional | Required for `static_select` |
+| `default` | string | no | Pre-filled value. If the user leaves a field empty and no default exists, the key is omitted from frontmatter. |
+
+### How Pour Templates Relate to Obsidian Templater
+
+Pour templates and Obsidian's Templater plugin serve __complementary roles__:
+
+- __Pour templates__ define and collect structured frontmatter at capture time (in the terminal, before the file exists).
+- __Templater templates__ add body content, dynamic expressions, and formatting after the file is created (inside Obsidian).
+
+The `post_create_command` config key bridges the two: after Pour writes the note with frontmatter, it fires an Obsidian command (e.g. `templater:run`) via the REST API, which triggers Templater to process the file. The Templater template can read Pour's frontmatter with `tp.frontmatter` and use it to build the note body.
+
+__Example coordination:__
+
+1. Pour's `[templates.bean]` collects `roaster`, `origin`, `process`, `roast_level`, `bag_weight_g` and writes them as YAML frontmatter.
+2. `post_create_command = "templater:run"` fires Templater.
+3. Templater's `(TEMPLATE) Bean.md` reads `tp.frontmatter.roaster` and `tp.frontmatter.origin` to build a wikilinked header, brew log table, and metadata block.
+
+This means Pour handles *data capture* and Templater handles *presentation* — each doing what it's best at. Users who don't use Templater still get a fully functional note with clean frontmatter.
+
+### Validation Rules
+
+- Template `path` must contain `{{name}}`
+- Template `path` must not contain `..` segments
+- `static_select` template fields require non-empty `options`
+- Template field names must be unique within a template
+- Field names `date` and `name` are reserved (auto-generated in frontmatter)
+- `create_template` is only valid on `dynamic_select` fields with `allow_create = true`
+- `post_create_command` requires `create_template` to be set on the same field
+- Referenced template names must exist in `[templates]`
+
