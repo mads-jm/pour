@@ -13,6 +13,7 @@ use pour::data::fetch_options;
 use pour::data::history::History;
 use pour::output;
 use pour::tui;
+use pour::visibility::visible_field_indices;
 
 #[tokio::main]
 async fn main() {
@@ -268,7 +269,10 @@ async fn run_loop(
                 tui::Action::OpenInObsidian(file_path) => {
                     let uri = obsidian_uri(&app.config.vault.base_path, file_path.as_deref());
                     if let Err(e) = open::that(&uri) {
-                        eprintln!("pour: failed to open Obsidian: {e}");
+                        if let Some(ref mut ss) = app.summary_state {
+                            ss.message
+                                .push_str(&format!(" (Warning: could not open Obsidian: {e})"));
+                        }
                     }
                 }
 
@@ -308,8 +312,21 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             return;
         }
 
+        // Collect visible field names so stale hidden values are not written to the vault
+        let visible_names: std::collections::HashSet<String> = {
+            let visible_indices =
+                visible_field_indices(&module.fields, &form_state.field_values);
+            visible_indices
+                .into_iter()
+                .map(|i| module.fields[i].name.clone())
+                .collect()
+        };
+
+        let mut values = form_state.field_values.clone();
+        values.retain(|k, _| visible_names.contains(k));
+
         (
-            form_state.field_values.clone(),
+            values,
             form_state.field_options.clone(),
             form_state.composite_values.clone(),
         )
@@ -367,10 +384,18 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 .first()
                 .and_then(|f| field_values.get(&f.name))
                 .map(|v| v.as_str());
-            app.history.record(&module_key, &vault_path, first_field);
+            let history_warning = match app.history.record(&module_key, &vault_path, first_field) {
+                Ok(()) => None,
+                Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
+            };
+
+            let mut summary_message = "Entry saved successfully.".to_string();
+            if let Some(w) = history_warning {
+                summary_message.push_str(&w);
+            }
 
             app.summary_state = Some(SummaryState {
-                message: "Entry saved successfully.".to_string(),
+                message: summary_message,
                 file_path: Some(vault_path),
                 transport_mode,
                 auto_created_notes: auto_created,
@@ -411,7 +436,12 @@ async fn handle_create_from_template(
     {
         Some(t) => t,
         None => {
-            eprintln!("pour: template '{template_name}' not found");
+            if let Some(ref mut fs) = app.form_state {
+                if let Some(ref mut sf) = fs.sub_form {
+                    sf.error_message =
+                        Some(format!("template '{template_name}' not found"));
+                }
+            }
             return;
         }
     };
@@ -422,7 +452,12 @@ async fn handle_create_from_template(
     let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name) {
         Some(p) => p,
         None => {
-            eprintln!("pour: failed to resolve template path for '{note_name}'");
+            if let Some(ref mut fs) = app.form_state {
+                if let Some(ref mut sf) = fs.sub_form {
+                    sf.error_message =
+                        Some(format!("failed to resolve path for '{note_name}'"));
+                }
+            }
             return;
         }
     };
@@ -444,11 +479,10 @@ async fn handle_create_from_template(
     // Write via transport (best-effort)
     match app.transport.create_file(&vault_path, &content).await {
         Ok(()) => {
-            // Fire post-creation command hook (best-effort)
+            // Fire post-creation command hook (best-effort). The note was already
+            // created, so a hook failure does not block the user — swallow silently.
             if let Some(ref cmd) = post_command {
-                if let Err(e) = app.transport.execute_command(cmd).await {
-                    eprintln!("pour: post_create_command '{cmd}' failed: {e}");
-                }
+                let _ = app.transport.execute_command(cmd).await;
             }
 
             // Update cache: derive source from the field config
@@ -490,8 +524,12 @@ async fn handle_create_from_template(
             let _ = cache.save();
         }
         Err(e) => {
-            eprintln!("pour: template note creation failed for '{vault_path}': {e}");
             // Sub-form stays open so the user can retry or cancel
+            if let Some(ref mut fs) = app.form_state {
+                if let Some(ref mut sf) = fs.sub_form {
+                    sf.error_message = Some(format!("write failed: {e}"));
+                }
+            }
         }
     }
 }
@@ -568,6 +606,24 @@ async fn handle_save(app: &mut App) {
                 // Rebuild vault settings from the fresh config and reconnect transport
                 if level == ConfigureLevel::VaultSettings {
                     let vault = &app.config.vault;
+                    // Read api_key from the raw config file rather than the in-memory
+                    // value, which may carry a POUR_API_KEY env-var override. Without
+                    // this guard a second save would write the env-var value to disk.
+                    let api_key_display = if std::env::var("POUR_API_KEY").is_ok() {
+                        // Read raw file value instead of env-overridden in-memory value,
+                        // to prevent writing the env var secret to disk on save.
+                        let config_path = pour::config::Config::default_config_path();
+                        std::fs::read_to_string(config_path)
+                            .ok()
+                            .and_then(|content| {
+                                let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+                                let key = doc.get("vault")?.get("api_key")?.as_str()?;
+                                Some(key.to_string())
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        vault.api_key.clone().unwrap_or_default()
+                    };
                     if let Some(ref mut s) = app.configure_state {
                         s.settings = vec![
                             pour::app::ConfigSetting {
@@ -585,7 +641,7 @@ async fn handle_save(app: &mut App) {
                             pour::app::ConfigSetting {
                                 label: "API Key".to_string(),
                                 key: "api_key".to_string(),
-                                value: vault.api_key.clone().unwrap_or_default(),
+                                value: api_key_display,
                                 kind: pour::app::SettingKind::Text,
                             },
                             pour::app::ConfigSetting {
@@ -657,6 +713,7 @@ fn handle_add_field(app: &mut App) {
         wikilink: None,
         create_template: None,
         post_create_command: None,
+        show_when: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -957,6 +1014,7 @@ fn handle_save_new_module(app: &mut App) {
             wikilink: None,
             create_template: None,
             post_create_command: None,
+            show_when: None,
         }],
     };
 
