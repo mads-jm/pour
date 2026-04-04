@@ -4,8 +4,11 @@
 # This file defines your Obsidian vault connection and capture modules.
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
+# Schema version — used for migration support when the config format changes.
+config_version = "0.2.0"
+
 # Controls dashboard order. Modules not listed appear alphabetically after.
-module_order = ["me", "coffee"]
+module_order = ["me", "todo", "note", "coffee"]
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
@@ -53,23 +56,120 @@ required = true
 # textarea fields default to target = "body", but can be overridden
 target = "body"
 
+# ── todo ─────────────────────────────────────────────────────────────────────
+# Usage: `pour todo`
+# Appends a task checkbox to your daily note under the Tasks heading.
+[modules.todo]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Task"
+append_under_header = "### Tasks"
+append_template = "- [ ] {{body}}"
+
+[[modules.todo.fields]]
+name = "body"
+field_type = "text"
+prompt = "Task"
+required = true
+target = "body"
+
+# ── note ─────────────────────────────────────────────────────────────────────
+# Usage: `pour note`
+# Creates a fleeting note for quick capture — ideas, links, fragments.
+[modules.note]
+mode = "create"
+path = "05 - Fleeting/%Y%m%d-{{title}}.md"
+display_name = "Note"
+
+[[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter"
+
+[[modules.note.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Content"
+target = "body"
+
 # ── coffee ───────────────────────────────────────────────────────────────────
 # Usage: `pour coffee`
 # Creates a new brew-log note. Path uses both strftime tokens and a field value.
 #
-# {bean} in the path is replaced with the value of the "bean" field at write time.
+# Pattern: category → equipment → method-specific params → universal fields.
+# This pattern is reusable for any module with category-dependent workflows.
+# The `show_when` key gates field visibility on the controlling field's value.
 [modules.coffee]
 mode = "create"
 path = "02 - Areas/204 - Cooking/Coffee/{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
 
+# ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]
 name = "brew_method"
 field_type = "static_select"
 prompt = "Brew method"
 required = true
-options = ["V60", "AeroPress", "Espresso", "French Press", "Cold Brew"]
+options = ["Pour Over", "Espresso", "Immersion", "Cold Brew"]
 target = "frontmatter"
+
+# ── Equipment (conditional per category) ─────────────────────────────────────
+# Each category scans its own vault subfolder for equipment notes.
+
+[[modules.coffee.fields]]
+name = "brewer"
+field_type = "dynamic_select"
+prompt = "Brewer"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Pour Over"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Pour Over" }
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+[[modules.coffee.fields]]
+name = "machine"
+field_type = "dynamic_select"
+prompt = "Machine"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Espresso"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+[[modules.coffee.fields]]
+name = "brewer_immersion"
+field_type = "dynamic_select"
+prompt = "Brewer"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Immersion"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Immersion" }
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+# ── Espresso-specific ────────────────────────────────────────────────────────
+
+[[modules.coffee.fields]]
+name = "drink_type"
+field_type = "static_select"
+prompt = "Drink type"
+options = ["Double", "Cortado", "Latte", "Flat White", "Americano"]
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+[[modules.coffee.fields]]
+name = "shot_style"
+field_type = "static_select"
+prompt = "Shot style"
+options = ["Standard", "Turbo", "Soup", "Allongé"]
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+# ── Universal fields ─────────────────────────────────────────────────────────
 
 # dynamic_select populates its dropdown by listing files/folders under `source`
 # in the vault. Falls back to the cache, then freetext input if offline.
@@ -85,20 +185,72 @@ create_template = "bean"
 post_create_command = "templater:run"
 
 [[modules.coffee.fields]]
+name = "grinder"
+field_type = "text"
+prompt = "Grinder"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "grind_setting"
+field_type = "number"
+prompt = "Grind setting"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
 name = "dose_g"
 field_type = "number"
 prompt = "Dose (g)"
 default = "18"
 target = "frontmatter"
 
-# composite_array renders a spreadsheet-like table. Each row is one sub-field set.
-# sub_fields supports: text, number, static_select
-# Standard V60/pour-over stages: bloom → first pour → second pour → draw down.
+[[modules.coffee.fields]]
+name = "yield_g"
+field_type = "number"
+prompt = "Yield (g)"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "time_s"
+field_type = "number"
+prompt = "Total time (s)"
+target = "frontmatter"
+
+# ── Method-specific params (conditional) ─────────────────────────────────────
+
+# Espresso: pressure profile as composite (ramp-up, peak, decline)
+[[modules.coffee.fields]]
+name = "pressure_profile"
+field_type = "composite_array"
+prompt = "Pressure Profile"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+[[modules.coffee.fields.sub_fields]]
+name = "pressure_bar"
+field_type = "number"
+prompt = "Pressure (bar)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "duration_s"
+field_type = "number"
+prompt = "Duration (s)"
+
+# Pour Over: water temperature
+[[modules.coffee.fields]]
+name = "water_temp_c"
+field_type = "number"
+prompt = "Water temp (°C)"
+default = "96"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Pour Over" }
+
+# Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
 name = "recipe"
 field_type = "composite_array"
 prompt = "Brew Recipe"
 target = "frontmatter"
+show_when = { field = "brew_method", equals = "Pour Over" }
 
 [[modules.coffee.fields.sub_fields]]
 name = "stage"
@@ -115,6 +267,25 @@ prompt = "Weight (g)"
 name = "duration_s"
 field_type = "number"
 prompt = "Duration (s)"
+
+# Immersion: steep time
+[[modules.coffee.fields]]
+name = "steep_time_m"
+field_type = "number"
+prompt = "Steep time (min)"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Immersion" }
+
+# Cold Brew: steep duration (ratio is dose_g:yield_g — no separate field needed)
+[[modules.coffee.fields]]
+name = "steep_hours"
+field_type = "number"
+prompt = "Steep time (hours)"
+default = "18"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Cold Brew" }
+
+# ── Wrap-up (universal) ─────────────────────────────────────────────────────
 
 [[modules.coffee.fields]]
 name = "rating"
@@ -170,4 +341,23 @@ name = "bag_weight_g"
 field_type = "number"
 prompt = "Bag weight (g)"
 default = "250"
+
+# ── Brewer template ─────────────────────────────────────────────────────────
+# Creates a new brewer/equipment note when using allow_create on a brewer
+# dynamic_select. The {{category}} field routes the note into the correct
+# subfolder (Pour Over, Espresso, Immersion).
+
+[templates.brewer]
+path = "02 - Areas/204 - Cooking/Coffee/Brewers/{{category}}/{{name}}.md"
+
+[[templates.brewer.fields]]
+name = "category"
+field_type = "static_select"
+prompt = "Brewer category"
+options = ["Pour Over", "Espresso", "Immersion"]
+
+[[templates.brewer.fields]]
+name = "brand"
+field_type = "text"
+prompt = "Brand"
 

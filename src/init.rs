@@ -79,8 +79,9 @@ pub fn run(options: InitOptions) -> Result<PathBuf> {
         target.display()
     );
     println!("  2. Run `pour me` to capture a journal entry");
-    println!("  3. Run `pour coffee` to log a brew");
-    println!("  4. Add your own modules to the config");
+    println!("  3. Run `pour todo` to add a task to your daily note");
+    println!("  4. Run `pour coffee` to log a brew");
+    println!("  5. Add your own modules to the config");
 
     Ok(target)
 }

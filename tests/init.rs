@@ -7,6 +7,8 @@ fn generated_config_is_valid_toml() {
     let config = Config::from_toml(&content).expect("generated config should parse and validate");
     assert_eq!(config.vault.base_path, "/tmp/test-vault");
     assert!(config.modules.contains_key("me"));
+    assert!(config.modules.contains_key("todo"));
+    assert!(config.modules.contains_key("note"));
     assert!(config.modules.contains_key("coffee"));
 }
 
@@ -34,7 +36,16 @@ fn default_modules_structure() {
     assert!(me.append_under_header.is_some());
     assert_eq!(me.fields.len(), 2);
 
+    let todo = &config.modules["todo"];
+    assert_eq!(todo.mode, WriteMode::Append);
+    assert!(todo.append_under_header.is_some());
+    assert_eq!(todo.fields.len(), 1);
+
+    let note = &config.modules["note"];
+    assert_eq!(note.mode, WriteMode::Create);
+    assert_eq!(note.fields.len(), 2);
+
     let coffee = &config.modules["coffee"];
     assert_eq!(coffee.mode, WriteMode::Create);
-    assert_eq!(coffee.fields.len(), 6);
+    assert_eq!(coffee.fields.len(), 19);
 }
