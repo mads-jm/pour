@@ -199,9 +199,9 @@ impl FsWriter {
         let tmp_path = full_path.with_extension("tmp");
         std::fs::write(&tmp_path, &result)
             .with_context(|| format!("FS: failed to write temp file {}", tmp_path.display()))?;
-        std::fs::rename(&tmp_path, &full_path).with_context(|| {
+        crate::util::atomic_replace(&tmp_path, &full_path).with_context(|| {
             format!(
-                "FS: failed to rename {} to {}",
+                "FS: failed to replace {} with {}",
                 tmp_path.display(),
                 full_path.display()
             )

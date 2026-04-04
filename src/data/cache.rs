@@ -76,7 +76,7 @@ impl Cache {
         let json = serde_json::to_string_pretty(&self.data)?;
         let tmp_path = self.path.with_extension("tmp");
         std::fs::write(&tmp_path, json)?;
-        std::fs::rename(&tmp_path, &self.path)?;
+        crate::util::atomic_replace(&tmp_path, &self.path)?;
         Ok(())
     }
 }

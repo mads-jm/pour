@@ -48,14 +48,14 @@ impl History {
     }
 
     /// Record a successful capture and persist to disk.
-    pub fn record(&mut self, module_key: &str, vault_path: &str, first_field: Option<&str>) {
+    pub fn record(&mut self, module_key: &str, vault_path: &str, first_field: Option<&str>) -> Result<()> {
         self.data.entries.push(HistoryEntry {
             module_key: module_key.to_owned(),
             timestamp: Utc::now(),
             vault_path: vault_path.to_owned(),
             first_field: first_field.map(|s| s.to_owned()),
         });
-        let _ = self.save();
+        self.save()
     }
 
     /// Persist history to disk (atomic write).
@@ -66,7 +66,7 @@ impl History {
         let json = serde_json::to_string_pretty(&self.data)?;
         let tmp_path = self.path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;
-        std::fs::rename(&tmp_path, &self.path)?;
+        crate::util::atomic_replace(&tmp_path, &self.path)?;
         Ok(())
     }
 
