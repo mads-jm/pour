@@ -31,6 +31,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Applies to `text`, `static_select`, and `dynamic_select` fields. No-ops if the value is already wrapped. Defaults to `false`. |
 | `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
 | `post_create_command` | string | no | Obsidian command ID to execute after template-driven note creation (e.g. `"templater:run"`). Only valid when `create_template` is set. Fires via the REST API `/commands/` endpoint; silently skipped on filesystem transport. |
+| `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See **Conditional Visibility** below. |
 
 ## Output Target Defaults
 
@@ -44,6 +45,61 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `composite_array` | frontmatter |
 
 Any field can override its default via `target = "frontmatter"` or `target = "body"`.
+
+---
+
+## Conditional Visibility
+
+Any field can be conditionally shown using a `show_when` block. Hidden fields are skipped during rendering and navigation.
+
+```toml
+[[modules.brew.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure"
+[modules.brew.fields.show_when]
+field = "method"        # name of the controlling field
+equals = "Espresso"     # show only when method == "Espresso"
+```
+
+Or using `one_of` to match multiple values:
+
+```toml
+[modules.brew.fields.show_when]
+field = "method"
+one_of = ["Espresso", "Moka"]
+```
+
+**Visibility rules:**
+- `equals`: visible if `field_values[field] == equals` (case-sensitive).
+- `one_of`: visible if `field_values[field]` matches any listed value (case-sensitive).
+- If the controlling field is absent or empty, the conditional field is hidden.
+
+**Submit behavior:**
+- Hidden fields are skipped during validation — a hidden `required` field does not block submit.
+- Hidden field values are cleared on submit, so no stale data appears in output.
+- Hidden fields are excluded from frontmatter, body, and template placeholder resolution. Template placeholders for hidden fields resolve to empty string.
+
+**Navigation behavior:**
+- Tab/Shift-Tab/Up/Down bounds are computed from the *visible* field set, not total field count.
+- If a field becomes hidden while focused (e.g. the user changes a controlling field), focus moves to the next visible field, then previous, then the submit button.
+- New fields becoming visible do **not** steal focus.
+
+**Config validation rules:**
+- Exactly one of `equals` or `one_of` must be specified — not both, not neither.
+- `equals` must not be an empty string.
+- `one_of` must not be an empty array.
+- `show_when.field` must reference an existing field in the same module.
+- A field cannot reference itself.
+- A field cannot reference a `composite_array` field as the controller.
+- Circular dependencies are rejected (A→B→A, or longer chains).
+- Forward references (referencing a field defined later in the array) are allowed.
+
+**Limitations (v1):**
+- `show_when` is not supported on `composite_array` sub-fields.
+- Only a single condition per field — no AND/OR combinators.
+- No negation operators (`not_equals`, `none_of`).
+- Matching is case-sensitive only.
 
 ---
 
@@ -333,6 +389,7 @@ These keys are set on the module itself, not on individual fields:
 
 | Key | Type | Description |
 |-----|------|-------------|
+| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"0.2.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. |
 | `[vault].base_path` | string | Absolute path to the Obsidian vault root |
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var) |

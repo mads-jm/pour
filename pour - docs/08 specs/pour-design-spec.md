@@ -76,7 +76,25 @@ When a `dynamic_select` field has `create_template` referencing a `[templates.<n
 
 An optional `post_create_command` fires an Obsidian plugin command (e.g. `templater:run`) via the REST API's `/commands/` endpoint after note creation. This bridges Pour's structured data capture with Obsidian's plugin ecosystem — Pour handles frontmatter, the plugin handles body/presentation. The command is best-effort: silently skipped on filesystem transport. *[Deviation: command execution via REST API was not in original spec.]*
 
-### __3.3 File Write Modes & Field → Output Mapping__
+### __3.3 Conditional Field Visibility (`show_when`)__
+
+*[Deviation: not in original spec. Added to support method-specific form layouts (e.g., espresso-only fields that are meaningless for pour-over).]*
+
+Any field can declare a `show_when` block that gates its visibility on the value of another field in the same module:
+
+```toml
+show_when = { field = "brew_method", equals = "Espresso" }
+# or match multiple values:
+show_when = { field = "brew_method", one_of = ["Espresso", "Moka"] }
+```
+
+The visibility computation lives in `src/visibility.rs` (`is_field_visible`, `visible_field_indices`) — pure functions called on every key event. Hidden fields are excluded from TUI rendering, navigation, validation, and output. Hidden `required` fields do not block submit. Hidden field values are cleared on submit.
+
+Config validation enforces: exactly one of `equals`/`one_of`, no self-reference, no `composite_array` controllers, no circular chains. Forward references are allowed.
+
+v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only, not supported on `composite_array` sub-fields.
+
+### __3.4 File Write Modes & Field → Output Mapping__
 
 Append vs. create modes, and how fields map to frontmatter/body.
 
@@ -87,6 +105,19 @@ When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, 
 ## __4. Configuration, Field Types & Validation__
 
 Full TOML schema, field type reference, and validation rules — see config schema section.
+
+### __4.1 `config_version`__
+
+An optional top-level string field in `config.toml` that declares the schema version the file was written against.
+
+```toml
+config_version = "0.2.0"
+```
+
+- __Format:__ Semver string (e.g. `"0.2.0"`). Non-semver values are rejected at config load.
+- __Default:__ When absent, Pour treats the file as `"0.1.0"` — all existing configs without this field continue to work unchanged.
+- __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`). The current version is `0.2.0`.
+- __Purpose:__ Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. *[Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.]*
 
 ## __6. Technical Stack__
 
@@ -117,6 +148,7 @@ The following are explicitly __in scope__ for v0.2:
 - Template-driven inline creation with sub-form overlay (`create_template` + `[templates]`)
 - Post-creation command hook (`post_create_command`) for Obsidian plugin integration
 - Command execution via REST API transport (`/commands/{commandId}/`)
+- Conditional field visibility (`show_when`) — gates field rendering, navigation, validation, and output on another field's value
 
 The following are explicitly __deferred__:
 
