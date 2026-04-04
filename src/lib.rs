@@ -7,6 +7,7 @@ pub mod output;
 pub mod transport;
 pub mod tui;
 pub mod util;
+pub mod visibility;
 
 use crossterm::event::{KeyEvent, KeyEventKind};
 

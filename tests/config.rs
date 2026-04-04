@@ -1177,3 +1177,456 @@ post_create_command = "templater:run""#,
     );
     Config::from_toml(&toml).expect("valid create_template + post_create_command should pass");
 }
+
+// --- show_when tests ---
+
+/// Helper: minimal config with a show_when clause on the second field.
+fn config_with_show_when(show_when_toml: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["Espresso", "AeroPress", "V60"]
+
+[[modules.test.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure (bar)"
+{show_when_toml}
+"#
+    )
+}
+
+#[test]
+fn show_when_equals_deserializes_correctly() {
+    let toml = config_with_show_when(r#"show_when = { field = "brew_method", equals = "Espresso" }"#);
+    let config = Config::from_toml(&toml).expect("show_when equals should parse");
+    let field = &config.modules["test"].fields[1];
+    let sw = field.show_when.as_ref().expect("show_when should be Some");
+    assert_eq!(sw.field, "brew_method");
+    assert_eq!(sw.equals.as_deref(), Some("Espresso"));
+    assert!(sw.one_of.is_none());
+}
+
+#[test]
+fn show_when_one_of_deserializes_correctly() {
+    let toml = config_with_show_when(
+        r#"show_when = { field = "brew_method", one_of = ["Espresso", "AeroPress"] }"#,
+    );
+    let config = Config::from_toml(&toml).expect("show_when one_of should parse");
+    let field = &config.modules["test"].fields[1];
+    let sw = field.show_when.as_ref().expect("show_when should be Some");
+    assert_eq!(sw.field, "brew_method");
+    assert!(sw.equals.is_none());
+    let one_of = sw.one_of.as_ref().expect("one_of should be Some");
+    assert_eq!(one_of, &["Espresso", "AeroPress"]);
+}
+
+#[test]
+fn show_when_neither_equals_nor_one_of_fails_validation() {
+    let toml = config_with_show_when(r#"show_when = { field = "brew_method" }"#);
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("show_when on field 'pressure': must specify 'equals' or 'one_of'"),
+        "expected missing condition error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_both_equals_and_one_of_fails_validation() {
+    let toml = config_with_show_when(
+        r#"show_when = { field = "brew_method", equals = "Espresso", one_of = ["Espresso", "AeroPress"] }"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("show_when on field 'pressure': specify either 'equals' or 'one_of', not both"),
+        "expected conflicting condition error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_absent_defaults_to_none() {
+    let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should parse");
+    for field in &config.modules["coffee"].fields {
+        assert!(
+            field.show_when.is_none(),
+            "field '{}' show_when should default to None",
+            field.name
+        );
+    }
+}
+
+// --- show_when cross-field reference validation tests ---
+
+/// Helper: build a multi-field module config for show_when reference tests.
+fn config_with_show_when_ref(fields_toml: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+{fields_toml}
+"#
+    )
+}
+
+#[test]
+fn show_when_valid_backward_reference_passes() {
+    // Field B references field A which appears earlier — valid.
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["Espresso", "V60"]
+
+[[modules.test.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure"
+show_when = { field = "brew_method", equals = "Espresso" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_ok(), "backward reference should be valid: {result:?}");
+}
+
+#[test]
+fn show_when_valid_forward_reference_passes() {
+    // Field A references field B which appears later — forward reference is allowed.
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+[[modules.test.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["Espresso", "V60"]
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_ok(), "forward reference should be allowed: {result:?}");
+}
+
+#[test]
+fn show_when_unknown_field_reference_fails() {
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure"
+show_when = { field = "nonexistent", equals = "Espresso" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Field 'pressure' in module 'test' has show_when referencing unknown field 'nonexistent'"),
+        "expected unknown field error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_self_reference_fails() {
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["Espresso", "V60"]
+show_when = { field = "brew_method", equals = "Espresso" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Field 'brew_method' in module 'test' has show_when referencing itself"),
+        "expected self-reference error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_composite_array_reference_fails() {
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "shots"
+field_type = "composite_array"
+prompt = "Shots"
+
+[[modules.test.fields.sub_fields]]
+name = "vol"
+field_type = "number"
+prompt = "Volume"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "text"
+prompt = "Notes"
+show_when = { field = "shots", equals = "1" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("show_when on field 'notes' in module 'test' cannot reference composite_array field 'shots'"),
+        "expected composite_array reference error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_direct_circular_dependency_fails() {
+    // A → B and B → A
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "field_a"
+field_type = "text"
+prompt = "A"
+show_when = { field = "field_b", equals = "x" }
+
+[[modules.test.fields]]
+name = "field_b"
+field_type = "text"
+prompt = "B"
+show_when = { field = "field_a", equals = "y" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Circular show_when dependency detected in module 'test'"),
+        "expected circular dependency error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_transitive_circular_dependency_fails() {
+    // A → B → C → A
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "field_a"
+field_type = "text"
+prompt = "A"
+show_when = { field = "field_b", equals = "x" }
+
+[[modules.test.fields]]
+name = "field_b"
+field_type = "text"
+prompt = "B"
+show_when = { field = "field_c", equals = "y" }
+
+[[modules.test.fields]]
+name = "field_c"
+field_type = "text"
+prompt = "C"
+show_when = { field = "field_a", equals = "z" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Circular show_when dependency detected in module 'test'"),
+        "expected transitive circular dependency error, got: {msg}"
+    );
+}
+
+// --- config_version tests ---
+
+/// Minimal config helper without any config_version key.
+const MINIMAL_TOML_NO_VERSION: &str = r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#;
+
+#[test]
+fn config_without_version_defaults_to_0_1_0() {
+    let config = Config::from_toml(MINIMAL_TOML_NO_VERSION)
+        .expect("config without config_version should parse successfully");
+    assert_eq!(
+        config.config_version.as_deref(),
+        Some("0.1.0"),
+        "missing config_version should resolve to 0.1.0"
+    );
+}
+
+#[test]
+fn config_version_0_1_0_parses_correctly() {
+    let toml = format!("config_version = \"0.1.0\"\n{MINIMAL_TOML_NO_VERSION}");
+    let config = Config::from_toml(&toml).expect("config_version = 0.1.0 should parse");
+    assert_eq!(config.config_version.as_deref(), Some("0.1.0"));
+}
+
+#[test]
+fn config_version_0_2_0_parses_correctly() {
+    let toml = format!("config_version = \"0.2.0\"\n{MINIMAL_TOML_NO_VERSION}");
+    let config = Config::from_toml(&toml).expect("config_version = 0.2.0 should parse");
+    assert_eq!(config.config_version.as_deref(), Some("0.2.0"));
+}
+
+#[test]
+fn config_version_unsupported_major_is_rejected() {
+    let toml = format!("config_version = \"99.0.0\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("99.0.0") && msg.contains("not supported"),
+        "expected unsupported version error, got: {msg}"
+    );
+}
+
+#[test]
+fn config_version_empty_string_is_rejected() {
+    let toml = format!("config_version = \"\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("config_version") && msg.contains("empty"),
+        "expected empty config_version error, got: {msg}"
+    );
+}
+
+#[test]
+fn config_version_leading_zeros_rejected() {
+    let toml = format!("config_version = \"00.01.00\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("leading zeros"),
+        "expected leading zeros error, got: {msg}"
+    );
+}
+
+#[test]
+fn config_version_two_part_rejected() {
+    let toml = format!("config_version = \"1.0\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("1.0") && msg.contains("major.minor.patch"),
+        "expected wrong-parts-count error, got: {msg}"
+    );
+}
+
+#[test]
+fn config_version_prefixed_rejected() {
+    let toml = format!("config_version = \"v0.1.0\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("v0.1.0") && msg.contains("major.minor.patch"),
+        "expected non-numeric segment error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_empty_one_of_rejected() {
+    let toml = config_with_show_when(r#"show_when = { field = "brew_method", one_of = [] }"#);
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("must not be empty"),
+        "expected empty one_of error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_empty_equals_rejected() {
+    let toml = config_with_show_when(r#"show_when = { field = "brew_method", equals = "" }"#);
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("must not be empty"),
+        "expected empty equals error, got: {msg}"
+    );
+}
+
+#[test]
+fn show_when_two_disjoint_cycles_both_reported() {
+    // A↔B and C↔D in the same module — both cycles must appear in the error.
+    let toml = config_with_show_when_ref(
+        r#"
+[[modules.test.fields]]
+name = "field_a"
+field_type = "text"
+prompt = "A"
+show_when = { field = "field_b", equals = "x" }
+
+[[modules.test.fields]]
+name = "field_b"
+field_type = "text"
+prompt = "B"
+show_when = { field = "field_a", equals = "y" }
+
+[[modules.test.fields]]
+name = "field_c"
+field_type = "text"
+prompt = "C"
+show_when = { field = "field_d", equals = "x" }
+
+[[modules.test.fields]]
+name = "field_d"
+field_type = "text"
+prompt = "D"
+show_when = { field = "field_c", equals = "y" }
+"#,
+    );
+    let result = Config::from_toml(&toml);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    // Both cycles must be reported — count occurrences of the cycle error message
+    let cycle_count = msg
+        .matches("Circular show_when dependency detected in module 'test'")
+        .count();
+    assert_eq!(
+        cycle_count, 2,
+        "expected both A↔B and C↔D cycles to be reported, got: {msg}"
+    );
+}

@@ -303,6 +303,7 @@ fn make_form_state(
         field_values,
         field_options: HashMap::new(),
         active_field: 0,
+        active_config_idx: Some(0),
         validation_errors: Vec::new(),
         cursor_position: 0,
         dropdown_open: false,

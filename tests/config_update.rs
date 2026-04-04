@@ -1,6 +1,6 @@
 use pour::config::{
     Config, ConfigError, FieldConfig, FieldTarget, FieldType, FieldUpdates, ModuleConfig,
-    ModuleUpdates, VaultUpdates, WriteMode,
+    ModuleUpdates, ShowWhen, VaultUpdates, WriteMode,
 };
 use std::io::Write;
 use std::path::Path;
@@ -221,6 +221,11 @@ fn update_field_name_and_prompt() {
         source: None,
         target: None,
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("field update should succeed");
@@ -249,6 +254,11 @@ fn update_field_type_with_options() {
         source: None,
         target: Some(Some(FieldTarget::Frontmatter)),
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("type change should succeed");
@@ -274,6 +284,11 @@ fn update_field_preserves_comments() {
         source: None,
         target: None,
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
@@ -304,6 +319,11 @@ fn update_field_validation_rejects_select_without_options() {
         source: None,
         target: None,
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 1, &updates);
@@ -334,6 +354,11 @@ fn update_field_out_of_range_errors() {
         source: None,
         target: None,
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 99, &updates);
@@ -358,6 +383,11 @@ fn update_field_remove_optional_keys() {
         source: None,
         target: None,
         callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("remove should succeed");
@@ -365,6 +395,138 @@ fn update_field_remove_optional_keys() {
     let config = Config::load().expect("reload should succeed");
     let field = &config.modules["coffee"].fields[0];
     assert_eq!(field.required, None, "required should have been removed");
+}
+
+#[test]
+fn add_field_with_show_when_persisted() {
+    let (_f, _guard) = write_temp_config(FIELD_TOML);
+
+    let new_field = FieldConfig {
+        name: "ratio".to_string(),
+        field_type: FieldType::Text,
+        prompt: "Ratio?".to_string(),
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        sub_fields: None,
+        callout: None,
+        allow_create: None,
+        wikilink: None,
+        create_template: None,
+        post_create_command: None,
+        show_when: Some(ShowWhen {
+            field: "method".to_string(),
+            equals: Some("V60".to_string()),
+            one_of: None,
+        }),
+    };
+
+    Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let field = &config.modules["coffee"].fields[2];
+    assert_eq!(field.name, "ratio");
+    let sw = field.show_when.as_ref().expect("show_when should be present");
+    assert_eq!(sw.field, "method");
+    assert_eq!(sw.equals.as_deref(), Some("V60"));
+    assert!(sw.one_of.is_none());
+}
+
+#[test]
+fn update_field_add_show_when() {
+    let (_f, _guard) = write_temp_config(FIELD_TOML);
+
+    let updates = FieldUpdates {
+        name: None,
+        field_type: None,
+        prompt: None,
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        callout: None,
+        show_when: Some(Some(ShowWhen {
+            field: "method".to_string(),
+            equals: Some("Espresso".to_string()),
+            one_of: None,
+        })),
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
+    };
+
+    Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let field = &config.modules["coffee"].fields[1];
+    let sw = field.show_when.as_ref().expect("show_when should be present");
+    assert_eq!(sw.field, "method");
+    assert_eq!(sw.equals.as_deref(), Some("Espresso"));
+}
+
+#[test]
+fn update_field_remove_show_when() {
+    // Start with a field that already has show_when set.
+    const WITH_SHOW_WHEN: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["V60", "AeroPress", "Espresso"]
+
+[[modules.coffee.fields]]
+name = "ratio"
+field_type = "text"
+prompt = "Ratio?"
+show_when = { field = "method", equals = "V60" }
+"###;
+
+    let (_f, _guard) = write_temp_config(WITH_SHOW_WHEN);
+
+    let updates = FieldUpdates {
+        name: None,
+        field_type: None,
+        prompt: None,
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        callout: None,
+        show_when: Some(None), // remove the key
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
+    };
+
+    Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
+
+    let written = std::fs::read_to_string(std::env::var("POUR_CONFIG").unwrap())
+        .expect("failed to read config");
+
+    assert!(
+        !written.contains("show_when"),
+        "show_when key should have been removed from the config"
+    );
+
+    let config = Config::load().expect("reload should succeed");
+    let field = &config.modules["coffee"].fields[1];
+    assert!(
+        field.show_when.is_none(),
+        "show_when should be None after removal"
+    );
 }
 
 // --- Vault update tests ---
@@ -475,6 +637,7 @@ fn add_field_appends_to_module() {
         wikilink: None,
         create_template: None,
         post_create_command: None,
+        show_when: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -514,6 +677,7 @@ fn add_field_to_nonexistent_module_errors() {
         wikilink: None,
         create_template: None,
         post_create_command: None,
+        show_when: None,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -591,6 +755,7 @@ fn add_field_preserves_comments() {
         wikilink: None,
         create_template: None,
         post_create_command: None,
+        show_when: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -629,6 +794,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             wikilink: None,
             create_template: None,
             post_create_command: None,
+            show_when: None,
         }],
     }
 }

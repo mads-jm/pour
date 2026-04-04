@@ -491,3 +491,137 @@ async fn write_create_wraps_body_in_callout() {
         "second line should be blockquoted, got: {content}"
     );
 }
+
+// ── Visibility filtering tests ────────────────────────────────────────────────
+
+/// Module with a conditional `extra` field gated on `kind = "special"`.
+fn visibility_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.test]
+mode = "create"
+path = "Test/note.md"
+display_name = "Test"
+
+[[modules.test.fields]]
+name = "kind"
+field_type = "static_select"
+prompt = "Kind"
+options = ["normal", "special"]
+
+[[modules.test.fields]]
+name = "extra"
+field_type = "text"
+prompt = "Extra"
+[modules.test.fields.show_when]
+field = "kind"
+equals = "special"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+[modules.test.fields.show_when]
+field = "kind"
+equals = "special"
+"####
+    );
+    Config::from_toml(&toml).expect("visibility test config should parse")
+}
+
+#[tokio::test]
+async fn hidden_field_excluded_from_frontmatter() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = visibility_config(&base);
+    let module = &config.modules["test"];
+
+    std::fs::create_dir_all(tmp.path().join("Test")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    // kind = "normal" so `extra` (show_when kind=special) is hidden
+    let mut fields = HashMap::new();
+    fields.insert("kind".to_string(), "normal".to_string());
+    fields.insert("extra".to_string(), "should-not-appear".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
+    let parts: Vec<&str> = content.splitn(3, "---\n").collect();
+    let frontmatter = parts.get(1).copied().unwrap_or("");
+
+    assert!(
+        !frontmatter.contains("extra"),
+        "hidden field 'extra' should not appear in frontmatter, got: {frontmatter}"
+    );
+    assert!(
+        !content.contains("should-not-appear"),
+        "stale hidden value should not appear anywhere in output, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn visible_conditional_field_included_in_frontmatter() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = visibility_config(&base);
+    let module = &config.modules["test"];
+
+    std::fs::create_dir_all(tmp.path().join("Test")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    // kind = "special" so `extra` is visible
+    let mut fields = HashMap::new();
+    fields.insert("kind".to_string(), "special".to_string());
+    fields.insert("extra".to_string(), "rare-value".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
+    let parts: Vec<&str> = content.splitn(3, "---\n").collect();
+    let frontmatter = parts.get(1).copied().unwrap_or("");
+
+    assert!(
+        frontmatter.contains("extra: rare-value"),
+        "visible conditional field 'extra' should appear in frontmatter, got: {frontmatter}"
+    );
+}
+
+#[tokio::test]
+async fn hidden_field_excluded_from_body() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = visibility_config(&base);
+    let module = &config.modules["test"];
+
+    std::fs::create_dir_all(tmp.path().join("Test")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    // kind = "normal" so `notes` textarea (show_when kind=special) is hidden
+    let mut fields = HashMap::new();
+    fields.insert("kind".to_string(), "normal".to_string());
+    fields.insert("notes".to_string(), "ghost-body-text".to_string());
+
+    write_create(&transport, module, &fields, &CompositeData::new(), None)
+        .await
+        .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
+    let parts: Vec<&str> = content.splitn(3, "---\n").collect();
+    let body = parts.get(2).copied().unwrap_or("");
+
+    assert!(
+        !body.contains("ghost-body-text"),
+        "hidden textarea field should not appear in body, got: {body}"
+    );
+}

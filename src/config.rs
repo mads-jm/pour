@@ -14,6 +14,10 @@ pub struct Config {
     /// Optional ordering for dashboard display. Modules not listed appear
     /// alphabetically after the listed ones.
     pub module_order: Option<Vec<String>>,
+    /// Semver string identifying the config schema version. Absent in configs
+    /// predating versioning; treated as `"0.1.0"` for backward compatibility.
+    #[serde(default = "default_config_version")]
+    pub config_version: Option<String>,
 }
 
 /// Vault connection settings.
@@ -31,6 +35,10 @@ pub struct VaultConfig {
 
 fn default_api_port() -> Option<u16> {
     Some(27124)
+}
+
+fn default_config_version() -> Option<String> {
+    Some("0.1.0".to_string())
 }
 
 /// A single module definition (e.g. `[modules.coffee]`).
@@ -52,6 +60,19 @@ pub struct ModuleConfig {
 pub enum WriteMode {
     Append,
     Create,
+}
+
+/// Conditional visibility rule for a field.
+///
+/// Exactly one of `equals` or `one_of` must be set.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShowWhen {
+    /// The name of the field whose value controls visibility.
+    pub field: String,
+    /// Show this field when the controlling field's value equals this string.
+    pub equals: Option<String>,
+    /// Show this field when the controlling field's value is any of these strings.
+    pub one_of: Option<Vec<String>>,
 }
 
 /// A single field within a module form.
@@ -87,6 +108,10 @@ pub struct FieldConfig {
     /// Obsidian command URI to execute after inline note creation (e.g. `"templater:run"` ).
     #[serde(default)]
     pub post_create_command: Option<String>,
+    /// Optional conditional visibility rule. When set, this field is only shown
+    /// if the referenced field's current value matches the condition.
+    #[serde(default)]
+    pub show_when: Option<ShowWhen>,
 }
 
 /// The kind of input widget for a field.
@@ -205,6 +230,16 @@ pub struct FieldUpdates {
     pub target: Option<Option<FieldTarget>>,
     /// Obsidian callout type. `Some(None)` removes the key.
     pub callout: Option<Option<String>>,
+    /// Conditional visibility rule. `Some(None)` removes the key.
+    pub show_when: Option<Option<ShowWhen>>,
+    /// Wrap output in wikilink syntax. `Some(None)` removes the key.
+    pub wikilink: Option<Option<bool>>,
+    /// Allow inline note creation. `Some(None)` removes the key.
+    pub allow_create: Option<Option<bool>>,
+    /// Template name for inline note creation. `Some(None)` removes the key.
+    pub create_template: Option<Option<String>>,
+    /// Obsidian command URI after inline creation. `Some(None)` removes the key.
+    pub post_create_command: Option<Option<String>>,
 }
 
 /// Partial updates to apply to a single sub-field within a composite_array field.
@@ -274,7 +309,29 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Build a `toml_edit::InlineTable` from a `ShowWhen` value.
+///
+/// Produces `{ field = "x", equals = "y" }` or `{ field = "x", one_of = ["a", "b"] }`.
+fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
+    let mut t = toml_edit::InlineTable::new();
+    t.insert("field", toml_edit::Value::from(sw.field.as_str()));
+    if let Some(ref eq) = sw.equals {
+        t.insert("equals", toml_edit::Value::from(eq.as_str()));
+    }
+    if let Some(ref one_of) = sw.one_of {
+        let mut arr = toml_edit::Array::new();
+        for v in one_of {
+            arr.push(v.as_str());
+        }
+        t.insert("one_of", toml_edit::Value::Array(arr));
+    }
+    t
+}
+
 impl Config {
+    /// The config schema version this build of Pour understands.
+    pub const CURRENT_CONFIG_VERSION: &'static str = "0.2.0";
+
     /// Load and validate the configuration.
     ///
     /// Resolution order for config file path:
@@ -310,7 +367,7 @@ impl Config {
 
     /// Return the expected config file path without checking if it exists.
     /// Respects `POUR_CONFIG` env var, otherwise uses the platform config dir.
-    pub(crate) fn default_config_path() -> PathBuf {
+    pub fn default_config_path() -> PathBuf {
         if let Ok(env_path) = std::env::var("POUR_CONFIG") {
             return PathBuf::from(env_path);
         }
@@ -553,6 +610,55 @@ impl Config {
             }
         }
 
+        if let Some(ref show_when_update) = updates.show_when {
+            match show_when_update {
+                Some(sw) => {
+                    field["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
+                        build_show_when_inline_table(sw),
+                    ));
+                }
+                None => {
+                    field.remove("show_when");
+                }
+            }
+        }
+
+        if let Some(ref wikilink_update) = updates.wikilink {
+            match wikilink_update {
+                Some(v) => field["wikilink"] = toml_edit::value(*v),
+                None => {
+                    field.remove("wikilink");
+                }
+            }
+        }
+
+        if let Some(ref allow_create_update) = updates.allow_create {
+            match allow_create_update {
+                Some(v) => field["allow_create"] = toml_edit::value(*v),
+                None => {
+                    field.remove("allow_create");
+                }
+            }
+        }
+
+        if let Some(ref create_template_update) = updates.create_template {
+            match create_template_update {
+                Some(v) => field["create_template"] = toml_edit::value(v.as_str()),
+                None => {
+                    field.remove("create_template");
+                }
+            }
+        }
+
+        if let Some(ref post_create_command_update) = updates.post_create_command {
+            match post_create_command_update {
+                Some(v) => field["post_create_command"] = toml_edit::value(v.as_str()),
+                None => {
+                    field.remove("post_create_command");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing.
@@ -658,6 +764,32 @@ impl Config {
                 arr.push(t);
             }
             new_table["sub_fields"] = toml_edit::Item::ArrayOfTables(arr);
+        }
+
+        if let Some(ref callout) = field.callout {
+            new_table["callout"] = toml_edit::value(callout.as_str());
+        }
+
+        if let Some(wikilink) = field.wikilink {
+            new_table["wikilink"] = toml_edit::value(wikilink);
+        }
+
+        if let Some(allow_create) = field.allow_create {
+            new_table["allow_create"] = toml_edit::value(allow_create);
+        }
+
+        if let Some(ref create_template) = field.create_template {
+            new_table["create_template"] = toml_edit::value(create_template.as_str());
+        }
+
+        if let Some(ref post_create_command) = field.post_create_command {
+            new_table["post_create_command"] = toml_edit::value(post_create_command.as_str());
+        }
+
+        if let Some(ref sw) = field.show_when {
+            new_table["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
+                build_show_when_inline_table(sw),
+            ));
         }
 
         // Navigate to the fields array-of-tables and push the new entry.
@@ -1588,6 +1720,137 @@ impl Config {
         Ok(())
     }
 
+    /// Validate cross-field `show_when` references within a single module.
+    ///
+    /// Checks:
+    /// 1. Unknown field reference
+    /// 2. Self-reference
+    /// 3. Reference to a `composite_array` field
+    /// 4. Circular dependency (A→B→…→A)
+    fn validate_show_when_refs(
+        module_name: &str,
+        fields: &[FieldConfig],
+        errors: &mut Vec<String>,
+    ) {
+        // Build name → FieldConfig index map
+        let field_map: HashMap<&str, &FieldConfig> =
+            fields.iter().map(|f| (f.name.as_str(), f)).collect();
+
+        // Per-field reference checks (unknown, self, composite_array)
+        for field in fields {
+            let sw = match &field.show_when {
+                Some(sw) => sw,
+                None => continue,
+            };
+
+            let ref_name = sw.field.as_str();
+
+            // Self-reference
+            if ref_name == field.name.as_str() {
+                errors.push(format!(
+                    "Field '{}' in module '{}' has show_when referencing itself",
+                    field.name, module_name
+                ));
+                continue;
+            }
+
+            // Unknown field reference
+            let referenced = match field_map.get(ref_name) {
+                Some(f) => f,
+                None => {
+                    errors.push(format!(
+                        "Field '{}' in module '{}' has show_when referencing unknown field '{}'",
+                        field.name, module_name, ref_name
+                    ));
+                    continue;
+                }
+            };
+
+            // Reference to composite_array
+            if referenced.field_type == FieldType::CompositeArray {
+                errors.push(format!(
+                    "show_when on field '{}' in module '{}' cannot reference composite_array field '{}'",
+                    field.name, module_name, ref_name
+                ));
+            }
+        }
+
+        // Cycle detection via DFS
+        // Build adjacency: field name → name it depends on (if any)
+        // Only include edges where the referenced field actually exists (unknown refs already reported above)
+        let deps: HashMap<&str, &str> = fields
+            .iter()
+            .filter_map(|f| {
+                f.show_when.as_ref().and_then(|sw| {
+                    let ref_name = sw.field.as_str();
+                    // Only track edge if the reference is valid (exists and not self)
+                    if field_map.contains_key(ref_name) && ref_name != f.name.as_str() {
+                        Some((f.name.as_str(), ref_name))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        // DFS cycle detection — track globally visited and current path stack separately.
+        // `visited` = nodes fully processed (no need to re-walk).
+        // `path` = nodes on the current walk's stack (used for cycle extraction).
+        let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut reported_cycles: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for start in deps.keys().copied() {
+            if visited.contains(start) {
+                continue;
+            }
+
+            // Walk the chain from `start`
+            let mut path: Vec<&str> = Vec::new();
+            let mut in_path: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            let mut current = start;
+
+            loop {
+                if in_path.contains(current) {
+                    // Found a cycle — extract the cycle portion
+                    let cycle_start = path.iter().position(|&n| n == current).unwrap();
+                    let cycle: Vec<&str> = path[cycle_start..].to_vec();
+
+                    // Canonical key: sorted so we don't report the same cycle twice
+                    let mut key_parts = cycle.to_vec();
+                    key_parts.sort_unstable();
+                    let cycle_key = key_parts.join(",");
+
+                    if reported_cycles.insert(cycle_key) {
+                        let cycle_list = cycle.join(" → ");
+                        errors.push(format!(
+                            "Circular show_when dependency detected in module '{}': {}",
+                            module_name, cycle_list
+                        ));
+                    }
+                    break;
+                }
+
+                // Already processed from a prior walk — no need to re-traverse.
+                if visited.contains(current) {
+                    break;
+                }
+
+                path.push(current);
+                in_path.insert(current);
+
+                match deps.get(current) {
+                    Some(&next) => current = next,
+                    None => break,
+                }
+            }
+
+            // Mark all nodes on this walk's path as fully explored
+            for node in &path {
+                visited.insert(node);
+            }
+        }
+    }
+
     /// Check that a path is vault-relative and safe.
     ///
     /// Rejects absolute paths (Unix or Windows), drive-qualified paths,
@@ -1637,8 +1900,74 @@ impl Config {
     }
 
     /// Validate the parsed config against business rules.
+    /// Validate `config_version`: must be a parseable `major.minor.patch` semver string
+    /// with a major version this build of Pour supports.
+    fn validate_config_version(version: &str, errors: &mut Vec<String>) {
+        if version.is_empty() {
+            errors.push("config_version must not be an empty string".to_string());
+            return;
+        }
+
+        let parts: Vec<&str> = version.split('.').collect();
+        if parts.len() != 3 {
+            errors.push(format!(
+                "config_version '{version}' is not a valid semver string (expected major.minor.patch)"
+            ));
+            return;
+        }
+
+        // Reject leading zeros in any segment (e.g. "00.01.00")
+        for part in &parts {
+            if part.len() > 1 && part.starts_with('0') {
+                errors.push(format!(
+                    "config_version segment '{part}' has leading zeros"
+                ));
+                return;
+            }
+        }
+
+        let major = match parts[0].parse::<u32>() {
+            Ok(n) => n,
+            Err(_) => {
+                errors.push(format!(
+                    "config_version '{version}' is not a valid semver string (expected major.minor.patch)"
+                ));
+                return;
+            }
+        };
+        // Validate minor and patch are numeric too.
+        for segment in &parts[1..] {
+            if segment.parse::<u32>().is_err() {
+                errors.push(format!(
+                    "config_version '{version}' is not a valid semver string (expected major.minor.patch)"
+                ));
+                return;
+            }
+        }
+
+        // Parse the current major version from CURRENT_CONFIG_VERSION.
+        let current_major = Self::CURRENT_CONFIG_VERSION
+            .split('.')
+            .next()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+
+        if major > current_major {
+            errors.push(format!(
+                "Config version {version} is not supported by this version of Pour. \
+                Please update Pour or downgrade your config."
+            ));
+        }
+    }
+
     fn validate(&self) -> Result<(), ConfigError> {
         let mut errors = Vec::new();
+
+        // Validate config_version (always Some — serde default guarantees it).
+        Self::validate_config_version(
+            self.config_version.as_deref().unwrap_or("0.1.0"),
+            &mut errors,
+        );
 
         for (name, module) in &self.modules {
             // Every module must have at least one field
@@ -1793,7 +2122,47 @@ impl Config {
                         field.name
                     ));
                 }
+
+                // show_when: exactly one of `equals` or `one_of` must be set
+                if let Some(ref sw) = field.show_when {
+                    match (&sw.equals, &sw.one_of) {
+                        (Some(_), Some(_)) => {
+                            errors.push(format!(
+                                "show_when on field '{}': specify either 'equals' or 'one_of', not both",
+                                field.name
+                            ));
+                        }
+                        (None, None) => {
+                            errors.push(format!(
+                                "show_when on field '{}': must specify 'equals' or 'one_of'",
+                                field.name
+                            ));
+                        }
+                        _ => {}
+                    }
+                    // Reject empty string for `equals`
+                    if let Some(ref eq_val) = sw.equals {
+                        if eq_val.is_empty() {
+                            errors.push(format!(
+                                "show_when on field '{}': 'equals' must not be empty",
+                                field.name
+                            ));
+                        }
+                    }
+                    // Reject empty vec for `one_of`
+                    if let Some(ref one_of_val) = sw.one_of {
+                        if one_of_val.is_empty() {
+                            errors.push(format!(
+                                "show_when on field '{}': 'one_of' must not be empty",
+                                field.name
+                            ));
+                        }
+                    }
+                }
             }
+
+            // Cross-field show_when reference validation (per module)
+            Self::validate_show_when_refs(name, &module.fields, &mut errors);
         }
 
         // Validate templates

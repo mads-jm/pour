@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::app::{App, FormState, SubFormState};
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
+use crate::visibility::visible_field_indices;
 
 /// Render the form view for the currently selected module.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -93,13 +94,19 @@ pub fn render(app: &App, frame: &mut Frame) {
 
 /// Render the vertical list of form fields plus a submit button row.
 fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState) {
-    let submit_active = form_state.active_field == fields.len();
+    // Compute which fields are currently visible given the form's current values.
+    // `vi` (visible index) is the render position; `ci` (config index) is the field's
+    // position in the original `fields` slice.
+    let visible_indices = visible_field_indices(fields, &form_state.field_values);
 
-    let mut items: Vec<ListItem> = fields
+    let submit_active = form_state.active_field == visible_indices.len();
+
+    let mut items: Vec<ListItem> = visible_indices
         .iter()
         .enumerate()
-        .map(|(i, field)| {
-            let is_active = i == form_state.active_field;
+        .map(|(vi, &ci)| {
+            let field = &fields[ci];
+            let is_active = vi == form_state.active_field;
             let value = form_state
                 .field_values
                 .get(&field.name)
@@ -256,13 +263,21 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     frame.render_widget(list, area);
     super::render_overflow_hints(frame, area, item_count, 0);
 
+    // Resolve the active field's config-index from the visible list.
+    let active_config_field = visible_indices
+        .get(form_state.active_field)
+        .and_then(|&ci| fields.get(ci));
+
     // Place the terminal block cursor for text/textarea/number fields
-    if !submit_active && let Some(field) = fields.get(form_state.active_field) {
+    if !submit_active
+        && let Some(field) = active_config_field
+    {
         let is_text_input = matches!(field.field_type, FieldType::Text | FieldType::Number);
         if is_text_input {
-            // prefix: "> " (2) + prompt + required_marker (1) + ": " (2)
+            // prefix: "▸ " (2) + prompt + required_marker (1) + ": " (2)
             let prefix_len = 2 + field.prompt.len() + 1 + 2;
             let cursor_x = area.x + prefix_len as u16 + form_state.cursor_position as u16;
+            // `active_field` is the visible index, which is the render row.
             let cursor_y = area.y + form_state.active_field as u16;
             if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -272,7 +287,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
     // If active field is a select type AND the dropdown is open, render the options popup below
     if form_state.dropdown_open
-        && let Some(field) = fields.get(form_state.active_field)
+        && let Some(field) = active_config_field
         && matches!(
             field.field_type,
             FieldType::StaticSelect | FieldType::DynamicSelect
@@ -294,7 +309,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
     // If active field is a textarea AND the editor is open, render the text editor overlay
     if form_state.textarea_open
-        && let Some(field) = fields.get(form_state.active_field)
+        && let Some(field) = active_config_field
         && field.field_type == FieldType::Textarea
     {
         render_textarea_editor(frame, area, field, form_state);
@@ -302,7 +317,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
     // If active field is a composite_array AND the overlay is open, render the table editor
     if form_state.composite_open
-        && let Some(field) = fields.get(form_state.active_field)
+        && let Some(field) = active_config_field
         && field.field_type == FieldType::CompositeArray
     {
         render_composite_editor(frame, area, field, form_state);
@@ -759,7 +774,8 @@ fn render_sub_form(
 
     // Centered modal: 60% width, height to fit fields + chrome
     let field_count = template.fields.len();
-    let modal_height = (field_count as u16 + 5).min(area.height.saturating_sub(4)); // fields + title + button + hints + borders
+    let error_row: u16 = if sub_form.error_message.is_some() { 1 } else { 0 };
+    let modal_height = (field_count as u16 + 5 + error_row).min(area.height.saturating_sub(4)); // fields + title + button + hints + borders + optional error
     let modal_width = (area.width * 3 / 5).max(30).min(area.width.saturating_sub(4));
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
@@ -875,8 +891,8 @@ fn render_sub_form(
         }
     }
 
-    // Submit button row
-    let button_y = inner.y + inner.height.saturating_sub(2);
+    // Submit button row (above error + hint)
+    let button_y = inner.y + inner.height.saturating_sub(2 + error_row);
     if button_y > inner.y {
         let button_area = Rect::new(inner.x, button_y, inner.width, 1);
         let button_style = if on_submit_button {
@@ -888,6 +904,20 @@ fn render_sub_form(
         };
         let button = Paragraph::new(Line::from(Span::styled("  [ create ]", button_style)));
         frame.render_widget(button, button_area);
+    }
+
+    // Error line (above hint, only when set)
+    if let Some(ref err) = sub_form.error_message {
+        let error_y = inner.y + inner.height.saturating_sub(1 + error_row);
+        if error_y > inner.y {
+            let error_area = Rect::new(inner.x, error_y, inner.width, 1);
+            let msg = format!(" ! {err}");
+            let error_widget = Paragraph::new(Line::from(Span::styled(
+                msg,
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )));
+            frame.render_widget(error_widget, error_area);
+        }
     }
 
     // Hint line
@@ -909,6 +939,81 @@ fn render_sub_form(
 
 }
 
+/// Recompute which field `active_field` should point at after a potential
+/// visibility change.
+///
+/// Two-phase logic:
+///
+/// **Phase 1 — in-range check**: If `active_field <= submit_idx` (i.e., within
+/// the current visible set or exactly on the submit button), check whether the
+/// config field it resolves to is the same one recorded in `active_config_idx`.
+/// - If they agree (or `active_field == submit_idx` and `active_config_idx`
+///   is None): no action needed; just sync `active_config_idx` to match and return.
+/// - If they disagree (stale `active_config_idx`, e.g. from a direct test
+///   assignment): `active_field` wins — sync `active_config_idx` to the config
+///   field at the current visible position and return.
+///
+/// **Phase 2 — out-of-range recovery**: If `active_field > submit_idx`, the
+/// visible set has shrunk. Use `active_config_idx` to locate the intended field:
+/// - If `active_config_idx` is `None` (was on submit), land on the new submit.
+/// - If `active_config_idx` is `Some(ci)` and `ci` is still visible, move to
+///   its new visible position.
+/// - If `ci` is no longer visible, prefer next visible field (higher config
+///   index), then previous, then submit.
+fn clamp_active_to_visible(
+    form_state: &mut FormState,
+    fields: &[crate::config::FieldConfig],
+) {
+    let visible = visible_field_indices(fields, &form_state.field_values);
+    let visible_count = visible.len();
+    let submit_idx = visible_count;
+
+    if form_state.active_field <= submit_idx {
+        // Phase 1: active_field is in a valid position.
+        let current_ci = visible.get(form_state.active_field).copied(); // None = submit
+        // Always keep active_field, just sync the config index.
+        form_state.active_config_idx = current_ci;
+        return;
+    }
+
+    // Phase 2: active_field is out of range — visible set shrank.
+    let prev_ci = match form_state.active_config_idx {
+        None => {
+            // Was on submit — keep on submit.
+            form_state.active_field = submit_idx;
+            return;
+        }
+        Some(ci) => ci,
+    };
+
+    if let Some(new_vi) = visible.iter().position(|&ci| ci == prev_ci) {
+        form_state.active_field = new_vi;
+        form_state.active_config_idx = visible.get(new_vi).copied();
+    } else if let Some(new_vi) = visible.iter().position(|&ci| ci > prev_ci) {
+        form_state.active_field = new_vi;
+        form_state.active_config_idx = visible.get(new_vi).copied();
+    } else if let Some(new_vi) = visible.iter().rposition(|&ci| ci < prev_ci) {
+        form_state.active_field = new_vi;
+        form_state.active_config_idx = visible.get(new_vi).copied();
+    } else {
+        form_state.active_field = submit_idx;
+        form_state.active_config_idx = None;
+    }
+}
+
+/// Resolve the currently active `FieldConfig` using the visible index.
+///
+/// Returns `None` when the form is on the submit button.
+fn active_field_config<'a>(
+    form_state: &FormState,
+    module: &'a crate::config::ModuleConfig,
+) -> Option<&'a crate::config::FieldConfig> {
+    let visible = visible_field_indices(&module.fields, &form_state.field_values);
+    visible
+        .get(form_state.active_field)
+        .and_then(|&ci| module.fields.get(ci))
+}
+
 /// Handle a key event while in Form view.
 ///
 /// Returns a `FormAction` signalling what the wiring layer should do next.
@@ -923,17 +1028,26 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         Some(m) => m,
         None => return FormAction::None,
     };
-    let real_field_count = module.fields.len();
-    // +1 for the virtual submit button at the end
-    let navigable_count = real_field_count + 1;
 
     let form_state = match &mut app.form_state {
         Some(fs) => fs,
         None => return FormAction::None,
     };
 
-    let on_submit_button = form_state.active_field == real_field_count;
-    let active_field = module.fields.get(form_state.active_field);
+    // Recompute visibility on every key — accounts for any mutations from
+    // the previous key that may have changed which fields are visible.
+    clamp_active_to_visible(form_state, &module.fields);
+
+    // navigable_count and submit detection are based on the VISIBLE set.
+    let visible_indices = visible_field_indices(&module.fields, &form_state.field_values);
+    let visible_count = visible_indices.len();
+    let navigable_count = visible_count + 1; // +1 for submit button
+
+    let on_submit_button = form_state.active_field == visible_count;
+    // Resolve the active FieldConfig through the visible index.
+    let active_field = visible_indices
+        .get(form_state.active_field)
+        .and_then(|&ci| module.fields.get(ci));
     let is_select = active_field
         .map(|f| {
             matches!(
@@ -1019,7 +1133,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             form_state.textarea_open = false;
             form_state.textarea_scroll_offset = 0;
             form_state.composite_open = false;
-            form_state.active_field = (form_state.active_field + 1) % navigable_count;
+            let new_af = (form_state.active_field + 1) % navigable_count;
+            form_state.active_field = new_af;
+            form_state.active_config_idx = visible_indices.get(new_af).copied();
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
@@ -1033,11 +1149,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             form_state.textarea_open = false;
             form_state.textarea_scroll_offset = 0;
             form_state.composite_open = false;
-            form_state.active_field = if form_state.active_field == 0 {
+            let new_af = if form_state.active_field == 0 {
                 navigable_count - 1
             } else {
                 form_state.active_field - 1
             };
+            form_state.active_field = new_af;
+            form_state.active_config_idx = visible_indices.get(new_af).copied();
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
@@ -1073,11 +1191,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state.textarea_open = false;
                 form_state.textarea_scroll_offset = 0;
                 form_state.composite_open = false;
-                form_state.active_field = if form_state.active_field == 0 {
+                let new_af = if form_state.active_field == 0 {
                     navigable_count - 1
                 } else {
                     form_state.active_field - 1
                 };
+                form_state.active_field = new_af;
+                form_state.active_config_idx = visible_indices.get(new_af).copied();
                 form_state.cursor_position = current_value_len(form_state, module);
             }
             FormAction::None
@@ -1114,7 +1234,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state.textarea_open = false;
                 form_state.textarea_scroll_offset = 0;
                 form_state.composite_open = false;
-                form_state.active_field = (form_state.active_field + 1) % navigable_count;
+                let new_af = (form_state.active_field + 1) % navigable_count;
+                form_state.active_field = new_af;
+                form_state.active_config_idx = visible_indices.get(new_af).copied();
                 form_state.cursor_position = current_value_len(form_state, module);
             }
             FormAction::None
@@ -1235,7 +1357,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 FormAction::None
             } else {
                 // text / number fields: advance to next field (like Tab)
-                form_state.active_field = (form_state.active_field + 1) % navigable_count;
+                let new_af = (form_state.active_field + 1) % navigable_count;
+                form_state.active_field = new_af;
+                form_state.active_config_idx = visible_indices.get(new_af).copied();
                 form_state.cursor_position = current_value_len(form_state, module);
                 FormAction::None
             }
@@ -1444,10 +1568,11 @@ fn cycle_select_filtered(form_state: &mut FormState, field_name: &str, delta: i3
 }
 
 /// Get the length of the current field's value for cursor positioning.
+///
+/// Uses the visible index to resolve the active field, matching the semantics
+/// of `form_state.active_field` after TASK-A04.
 fn current_value_len(form_state: &FormState, module: &crate::config::ModuleConfig) -> usize {
-    module
-        .fields
-        .get(form_state.active_field)
+    active_field_config(form_state, module)
         .and_then(|f| form_state.field_values.get(&f.name))
         .map(|v| v.len())
         .unwrap_or(0)

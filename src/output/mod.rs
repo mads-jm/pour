@@ -3,8 +3,9 @@ pub mod template;
 
 use crate::config::{FieldTarget, FieldType, ModuleConfig, SubFieldConfig, WriteMode};
 use crate::transport::Transport;
+use crate::visibility::visible_field_indices;
 use anyhow::{Result, bail};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Composite field data: field_name → rows of cell values.
 pub type CompositeData = HashMap<String, Vec<Vec<String>>>;
@@ -117,7 +118,16 @@ fn partition_fields<'a>(
     let mut fm_composites: Vec<FrontmatterComposite<'a>> = Vec::new();
     let mut body_parts: Vec<String> = Vec::new();
 
+    let visible_indices = visible_field_indices(&module.fields, field_values);
+    let visible_names: HashSet<&str> = visible_indices
+        .iter()
+        .map(|&i| module.fields[i].name.as_str())
+        .collect();
+
     for field_cfg in &module.fields {
+        if !visible_names.contains(field_cfg.name.as_str()) {
+            continue;
+        }
         // Composite array fields
         if field_cfg.field_type == FieldType::CompositeArray {
             if let (Some(subs), Some(rows)) =

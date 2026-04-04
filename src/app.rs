@@ -3,7 +3,8 @@ use crate::config::{
 };
 use crate::data::history::History;
 use crate::transport::{Transport, TransportMode, VaultEntry};
-use std::collections::HashMap;
+use crate::visibility::visible_field_indices;
+use std::collections::{HashMap, HashSet};
 
 /// Which screen the TUI is currently displaying.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,8 +22,14 @@ pub struct FormState {
     pub field_values: HashMap<String, String>,
     /// Available options for select fields, keyed by field name.
     pub field_options: HashMap<String, Vec<String>>,
-    /// Index of the currently active (focused) field.
+    /// Index of the currently active (focused) field within the **visible** field set.
+    /// Ranges from 0..visible_count (inclusive); `visible_count` means the submit button.
     pub active_field: usize,
+    /// Config-level index of the currently active field (`module.fields[i]`).
+    /// `None` when the submit button is focused.
+    /// Kept in sync with `active_field` so that visibility recomputation can detect
+    /// when the focused field has become hidden and move focus appropriately.
+    pub active_config_idx: Option<usize>,
     /// Validation error messages, populated on submit attempt.
     pub validation_errors: Vec<String>,
     /// Cursor position within the active text/number input.
@@ -72,6 +79,8 @@ pub struct SubFormState {
     pub dropdown_open: bool,
     /// Name of the parent field that triggered this sub-form.
     pub parent_field_name: String,
+    /// Error message to display in the sub-form overlay (e.g. write failure).
+    pub error_message: Option<String>,
 }
 
 impl SubFormState {
@@ -110,6 +119,7 @@ impl SubFormState {
             cursor_position: 0,
             dropdown_open: false,
             parent_field_name,
+            error_message: None,
         }
     }
 }
@@ -361,10 +371,15 @@ impl App {
             }
         }
 
+        // Determine the config index for active_field=0 given initial (default) values.
+        let initial_visible = crate::visibility::visible_field_indices(&module.fields, &field_values);
+        let initial_config_idx = initial_visible.first().copied();
+
         Some(FormState {
             field_values,
             field_options,
             active_field: 0,
+            active_config_idx: initial_config_idx,
             validation_errors: Vec::new(),
             cursor_position: 0,
             dropdown_open: false,
@@ -782,10 +797,22 @@ impl App {
     /// Validate form state against the module's field requirements.
     ///
     /// Returns a list of error messages. An empty list means validation passed.
+    /// Only visible fields (per `show_when` rules) are validated — hidden required fields
+    /// do not block submission.
     pub fn validate_form(module: &ModuleConfig, form_state: &FormState) -> Vec<String> {
         let mut errors = Vec::new();
 
+        let visible_indices = visible_field_indices(&module.fields, &form_state.field_values);
+        let visible_names: HashSet<&str> = visible_indices
+            .iter()
+            .map(|&i| module.fields[i].name.as_str())
+            .collect();
+
         for field in &module.fields {
+            // Skip fields that are currently hidden
+            if !visible_names.contains(field.name.as_str()) {
+                continue;
+            }
             // Composite array fields have their own validation path
             if field.field_type == FieldType::CompositeArray {
                 let rows = form_state

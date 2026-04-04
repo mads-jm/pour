@@ -135,7 +135,8 @@ fn record_persists_to_disk() {
     let mut h = History::load_from(path.clone());
 
     assert_eq!(h.today_count(), 0);
-    h.record("coffee", "Coffee/2026/test.md", Some("Ethiopia Yirg"));
+    h.record("coffee", "Coffee/2026/test.md", Some("Ethiopia Yirg"))
+        .expect("record should succeed");
     assert_eq!(h.today_count(), 1);
 
     // Reload from disk

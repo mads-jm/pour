@@ -212,6 +212,48 @@ fn render_append_template_callout_placeholder_without_type() {
     );
 }
 
+/// Regression: field values containing `%` must not be treated as strftime
+/// specifiers. Previously, field substitution ran before strftime expansion,
+/// causing e.g. "Fixed 20% of bugs" to corrupt the output.
+#[test]
+fn render_path_percent_in_field_value_is_literal() {
+    let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "Fixed 20% of bugs".to_string());
+    // Template has no strftime tokens other than what's in the field value.
+    let result = render_path("Notes/{{title}}.md", &fields, None);
+    assert_eq!(
+        result,
+        "Notes/Fixed 20% of bugs.md",
+        "percent in field value should be preserved literally, got: {result}"
+    );
+}
+
+#[test]
+fn render_path_percent_in_field_value_with_strftime_tokens() {
+    let mut fields = HashMap::new();
+    fields.insert("tag".to_string(), "gain-5%".to_string());
+    let result = render_path("Log/%Y/{{tag}}.md", &fields, None);
+    let year = Local::now().format("%Y").to_string();
+    assert_eq!(
+        result,
+        format!("Log/{year}/gain-5%.md"),
+        "strftime tokens in template should expand, but % in field value must not, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_percent_in_field_value_is_literal() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Improved by 30% today".to_string());
+    let m = dummy_module();
+    let result = render_append_template("Note: {{body}}", &fields, &m, &no_composites());
+    assert_eq!(
+        result,
+        "Note: Improved by 30% today",
+        "percent in field value must not be interpreted as strftime, got: {result}"
+    );
+}
+
 fn composite_module() -> pour::config::ModuleConfig {
     let toml = r####"
 [vault]
@@ -276,4 +318,74 @@ fn render_append_template_composite_as_markdown_table() {
     assert!(result.contains("| Technique |"), "table header");
     assert!(result.contains("| 50"), "first row data");
     assert!(result.contains("| 100"), "second row data");
+}
+
+/// Build a module with a `drink_type` trigger field and a `drink_detail`
+/// field that is only visible when `drink_type == "coffee"`.
+fn visibility_module() -> pour::config::ModuleConfig {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.v]
+mode = "append"
+path = "v.md"
+append_under_header = "## Log"
+
+[[modules.v.fields]]
+name = "drink_type"
+field_type = "static_select"
+prompt = "Drink type"
+options = ["coffee", "tea"]
+
+[[modules.v.fields]]
+name = "drink_detail"
+field_type = "text"
+prompt = "Detail"
+show_when = { field = "drink_type", equals = "coffee" }
+"####;
+    let config = pour::config::Config::from_toml(toml).unwrap();
+    config.modules.into_values().next().unwrap()
+}
+
+#[test]
+fn render_append_template_hidden_field_placeholder_empty() {
+    // drink_type is "tea" so drink_detail's show_when condition is NOT met.
+    let mut fields = HashMap::new();
+    fields.insert("drink_type".to_string(), "tea".to_string());
+    fields.insert("drink_detail".to_string(), "Ethiopian".to_string());
+
+    let m = visibility_module();
+    let result =
+        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites());
+
+    assert!(
+        result.contains("Type: tea"),
+        "visible field should render its value, got: {result}"
+    );
+    assert!(
+        result.contains("Detail: "),
+        "hidden field placeholder should be present but empty, got: {result}"
+    );
+    assert!(
+        !result.contains("Ethiopian"),
+        "hidden field value must not appear, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_visible_field_renders_normally() {
+    // drink_type is "coffee" so drink_detail's show_when condition IS met.
+    let mut fields = HashMap::new();
+    fields.insert("drink_type".to_string(), "coffee".to_string());
+    fields.insert("drink_detail".to_string(), "Ethiopian".to_string());
+
+    let m = visibility_module();
+    let result =
+        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites());
+
+    assert_eq!(
+        result, "Type: coffee Detail: Ethiopian",
+        "both visible fields should render their values, got: {result}"
+    );
 }

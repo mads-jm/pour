@@ -269,6 +269,11 @@ pub fn build_field_updates_from_settings(
         source,
         target,
         callout,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
     }
 }
 

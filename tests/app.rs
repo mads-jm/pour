@@ -352,3 +352,116 @@ fn validate_composite_passes_with_valid_rows() {
     let errors = App::validate_form(module, &form);
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
+
+// --- visibility-aware validation tests ---
+
+/// Config with a hidden required field: `extra` is required but only visible when
+/// `brew_method` equals "Espresso". If `brew_method` is "V60", `extra` is hidden.
+const VISIBILITY_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+display_name = "Coffee"
+
+[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+required = true
+options = ["V60", "AeroPress", "Espresso"]
+
+[[modules.coffee.fields]]
+name = "extra"
+field_type = "text"
+prompt = "Extra setting"
+required = true
+[modules.coffee.fields.show_when]
+field = "brew_method"
+equals = "Espresso"
+
+[[modules.coffee.fields]]
+name = "score"
+field_type = "number"
+prompt = "Score"
+[modules.coffee.fields.show_when]
+field = "brew_method"
+equals = "Espresso"
+"####;
+
+fn make_visibility_app() -> App {
+    let config = Config::from_toml(VISIBILITY_TOML).expect("visibility config should parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+    )
+}
+
+#[test]
+fn validate_skips_hidden_required_field() {
+    let app = make_visibility_app();
+    let module = &app.config.modules["coffee"];
+    let mut form = app.init_form("coffee").unwrap();
+
+    // brew_method = "V60" → `extra` is hidden (show_when requires "Espresso")
+    form.field_values
+        .insert("brew_method".to_string(), "V60".to_string());
+    // `extra` is empty — but it's hidden, so validation must not flag it
+    form.field_values
+        .insert("extra".to_string(), "".to_string());
+
+    let errors = App::validate_form(module, &form);
+    assert!(
+        errors.is_empty(),
+        "hidden required field should not block submission, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_still_catches_visible_required_field() {
+    let app = make_visibility_app();
+    let module = &app.config.modules["coffee"];
+    let mut form = app.init_form("coffee").unwrap();
+
+    // brew_method = "Espresso" → `extra` IS visible and required
+    form.field_values
+        .insert("brew_method".to_string(), "Espresso".to_string());
+    // Leave `extra` empty — should trigger a validation error
+    form.field_values
+        .insert("extra".to_string(), "".to_string());
+
+    let errors = App::validate_form(module, &form);
+    assert!(
+        !errors.is_empty(),
+        "visible required field with empty value should fail validation"
+    );
+    assert!(
+        errors.iter().any(|e| e.contains("Extra setting")),
+        "error should name the field, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_skips_hidden_number_field() {
+    let app = make_visibility_app();
+    let module = &app.config.modules["coffee"];
+    let mut form = app.init_form("coffee").unwrap();
+
+    // brew_method = "V60" → `score` is hidden
+    form.field_values
+        .insert("brew_method".to_string(), "V60".to_string());
+    // `score` has a non-numeric value — but it's hidden, so no parse error
+    form.field_values
+        .insert("score".to_string(), "not-a-number".to_string());
+
+    let errors = App::validate_form(module, &form);
+    // The only potentially visible required field is brew_method (set) and extra (hidden)
+    assert!(
+        errors.is_empty(),
+        "hidden number field with bad value should not error, got: {errors:?}"
+    );
+}

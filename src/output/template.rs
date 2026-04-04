@@ -1,7 +1,8 @@
 use crate::config::ModuleConfig;
 use crate::output::{CompositeData, render_composite_table};
+use crate::visibility::visible_field_indices;
 use chrono::Local;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Render a path template by substituting `{{field}}` placeholders and
 /// chrono `strftime` specifiers.
@@ -10,12 +11,11 @@ use std::collections::HashMap;
 /// - `{{date}}` — current date in `YYYY-MM-DD` format
 /// - `{{time}}` — current time in `HH:MM` format
 ///
-/// Field placeholders (`{{bean}}`, etc.) are replaced with the
-/// corresponding value from `field_values`. Unknown placeholders are
-/// removed so the path never contains literal `{{…}}` fragments.
-///
-/// Finally, any chrono `strftime` specifiers (`%Y`, `%m`, `%d`, …) are
-/// expanded against the current local time.
+/// Processing order (prevents `%` in user values from corrupting output):
+/// 1. Expand strftime specifiers (`%Y`, `%m`, `%d`, …) on the raw template.
+/// 2. Replace special tokens (`{{date}}`, `{{time}}`).
+/// 3. Substitute field placeholders (`{{bean}}`, etc.) from `field_values`.
+///    Unknown placeholders are removed so the path stays clean.
 ///
 /// For example, `"Coffee/{{bean}} %Y%m%d.md"` with `bean = "Ethiopian"`
 /// becomes `"Coffee/Ethiopian 20260401.md"` on 2026-04-01.
@@ -25,14 +25,21 @@ pub fn render_path(
     date_format: Option<&str>,
 ) -> String {
     let now = Local::now();
-    let mut result = template.to_string();
 
-    // Special tokens — {{date}} uses the vault's date_format if configured
+    // Step 1: Expand strftime specifiers on the raw template FIRST so that
+    // user-supplied field values containing `%` are never passed through chrono.
+    let strftime_expanded = now.format(template).to_string();
+    let mut result = strftime_expanded;
+
+    // Step 2: Replace special tokens using already-formatted strings.
+    // These are resolved after strftime so their output (e.g. "2026-04-01") is
+    // treated as literal text and not re-processed.
     let date_fmt = date_format.unwrap_or("%Y%m%d");
     result = result.replace("{{date}}", &now.format(date_fmt).to_string());
     result = result.replace("{{time}}", &now.format("%H:%M").to_string());
 
-    // Field placeholders
+    // Step 3: Substitute field placeholders. Values are already-resolved strings
+    // that will never be seen by chrono.
     for (key, value) in field_values {
         let placeholder = format!("{{{{{key}}}}}");
         result = result.replace(&placeholder, value);
@@ -50,14 +57,14 @@ pub fn render_path(
     // Normalize to forward slashes so the API transport receives a consistent
     // vault-relative path, and PathBuf::join on Windows can handle it cleanly
     // when the fs transport joins against a backslash-style base path.
-    let expanded = now.format(&result).to_string().replace('\\', "/");
+    let normalized = result.replace('\\', "/");
 
     // Sanitize the filename portion (everything after the last `/`) to replace
     // characters that are illegal on Windows filesystems. Directory components
     // are left untouched — only the filename stem + extension are sanitized.
     // This handles cases like {{time}} resolving to "19:30" which contains
     // a colon, illegal on Windows.
-    sanitize_path_filename(&expanded)
+    sanitize_path_filename(&normalized)
 }
 
 /// Render an append-mode template by replacing `{{field}}` placeholders
@@ -79,9 +86,20 @@ pub fn render_append_template(
     composite_data: &CompositeData,
 ) -> String {
     let now = Local::now();
-    let mut result = template.to_string();
 
-    // Replace special tokens first so they don't collide with field names.
+    // Compute visible field names once; hidden fields render as empty string.
+    let visible_indices = visible_field_indices(&module.fields, fields);
+    let visible_names: HashSet<&str> = visible_indices
+        .iter()
+        .map(|&i| module.fields[i].name.as_str())
+        .collect();
+
+    // Step 1: Expand strftime specifiers on the raw template FIRST so that
+    // user-supplied field values containing `%` are never passed through chrono.
+    let strftime_expanded = now.format(template).to_string();
+    let mut result = strftime_expanded;
+
+    // Step 2: Replace special tokens using already-formatted strings.
     result = result.replace("{{time}}", &now.format("%H:%M").to_string());
     result = result.replace("{{date}}", &now.format("%Y-%m-%d").to_string());
 
@@ -91,29 +109,45 @@ pub fn render_append_template(
     }
 
     // Replace composite field placeholders with markdown tables.
+    // If the field is not visible, replace its placeholder with empty string.
     for field_cfg in &module.fields {
         if field_cfg.field_type == crate::config::FieldType::CompositeArray {
             let placeholder = format!("{{{{{}}}}}", field_cfg.name);
-            if result.contains(&placeholder)
-                && let (Some(subs), Some(rows)) =
+            if result.contains(&placeholder) {
+                if !visible_names.contains(field_cfg.name.as_str()) {
+                    result = result.replace(&placeholder, "");
+                } else if let (Some(subs), Some(rows)) =
                     (&field_cfg.sub_fields, composite_data.get(&field_cfg.name))
-            {
-                // Strip empty rows
-                let non_empty: Vec<Vec<String>> = rows
-                    .iter()
-                    .filter(|row| row.iter().any(|cell| !cell.trim().is_empty()))
-                    .cloned()
-                    .collect();
-                let table = render_composite_table(subs, &non_empty);
-                result = result.replace(&placeholder, &table);
+                {
+                    // Strip empty rows
+                    let non_empty: Vec<Vec<String>> = rows
+                        .iter()
+                        .filter(|row| row.iter().any(|cell| !cell.trim().is_empty()))
+                        .cloned()
+                        .collect();
+                    let table = render_composite_table(subs, &non_empty);
+                    result = result.replace(&placeholder, &table);
+                }
             }
         }
     }
 
-    // Replace field placeholders, applying wikilink wrapping if configured.
+    // Build a set of all declared field names so we can distinguish "declared
+    // but hidden" from "not declared in this module at all".
+    let declared_names: HashSet<&str> = module.fields.iter().map(|f| f.name.as_str()).collect();
+
+    // Step 3: Substitute field placeholders. Values are already-resolved strings
+    // that will never be seen by chrono.
+    // Declared fields that are not visible resolve to empty string.
+    // Undeclared fields (not in module.fields) are substituted normally.
     for (key, value) in fields {
         let placeholder = format!("{{{{{key}}}}}");
-        let wrapped = if module
+        let resolved = if declared_names.contains(key.as_str())
+            && !visible_names.contains(key.as_str())
+        {
+            // Declared field that is currently hidden — clear its placeholder.
+            String::new()
+        } else if module
             .fields
             .iter()
             .any(|f| f.name == *key && f.wikilink == Some(true))
@@ -122,11 +156,10 @@ pub fn render_append_template(
         } else {
             value.clone()
         };
-        result = result.replace(&placeholder, &wrapped);
+        result = result.replace(&placeholder, &resolved);
     }
 
-    // Evaluate any strftime specifiers (e.g. %H:%M, %Y-%m-%d) left in the template.
-    now.format(&result).to_string()
+    result
 }
 
 /// Sanitize the filename portion of a vault-relative path.
