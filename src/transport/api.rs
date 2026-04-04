@@ -1,6 +1,25 @@
 use anyhow::{Context, Result};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::Client;
 use serde::Deserialize;
+
+/// Characters that must be percent-encoded inside a URL path segment.
+///
+/// This is the "path segment" set from RFC 3986: everything except unreserved
+/// characters and the sub-delimiters that are safe inside a segment.
+/// Forward slash is intentionally excluded so that the helper below can split
+/// on it and encode each component individually.
+const PATH_SEGMENT: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'<')
+    .add(b'>')
+    .add(b'`')
+    .add(b'#')
+    .add(b'%')
+    .add(b'?')
+    .add(b'{')
+    .add(b'}');
 
 use super::VaultEntry;
 
@@ -85,7 +104,7 @@ impl ApiClient {
     ///
     /// Sends a PUT to `/vault/{vault_path}` with `Content-Type: text/markdown`.
     pub async fn create_file(&self, vault_path: &str, content: &str) -> Result<()> {
-        let url = format!("{}/vault/{}", self.base_url, vault_path);
+        let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
 
         let resp = self
             .client
@@ -118,7 +137,7 @@ impl ApiClient {
         heading: &str,
         content: &str,
     ) -> Result<()> {
-        let url = format!("{}/vault/{}", self.base_url, vault_path);
+        let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
 
         // 1. Read current file content.
         let resp = self
@@ -241,7 +260,7 @@ impl ApiClient {
 
     /// Shared helper: fetch and deserialise a directory listing from the API.
     async fn fetch_directory_listing(&self, vault_dir_path: &str) -> Result<DirectoryListing> {
-        let url = format!("{}/vault/{}/", self.base_url, vault_dir_path);
+        let url = format!("{}/vault/{}/", self.base_url, encode_vault_path(vault_dir_path));
 
         let resp = self
             .client
@@ -285,6 +304,22 @@ impl ApiClient {
 
         Ok(())
     }
+}
+
+/// Percent-encode a vault path for use in a URL.
+///
+/// Each `/`-separated path segment is encoded individually so that directory
+/// separators are preserved in the final URL while spaces and other special
+/// characters within segment names are safely encoded.
+///
+/// Example: `"Coffee Notes/2024-01-01 latte.md"` →
+///          `"Coffee%20Notes/2024-01-01%20latte.md"`
+fn encode_vault_path(vault_path: &str) -> String {
+    vault_path
+        .split('/')
+        .map(|segment| utf8_percent_encode(segment, PATH_SEGMENT).to_string())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Splice `content` under `heading` in a markdown document, returning the
