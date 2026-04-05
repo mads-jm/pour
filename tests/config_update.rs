@@ -67,6 +67,7 @@ fn update_preserves_comments() {
         mode: None,
         append_under_header: None,
         callout_type: None,
+        icon: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("update should succeed");
@@ -104,6 +105,7 @@ fn update_mode_toggle() {
         mode: Some(WriteMode::Create),
         append_under_header: Some(None), // remove the header key so validation passes
         callout_type: None,
+        icon: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("mode toggle should succeed");
@@ -143,6 +145,7 @@ fn update_validation_prevents_bad_writes() {
         mode: None,
         append_under_header: Some(None),
         callout_type: None,
+        icon: None,
     };
 
     let result = Config::update_module_on_disk("journal", &updates);
@@ -172,6 +175,7 @@ fn update_nonexistent_module_errors() {
         mode: None,
         append_under_header: None,
         callout_type: None,
+        icon: None,
     };
 
     let result = Config::update_module_on_disk("nonexistent", &updates);
@@ -226,6 +230,7 @@ fn update_field_name_and_prompt() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("field update should succeed");
@@ -259,6 +264,7 @@ fn update_field_type_with_options() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("type change should succeed");
@@ -289,6 +295,7 @@ fn update_field_preserves_comments() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
@@ -324,6 +331,7 @@ fn update_field_validation_rejects_select_without_options() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 1, &updates);
@@ -359,6 +367,7 @@ fn update_field_out_of_range_errors() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 99, &updates);
@@ -388,6 +397,7 @@ fn update_field_remove_optional_keys() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("remove should succeed");
@@ -421,6 +431,7 @@ fn add_field_with_show_when_persisted() {
             equals: Some("V60".to_string()),
             one_of: None,
         }),
+        icon: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -457,6 +468,7 @@ fn update_field_add_show_when() {
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
@@ -509,6 +521,7 @@ show_when = { field = "method", equals = "V60" }
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
@@ -638,6 +651,7 @@ fn add_field_appends_to_module() {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -678,6 +692,7 @@ fn add_field_to_nonexistent_module_errors() {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -756,6 +771,7 @@ fn add_field_preserves_comments() {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -779,6 +795,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         append_under_header: None,
         append_template: None,
         callout_type: None,
+        icon: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,
@@ -795,6 +812,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             create_template: None,
             post_create_command: None,
             show_when: None,
+            icon: None,
         }],
     }
 }
@@ -1156,4 +1174,147 @@ fn test_reorder_fields_invalid_permutation() {
         original, after,
         "file should not be modified on invalid permutation"
     );
+}
+
+// --- Icon tests ---
+
+#[test]
+fn icon_parses_on_module() {
+    const ICON_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+icon = "☕"
+
+[[modules.coffee.fields]]
+name = "note"
+field_type = "text"
+prompt = "Note?"
+"###;
+
+    let config = Config::from_toml(ICON_TOML).expect("should parse");
+    let module = &config.modules["coffee"];
+    assert_eq!(module.icon.as_deref(), Some("☕"));
+}
+
+#[test]
+fn icon_defaults_to_none() {
+    let (_f, _guard) = write_temp_config(BASE_TOML);
+    let config = Config::load().expect("should load");
+    let journal = &config.modules["journal"];
+    assert!(journal.icon.is_none(), "icon should default to None");
+}
+
+#[test]
+fn icon_parses_on_field() {
+    const ICON_FIELD_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "text"
+prompt = "Bean"
+icon = "🫘"
+"###;
+
+    let config = Config::from_toml(ICON_FIELD_TOML).expect("should parse");
+    let field = &config.modules["coffee"].fields[0];
+    assert_eq!(field.icon.as_deref(), Some("🫘"));
+}
+
+#[test]
+fn icon_round_trips_through_update_module() {
+    let (_f, _guard) = write_temp_config(BASE_TOML);
+
+    let updates = ModuleUpdates {
+        path: None,
+        display_name: None,
+        mode: None,
+        append_under_header: None,
+        callout_type: None,
+        icon: Some(Some("☕".to_string())),
+    };
+
+    Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    assert_eq!(config.modules["coffee"].icon.as_deref(), Some("☕"));
+}
+
+#[test]
+fn icon_round_trips_through_update_field() {
+    let (_f, _guard) = write_temp_config(FIELD_TOML);
+
+    let updates = FieldUpdates {
+        name: None,
+        field_type: None,
+        prompt: None,
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
+        icon: Some(Some("🫘".to_string())),
+    };
+
+    Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    assert_eq!(config.modules["coffee"].fields[0].icon.as_deref(), Some("🫘"));
+}
+
+#[test]
+fn icon_removed_via_update() {
+    const WITH_ICON: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+icon = "☕"
+
+[[modules.coffee.fields]]
+name = "note"
+field_type = "text"
+prompt = "Note?"
+"###;
+
+    let (_f, _guard) = write_temp_config(WITH_ICON);
+
+    // Verify icon is present
+    let config = Config::load().expect("should load");
+    assert_eq!(config.modules["coffee"].icon.as_deref(), Some("☕"));
+
+    // Remove it
+    let updates = ModuleUpdates {
+        path: None,
+        display_name: None,
+        mode: None,
+        append_under_header: None,
+        callout_type: None,
+        icon: Some(None),
+    };
+
+    Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
+
+    let written = std::fs::read_to_string(std::env::var("POUR_CONFIG").unwrap()).unwrap();
+    assert!(!written.contains("icon"), "icon key should have been removed from TOML");
+
+    let config = Config::load().expect("reload should succeed");
+    assert!(config.modules["coffee"].icon.is_none());
 }

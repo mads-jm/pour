@@ -297,7 +297,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     };
 
     // Validate form and extract field values
-    let (field_values, field_options, composite_data) = {
+    let (field_values, field_options, composite_data, callout_overrides) = {
         let form_state = match &app.form_state {
             Some(fs) => fs,
             None => return,
@@ -329,6 +329,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             values,
             form_state.field_options.clone(),
             form_state.composite_values.clone(),
+            form_state.callout_overrides.clone(),
         )
     };
 
@@ -360,6 +361,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &field_values,
                 &composite_data,
                 date_fmt,
+                &callout_overrides,
             )
             .await
         }
@@ -370,6 +372,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &field_values,
                 &composite_data,
                 date_fmt,
+                &callout_overrides,
             )
             .await
         }
@@ -714,6 +717,7 @@ fn handle_add_field(app: &mut App) {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -999,6 +1003,7 @@ fn handle_save_new_module(app: &mut App) {
         append_template: None,
         display_name,
         callout_type: None,
+        icon: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1015,6 +1020,7 @@ fn handle_save_new_module(app: &mut App) {
             create_template: None,
             post_create_command: None,
             show_when: None,
+            icon: None,
         }],
     };
 
@@ -1246,6 +1252,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut mode: Option<WriteMode> = None;
     let mut append_under_header: Option<Option<String>> = None;
     let mut callout_type: Option<Option<String>> = None;
+    let mut icon: Option<Option<String>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1278,6 +1285,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     Some(setting.value.clone())
                 });
             }
+            "icon" => {
+                icon = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -1288,6 +1302,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         mode,
         append_under_header,
         callout_type,
+        icon,
     }
 }
 

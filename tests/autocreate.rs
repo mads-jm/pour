@@ -108,6 +108,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         fields: vec![field],
         display_name: None,
         callout_type: None,
+        icon: None,
     }
 }
 
@@ -128,6 +129,7 @@ fn dynamic_field(name: &str, source: &str, allow_create: bool) -> FieldConfig {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     }
 }
 
@@ -322,6 +324,7 @@ async fn transport_error_does_not_block_and_returns_empty() {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
     };
     let module = make_module_with_field(field);
 

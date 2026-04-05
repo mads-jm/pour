@@ -28,6 +28,10 @@ fn no_composites() -> CompositeData {
     CompositeData::new()
 }
 
+fn no_overrides() -> HashMap<String, String> {
+    HashMap::new()
+}
+
 #[test]
 fn render_path_substitutes_date_tokens() {
     let fields = HashMap::new();
@@ -92,7 +96,7 @@ fn render_append_template_replaces_fields() {
     fields.insert("mood".to_string(), "happy".to_string());
 
     let m = dummy_module();
-    let result = render_append_template("Mood: {{mood}} | {{body}}", &fields, &m, &no_composites());
+    let result = render_append_template("Mood: {{mood}} | {{body}}", &fields, &m, &no_composites(), &no_overrides());
     assert_eq!(result, "Mood: happy | Hello world");
 }
 
@@ -100,7 +104,7 @@ fn render_append_template_replaces_fields() {
 fn render_append_template_special_time_token() {
     let fields = HashMap::new();
     let m = dummy_module();
-    let result = render_append_template("> [!note] {{time}}", &fields, &m, &no_composites());
+    let result = render_append_template("> [!note] {{time}}", &fields, &m, &no_composites(), &no_overrides());
     let now = Local::now().format("%H:%M").to_string();
     assert!(
         result.contains(&now),
@@ -112,7 +116,7 @@ fn render_append_template_special_time_token() {
 fn render_append_template_special_date_token() {
     let fields = HashMap::new();
     let m = dummy_module();
-    let result = render_append_template("Date: {{date}}", &fields, &m, &no_composites());
+    let result = render_append_template("Date: {{date}}", &fields, &m, &no_composites(), &no_overrides());
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Date: {today}"));
 }
@@ -121,7 +125,7 @@ fn render_append_template_special_date_token() {
 fn render_append_template_missing_field_left_as_is() {
     let fields = HashMap::new();
     let m = dummy_module();
-    let result = render_append_template("Value: {{unknown}}", &fields, &m, &no_composites());
+    let result = render_append_template("Value: {{unknown}}", &fields, &m, &no_composites(), &no_overrides());
     assert_eq!(result, "Value: {{unknown}}");
 }
 
@@ -131,7 +135,7 @@ fn render_append_template_mixed_known_and_unknown() {
     fields.insert("name".to_string(), "Alice".to_string());
 
     let m = dummy_module();
-    let result = render_append_template("{{name}} said {{quote}}", &fields, &m, &no_composites());
+    let result = render_append_template("{{name}} said {{quote}}", &fields, &m, &no_composites(), &no_overrides());
     assert_eq!(result, "Alice said {{quote}}");
 }
 
@@ -143,7 +147,7 @@ fn render_append_template_realistic_journal() {
 
     let m = dummy_module();
     let template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}";
-    let result = render_append_template(template, &fields, &m, &no_composites());
+    let result = render_append_template(template, &fields, &m, &no_composites(), &no_overrides());
 
     let now = Local::now().format("%H:%M").to_string();
     assert!(
@@ -191,6 +195,7 @@ fn render_append_template_callout_placeholder() {
         &fields,
         &m,
         &no_composites(),
+        &no_overrides(),
     );
 
     assert!(
@@ -204,7 +209,7 @@ fn render_append_template_callout_placeholder() {
 fn render_append_template_callout_placeholder_without_type() {
     let fields = HashMap::new();
     let m = dummy_module(); // no callout_type set
-    let result = render_append_template("> [!{{callout}}]", &fields, &m, &no_composites());
+    let result = render_append_template("> [!{{callout}}]", &fields, &m, &no_composites(), &no_overrides());
 
     assert!(
         result.contains("{{callout}}"),
@@ -246,7 +251,7 @@ fn render_append_template_percent_in_field_value_is_literal() {
     let mut fields = HashMap::new();
     fields.insert("body".to_string(), "Improved by 30% today".to_string());
     let m = dummy_module();
-    let result = render_append_template("Note: {{body}}", &fields, &m, &no_composites());
+    let result = render_append_template("Note: {{body}}", &fields, &m, &no_composites(), &no_overrides());
     assert_eq!(
         result,
         "Note: Improved by 30% today",
@@ -310,7 +315,7 @@ fn render_append_template_composite_as_markdown_table() {
     );
 
     let m = composite_module();
-    let result = render_append_template("Bean: {{bean}}\n{{recipe}}", &fields, &m, &composites);
+    let result = render_append_template("Bean: {{bean}}\n{{recipe}}", &fields, &m, &composites, &no_overrides());
 
     assert!(result.contains("Bean: Ethiopian"), "scalar field replaced");
     assert!(result.contains("| Pour (g)"), "table header");
@@ -357,7 +362,7 @@ fn render_append_template_hidden_field_placeholder_empty() {
 
     let m = visibility_module();
     let result =
-        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites());
+        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites(), &no_overrides());
 
     assert!(
         result.contains("Type: tea"),
@@ -382,10 +387,89 @@ fn render_append_template_visible_field_renders_normally() {
 
     let m = visibility_module();
     let result =
-        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites());
+        render_append_template("Type: {{drink_type}} Detail: {{drink_detail}}", &fields, &m, &no_composites(), &no_overrides());
 
     assert_eq!(
         result, "Type: coffee Detail: Ethiopian",
         "both visible fields should render their values, got: {result}"
+    );
+}
+
+// ── Field-level callout wrapping in append templates ────────────────────────
+
+fn field_callout_module() -> pour::config::ModuleConfig {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.t]
+mode = "append"
+path = "t.md"
+append_under_header = "## Log"
+
+[[modules.t.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+callout = "tip"
+"####;
+    let config = Config::from_toml(toml).unwrap();
+    config.modules.into_values().next().unwrap()
+}
+
+#[test]
+fn render_append_template_field_callout_wraps_value() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Line one\nLine two".to_string());
+
+    let m = field_callout_module();
+    let result = render_append_template("{{body}}", &fields, &m, &no_composites(), &no_overrides());
+
+    assert!(
+        result.contains("> [!tip]"),
+        "should contain callout opener, got: {result}"
+    );
+    assert!(
+        result.contains("> Line one"),
+        "first line should be blockquoted, got: {result}"
+    );
+    assert!(
+        result.contains("> Line two"),
+        "second line should be blockquoted, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_field_callout_empty_value() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), String::new());
+
+    let m = field_callout_module();
+    let result = render_append_template("Content: {{body}}", &fields, &m, &no_composites(), &no_overrides());
+
+    assert!(
+        !result.contains("> [!tip]"),
+        "empty value should not produce callout block, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_callout_override_takes_precedence() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Important".to_string());
+
+    let m = field_callout_module(); // config has callout = "tip"
+    let mut overrides = HashMap::new();
+    overrides.insert("body".to_string(), "warning".to_string());
+
+    let result = render_append_template("{{body}}", &fields, &m, &no_composites(), &overrides);
+
+    assert!(
+        result.contains("> [!warning]"),
+        "override should take precedence over config callout, got: {result}"
+    );
+    assert!(
+        !result.contains("> [!tip]"),
+        "config callout should not appear when overridden, got: {result}"
     );
 }

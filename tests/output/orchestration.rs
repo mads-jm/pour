@@ -137,7 +137,7 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
     fields.insert("rating".to_string(), "4".to_string());
     fields.insert("notes".to_string(), "Fruity and bright.".to_string());
 
-    let path = write_create(&transport, module, &fields, &CompositeData::new(), None)
+    let path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -190,7 +190,7 @@ async fn write_create_rejects_append_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_create(&transport, module, &fields, &CompositeData::new(), None).await;
+    let result = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new()).await;
     assert!(result.is_err(), "write_create on append module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-create"),
@@ -215,7 +215,7 @@ async fn write_append_inserts_rendered_template() {
     let mut fields = HashMap::new();
     fields.insert("body".to_string(), "Had a great morning.".to_string());
 
-    let path = write_append(&transport, module, &fields, &CompositeData::new(), None)
+    let path = write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_append should succeed");
 
@@ -238,7 +238,7 @@ async fn write_append_rejects_create_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_append(&transport, module, &fields, &CompositeData::new(), None).await;
+    let result = write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new()).await;
     assert!(result.is_err(), "write_append on create module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-append"),
@@ -261,7 +261,7 @@ async fn wikilink_true_wraps_frontmatter_value() {
     fields.insert("roaster".to_string(), "Onyx".to_string());
     fields.insert("origin".to_string(), "Ethiopia".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -292,7 +292,7 @@ async fn wikilink_true_wraps_body_value() {
     fields.insert("roaster".to_string(), "Onyx".to_string());
     fields.insert("notes".to_string(), "Very bright.".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -321,7 +321,7 @@ async fn wikilink_no_double_wrap() {
     // Value is already wrapped
     fields.insert("roaster".to_string(), "[[Onyx]]".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -354,7 +354,7 @@ async fn wikilink_default_false_no_behavior_change() {
     fields.insert("brew_method".to_string(), "V60".to_string());
     fields.insert("rating".to_string(), "4".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -384,7 +384,7 @@ async fn wikilink_wraps_each_comma_separated_item() {
     let mut fields = HashMap::new();
     fields.insert("roaster".to_string(), "Onyx, Stumptown".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -417,7 +417,7 @@ async fn write_create_skips_empty_body_section() {
     fields.insert("brew_method".to_string(), "AeroPress".to_string());
     fields.insert("rating".to_string(), "3".to_string());
 
-    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None)
+    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -472,7 +472,7 @@ async fn write_create_wraps_body_in_callout() {
     fields.insert("title".to_string(), "My Title".to_string());
     fields.insert("notes".to_string(), "Line one\nLine two".to_string());
 
-    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None)
+    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -548,7 +548,7 @@ async fn hidden_field_excluded_from_frontmatter() {
     fields.insert("kind".to_string(), "normal".to_string());
     fields.insert("extra".to_string(), "should-not-appear".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -582,7 +582,7 @@ async fn visible_conditional_field_included_in_frontmatter() {
     fields.insert("kind".to_string(), "special".to_string());
     fields.insert("extra".to_string(), "rare-value".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -612,7 +612,7 @@ async fn hidden_field_excluded_from_body() {
     fields.insert("kind".to_string(), "normal".to_string());
     fields.insert("notes".to_string(), "ghost-body-text".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None)
+    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
         .await
         .expect("write_create should succeed");
 
@@ -623,5 +623,164 @@ async fn hidden_field_excluded_from_body() {
     assert!(
         !body.contains("ghost-body-text"),
         "hidden textarea field should not appear in body, got: {body}"
+    );
+}
+
+// ── Append mode: field-level callout wrapping ───────────────────────────────
+
+fn append_callout_config(base_path: &str) -> Config {
+    let toml = format!(
+        r#####"
+[vault]
+base_path = "{base_path}"
+
+[modules.test]
+mode = "append"
+path = "Journal/daily.md"
+append_under_header = "## Log"
+append_template = "#### Entry\n{{{{notes}}}}"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "tip"
+"#####
+    );
+    Config::from_toml(&toml).expect("test config should parse")
+}
+
+#[tokio::test]
+async fn write_append_wraps_body_in_field_callout() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = append_callout_config(&base);
+    let module = &config.modules["test"];
+
+    // Create target file with the expected heading
+    let journal_dir = tmp.path().join("Journal");
+    std::fs::create_dir_all(&journal_dir).unwrap();
+    std::fs::write(journal_dir.join("daily.md"), "## Log\n").unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("notes".to_string(), "Line one\nLine two".to_string());
+
+    write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
+        .await
+        .expect("write_append should succeed");
+
+    let content = std::fs::read_to_string(journal_dir.join("daily.md")).unwrap();
+
+    assert!(
+        content.contains("> [!tip]"),
+        "appended content should contain callout opener, got: {content}"
+    );
+    assert!(
+        content.contains("> Line one"),
+        "first line should be blockquoted, got: {content}"
+    );
+    assert!(
+        content.contains("> Line two"),
+        "second line should be blockquoted, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn write_append_callout_override_in_template() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = append_callout_config(&base);
+    let module = &config.modules["test"];
+
+    let journal_dir = tmp.path().join("Journal");
+    std::fs::create_dir_all(&journal_dir).unwrap();
+    std::fs::write(journal_dir.join("daily.md"), "## Log\n").unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut fields = HashMap::new();
+    fields.insert("notes".to_string(), "Important".to_string());
+
+    let mut overrides = HashMap::new();
+    overrides.insert("notes".to_string(), "warning".to_string());
+
+    write_append(&transport, module, &fields, &CompositeData::new(), None, &overrides)
+        .await
+        .expect("write_append should succeed");
+
+    let content = std::fs::read_to_string(journal_dir.join("daily.md")).unwrap();
+
+    assert!(
+        content.contains("> [!warning]"),
+        "override should produce warning callout, got: {content}"
+    );
+    assert!(
+        !content.contains("> [!tip]"),
+        "config callout should not appear when overridden, got: {content}"
+    );
+}
+
+// --- Icon frontmatter tests ---
+
+fn icon_create_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/note.md"
+icon = "☕"
+
+[[modules.coffee.fields]]
+name = "method"
+field_type = "text"
+prompt = "Method"
+"####
+    );
+    Config::from_toml(&toml).expect("icon config should parse")
+}
+
+#[tokio::test]
+async fn create_mode_includes_module_icon_in_frontmatter() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = icon_create_config(&base);
+    let module = &config.modules["coffee"];
+
+    std::fs::create_dir_all(tmp.path().join("Coffee")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut values = HashMap::new();
+    values.insert("method".to_string(), "V60".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let full_path = tmp.path().join(&path);
+    let content = std::fs::read_to_string(full_path).unwrap();
+
+    assert!(
+        content.contains("icon: ☕"),
+        "frontmatter should contain icon field, got:\n{content}"
+    );
+    // icon should come after date
+    let date_pos = content.find("date:").expect("date field should exist");
+    let icon_pos = content.find("icon:").expect("icon field should exist");
+    assert!(
+        icon_pos > date_pos,
+        "icon should appear after date in frontmatter"
     );
 }

@@ -52,6 +52,9 @@ pub struct ModuleConfig {
     pub display_name: Option<String>,
     /// Obsidian callout type used for `{{callout}}` in templates.
     pub callout_type: Option<String>,
+    /// Optional icon displayed in the TUI dashboard and written to frontmatter
+    /// in create-mode output. Typically a Unicode emoji (e.g. "☕").
+    pub icon: Option<String>,
 }
 
 /// Whether a module appends to an existing note or creates a new one.
@@ -112,6 +115,10 @@ pub struct FieldConfig {
     /// if the referenced field's current value matches the condition.
     #[serde(default)]
     pub show_when: Option<ShowWhen>,
+    /// Optional icon displayed next to the field prompt in the TUI form.
+    /// Purely cosmetic — not written to output.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// The kind of input widget for a field.
@@ -198,6 +205,8 @@ pub struct ModuleUpdates {
     pub append_under_header: Option<Option<String>>,
     /// New callout type. `Some(None)` removes the key.
     pub callout_type: Option<Option<String>>,
+    /// New icon. `Some(None)` removes the key.
+    pub icon: Option<Option<String>>,
 }
 
 /// Partial updates to apply to the vault section of the config file.
@@ -240,6 +249,8 @@ pub struct FieldUpdates {
     pub create_template: Option<Option<String>>,
     /// Obsidian command URI after inline creation. `Some(None)` removes the key.
     pub post_create_command: Option<Option<String>>,
+    /// Icon displayed next to prompt in TUI. `Some(None)` removes the key.
+    pub icon: Option<Option<String>>,
 }
 
 /// Partial updates to apply to a single sub-field within a composite_array field.
@@ -475,6 +486,17 @@ impl Config {
             }
         }
 
+        if let Some(ref icon_update) = updates.icon {
+            match icon_update {
+                Some(v) => {
+                    module["icon"] = toml_edit::value(v.as_str());
+                }
+                None => {
+                    module.remove("icon");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing — never touch the file if the result is invalid.
@@ -659,6 +681,15 @@ impl Config {
             }
         }
 
+        if let Some(ref icon_update) = updates.icon {
+            match icon_update {
+                Some(v) => field["icon"] = toml_edit::value(v.as_str()),
+                None => {
+                    field.remove("icon");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing.
@@ -790,6 +821,10 @@ impl Config {
             new_table["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
                 build_show_when_inline_table(sw),
             ));
+        }
+
+        if let Some(ref icon) = field.icon {
+            new_table["icon"] = toml_edit::value(icon.as_str());
         }
 
         // Navigate to the fields array-of-tables and push the new entry.
@@ -1012,6 +1047,10 @@ impl Config {
             module_table["callout_type"] = toml_edit::value(callout.as_str());
         }
 
+        if let Some(ref icon) = module.icon {
+            module_table["icon"] = toml_edit::value(icon.as_str());
+        }
+
         // Build fields as an ArrayOfTables.
         let mut fields_aot = toml_edit::ArrayOfTables::new();
 
@@ -1061,6 +1100,10 @@ impl Config {
 
             if let Some(ref callout) = field.callout {
                 ft["callout"] = toml_edit::value(callout.as_str());
+            }
+
+            if let Some(ref icon) = field.icon {
+                ft["icon"] = toml_edit::value(icon.as_str());
             }
 
             if let Some(ref subs) = field.sub_fields {

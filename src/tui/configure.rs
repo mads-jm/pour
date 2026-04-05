@@ -74,6 +74,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
     let mut mode: Option<crate::config::WriteMode> = None;
     let mut append_under_header: Option<Option<String>> = None;
     let mut callout_type: Option<Option<String>> = None;
+    let mut icon: Option<Option<String>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -106,6 +107,13 @@ fn auto_save_module_settings(app: &mut App) -> bool {
                     Some(setting.value.clone())
                 });
             }
+            "icon" => {
+                icon = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -116,6 +124,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
         mode,
         append_under_header,
         callout_type,
+        icon,
     };
 
     match crate::config::Config::update_module_on_disk(&module_key, &updates) {
@@ -195,6 +204,7 @@ pub fn build_field_updates_from_settings(
     let mut source: Option<Option<String>> = None;
     let mut target: Option<Option<FieldTarget>> = None;
     let mut callout: Option<Option<String>> = None;
+    let mut icon: Option<Option<String>> = None;
 
     for setting in settings {
         match setting.key.as_str() {
@@ -255,6 +265,13 @@ pub fn build_field_updates_from_settings(
                     Some(setting.value.clone())
                 });
             }
+            "icon" => {
+                icon = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
             _ => {}
         }
     }
@@ -274,6 +291,7 @@ pub fn build_field_updates_from_settings(
         allow_create: None,
         create_template: None,
         post_create_command: None,
+        icon,
     }
 }
 

@@ -156,15 +156,20 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                     }
                 }
                 FieldType::Textarea => {
+                    let callout_prefix = form_state
+                        .callout_overrides
+                        .get(&field.name)
+                        .map(|c| format!("[!{c}] "))
+                        .unwrap_or_default();
                     let label = if value.is_empty() {
-                        "<enter text>".to_string()
+                        format!("{callout_prefix}<enter text>")
                     } else {
                         let line_count = value.lines().count();
                         let first_line = value.lines().next().unwrap_or("");
                         if line_count > 1 {
-                            format!("{first_line} [{line_count} lines]")
+                            format!("{callout_prefix}{first_line} [{line_count} lines]")
                         } else {
-                            first_line.to_string()
+                            format!("{callout_prefix}{first_line}")
                         }
                     };
                     if is_active {
@@ -230,10 +235,14 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                 Style::default().fg(Color::Gray)
             };
 
+            let icon_prefix = field.icon.as_deref()
+                .map(|i| format!("{i} "))
+                .unwrap_or_default();
+
             let line = Line::from(vec![
                 Span::styled(format!("{indicator} "), prompt_style),
                 Span::styled(
-                    format!("{}{}: ", field.prompt, required_marker),
+                    format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
                     prompt_style,
                 ),
                 Span::styled(value_display, value_style),
@@ -1462,6 +1471,25 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Left => {
+            // Cycle callout type backward when textarea is closed
+            if is_textarea
+                && !form_state.textarea_open
+                && let Some(field) = active_field
+                && form_state.callout_overrides.contains_key(&field.name)
+            {
+                let options = crate::app::CALLOUT_OPTIONS;
+                let current = &form_state.callout_overrides[&field.name];
+                // If current value is not in the list (custom callout), wrap to last option
+                let prev = match options.iter().position(|(_, s)| *s == current) {
+                    Some(0) => options.len() - 1,
+                    Some(idx) => idx - 1,
+                    None => options.len() - 1,
+                };
+                form_state
+                    .callout_overrides
+                    .insert(field.name.clone(), options[prev].1.to_string());
+                return FormAction::None;
+            }
             if form_state.cursor_position > 0 {
                 form_state.cursor_position -= 1;
             }
@@ -1481,6 +1509,24 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Right => {
+            // Cycle callout type forward when textarea is closed
+            if is_textarea
+                && !form_state.textarea_open
+                && let Some(field) = active_field
+                && form_state.callout_overrides.contains_key(&field.name)
+            {
+                let options = crate::app::CALLOUT_OPTIONS;
+                let current = &form_state.callout_overrides[&field.name];
+                // If current value is not in the list (custom callout), wrap to first option
+                let next = match options.iter().position(|(_, s)| *s == current) {
+                    Some(idx) => (idx + 1) % options.len(),
+                    None => 0,
+                };
+                form_state
+                    .callout_overrides
+                    .insert(field.name.clone(), options[next].1.to_string());
+                return FormAction::None;
+            }
             if let Some(field) = active_field {
                 let len = form_state
                     .field_values
