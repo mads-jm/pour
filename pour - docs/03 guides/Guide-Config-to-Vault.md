@@ -173,7 +173,45 @@ options = ["Standard", "Turbo", "Soup"]
 show_when = { field = "brew_method", equals = "Espresso" }
 ```
 
+Use `one_of` when a field should appear for multiple values:
+
+```toml
+# Shows for both Pour Over and Immersion methods
+[[modules.coffee.fields]]
+name = "water_temp_c"
+field_type = "number"
+prompt = "Water temp (°C)"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+```
+
 The pattern: a controlling `static_select` at the top, then dependent fields gated by its value. Hidden fields are excluded from validation and output — a hidden `required` field doesn't block submit.
+
+### Field-Level Callouts
+
+Textarea fields targeting `body` can be wrapped in an Obsidian callout:
+
+```toml
+[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+target = "body"
+callout = "quote"    # wraps output in > [!quote] block
+```
+
+This is separate from the module-level `callout_type` (which controls `{{callout}}` in append templates). Field-level `callout` wraps individual field output.
+
+### Preset Exclusion
+
+Fields that shouldn't be captured or restored by presets (e.g., free-form notes that change every entry) can be excluded:
+
+```toml
+[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+preset_exclude = true   # skipped when saving/applying presets
+```
 
 ---
 
@@ -298,7 +336,45 @@ Controls dashboard display order. Modules not listed appear alphabetically after
 
 ---
 
-## 9. Worked Example: Adapting to a New Vault
+## 9. Icons
+
+Modules and fields support an optional `icon` for visual identification.
+
+### Module Icons
+
+Module icons appear on the TUI dashboard next to the module name. For create-mode modules, they're also written to the output YAML frontmatter as `icon: <value>`, making them queryable by Dataview and compatible with Obsidian plugins like Iconize and Supercharged Links.
+
+```toml
+[modules.coffee]
+mode = "create"
+path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"
+display_name = "Coffee"
+icon = "☕"           # shown on dashboard, written to frontmatter
+```
+
+Dashboard appearance: `▸ ☕ [coffee]  Coffee`
+
+### Field Icons
+
+Field icons appear next to the prompt label in the TUI form. They are purely cosmetic — not written to output.
+
+```toml
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+icon = "🫘"           # shown in form only
+```
+
+Form appearance: `▸ 🫘 Bean*: Ethiopian Guji`
+
+### Format
+
+Icons are free-form strings. Use Unicode emoji (`"☕"`) for widest compatibility, or Iconize pack format (`"LiCoffee"`) if your vault uses the Iconize plugin. Pour stores whatever you configure — it doesn't validate or interpret the value.
+
+---
+
+## 10. Worked Example: Adapting to a New Vault
 
 Say your vault looks like this:
 
@@ -407,7 +483,7 @@ target = "body"
 
 ---
 
-## 10. Validation and Testing
+## 11. Validation and Testing
 
 After editing your config, test it:
 
@@ -435,5 +511,8 @@ Common errors:
 - [ ] For dynamic_selects: verify source folders exist in vault with `.md` files
 - [ ] For allow_create: add `[templates.<name>]` section with path and fields
 - [ ] For Templater coordination: set `post_create_command = "templater:run"` and create matching Obsidian template
+- [ ] Set `icon` on the module for dashboard display (and create-mode frontmatter)
+- [ ] Set `icon` on key fields for form display
+- [ ] Mark notes/textarea fields with `preset_exclude = true` if they shouldn't be part of presets
 - [ ] Add module to `module_order` for dashboard positioning
 - [ ] Test with `cargo run -- <module>`

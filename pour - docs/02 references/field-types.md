@@ -11,6 +11,20 @@ date modified: Friday, April 3rd 2026, 4:11:41 am
 
 This document covers all field types available in Pour's `config.toml` schema, their config keys, validation rules, default output targets, and TUI rendering behavior.
 
+## Module Config Keys
+
+Every module defined in `[modules.<name>]` supports these keys:
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `mode` | string | yes | `"create"` (new file) or `"append"` (add to existing file) |
+| `path` | string | yes | Vault-relative path template. Supports strftime tokens (`%Y`, `%m`, `%d`) and field placeholders (`{{field_name}}`). |
+| `display_name` | string | no | Human-readable label shown on the dashboard. Defaults to the module key. |
+| `append_under_header` | string | conditional | Required for `append` mode. Markdown heading to insert content under. |
+| `append_template` | string | no | Template string for append-mode output. Supports `{{field}}`, `{{date}}`, `{{time}}`, `{{callout}}` placeholders. |
+| `callout_type` | string | no | Default Obsidian callout type for `{{callout}}` in templates. |
+| `icon` | string | no | Optional icon displayed on the TUI dashboard next to the module name (e.g. `"☕"`). For create-mode modules, also written to output frontmatter as `icon: <value>`, making it queryable by Dataview and compatible with Iconize/Supercharged Links. |
+
 ## Field Config Keys
 
 Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
@@ -32,6 +46,8 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
 | `post_create_command` | string | no | Obsidian command ID to execute after template-driven note creation (e.g. `"templater:run"`). Only valid when `create_template` is set. Fires via the REST API `/commands/` endpoint; silently skipped on filesystem transport. |
 | `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See **Conditional Visibility** below. |
+| `icon` | string | no | Optional icon displayed next to the field prompt in the TUI form (e.g. `"🫘"`). Purely cosmetic — not written to output. |
+| `preset_exclude` | bool | no | When `true`, this field is excluded from preset capture and application. Useful for notes/textarea fields whose values change every entry and shouldn't be part of a saved preset. Defaults to `false`. |
 
 ## Output Target Defaults
 
@@ -131,7 +147,7 @@ target = "body"
 
 __TUI__: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
 __Output__: Defaults to Markdown body. Can be overridden to frontmatter.
-__Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax:
+__Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax. This applies in both create mode (`partition_fields`) and append mode (template `{{field}}` substitution).
 
 ```toml
 [[modules.me.fields]]
@@ -148,6 +164,8 @@ Produces:
 > First line of content
 > Second line
 ```
+
+__Runtime cycling__: When a textarea field has `callout` configured, Left/Right arrow keys cycle through callout types while the editor overlay is closed. The `[!type]` label is shown on the field row. The selected type overrides the config default for that entry only.
 
 Available callout types: `note`, `info`, `todo`, `tip`, `success`, `question`, `warning`, `failure`, `danger`, `bug`, `example`, `quote`.
 
