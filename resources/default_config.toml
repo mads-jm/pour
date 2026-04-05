@@ -27,8 +27,8 @@ base_path = "VAULT_PATH_PLACEHOLDER"
 #   "append" — adds content under a heading in an existing note
 #   "create" — generates a new note file per entry
 #
-# Path supports strftime tokens (%Y, %m, %d, %H, %M, %S) and field name
-# interpolation ({{field_name}}) for create-mode paths.
+# Path supports strftime tokens (%Y, %m, %d, %H, %M, %S), field name
+# interpolation ({{field_name}}), and {{date}}/{{time}} tokens for create-mode paths.
 
 # ── me ───────────────────────────────────────────────────────────────────────
 # Usage: `pour me`
@@ -39,6 +39,7 @@ base_path = "VAULT_PATH_PLACEHOLDER"
 mode = "append"
 path = "Journal/%Y/%Y-%m-%d.md"
 display_name = "Journal"
+icon = "💭"
 append_under_header = "## Log"
 callout_type = "note"
 append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
@@ -64,6 +65,7 @@ target = "body"
 mode = "append"
 path = "Journal/%Y/%Y-%m-%d.md"
 display_name = "Task"
+icon = "✅"
 append_under_header = "## Tasks"
 append_template = "- [ ] {{body}}"
 
@@ -81,6 +83,7 @@ target = "body"
 mode = "create"
 path = "Notes/%Y%m%d-{{title}}.md"
 display_name = "Note"
+icon = "📝"
 
 [[modules.note.fields]]
 name = "title"
@@ -106,6 +109,7 @@ target = "body"
 mode = "create"
 path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"
 display_name = "Coffee"
+icon = "☕"
 
 # ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]
@@ -178,6 +182,9 @@ field_type = "dynamic_select"
 prompt = "Bean"
 source = "Coffee/Beans"
 target = "frontmatter"
+icon = "🫘"
+wikilink = true
+allow_create = true
 
 [[modules.coffee.fields]]
 name = "grinder"
@@ -230,14 +237,15 @@ name = "duration_s"
 field_type = "number"
 prompt = "Duration (s)"
 
-# Pour Over: water temperature
+# Water temperature — relevant for both Pour Over and Immersion methods.
+# Uses `one_of` instead of `equals` to match multiple controlling values.
 [[modules.coffee.fields]]
 name = "water_temp_c"
 field_type = "number"
 prompt = "Water temp (°C)"
 default = "96"
 target = "frontmatter"
-show_when = { field = "brew_method", equals = "Pour Over" }
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
 
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
@@ -294,6 +302,8 @@ name = "notes"
 field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
+callout = "quote"          # wraps body output in > [!quote] blockquote
+preset_exclude = true      # excluded from saved presets (changes every entry)
 
 # ─── Templates ───────────────────────────────────────────────────────────────
 # Templates define the note structure created when a user adds a new entry via

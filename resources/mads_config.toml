@@ -28,7 +28,7 @@ base_path = "D:\\! System\\Documents\\! obsidian\\main"
 #   "create" — generates a new note file per entry
 #
 # Path supports strftime tokens (%Y, %m, %d, %H, %M, %S) and field name
-# interpolation ({field_name}) for create-mode paths.
+# interpolation ({{field_name}}), and {{date}}/{{time}} tokens for create-mode paths.
 
 # ── me ───────────────────────────────────────────────────────────────────────
 # Usage: `pour me`
@@ -39,8 +39,10 @@ base_path = "D:\\! System\\Documents\\! obsidian\\main"
 mode = "append"
 path = "06 - Periodic/00 - Daily/%Y%m%d.md"
 display_name = "Journal"
+icon = "💭"
 append_under_header = "## [[Journaling|Journal]]"
-append_template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}"
+callout_type = "note"
+append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
 
 [[modules.me.fields]]
 name = "title"
@@ -63,6 +65,7 @@ target = "body"
 mode = "append"
 path = "06 - Periodic/00 - Daily/%Y%m%d.md"
 display_name = "Task"
+icon = "✅"
 append_under_header = "### Tasks"
 append_template = "- [ ] {{body}}"
 
@@ -80,6 +83,7 @@ target = "body"
 mode = "create"
 path = "05 - Fleeting/%Y%m%d-{{title}}.md"
 display_name = "Note"
+icon = "📝"
 
 [[modules.note.fields]]
 name = "title"
@@ -105,6 +109,7 @@ target = "body"
 mode = "create"
 path = "02 - Areas/204 - Cooking/Coffee/{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
+icon = "☕"
 
 # ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]
@@ -179,6 +184,7 @@ field_type = "dynamic_select"
 prompt = "Bean"
 source = "02 - Areas/204 - Cooking/Coffee/Beans"
 target = "frontmatter"
+icon = "🫘"
 wikilink = true
 allow_create = true
 create_template = "bean"
@@ -186,9 +192,12 @@ post_create_command = "templater:run"
 
 [[modules.coffee.fields]]
 name = "grinder"
-field_type = "text"
+field_type = "dynamic_select"
 prompt = "Grinder"
+source = "02 - Areas/204 - Cooking/Coffee/Grinders"
 target = "frontmatter"
+wikilink = true
+allow_create = true
 
 [[modules.coffee.fields]]
 name = "grind_setting"
@@ -235,14 +244,14 @@ name = "duration_s"
 field_type = "number"
 prompt = "Duration (s)"
 
-# Pour Over: water temperature
+# Water temperature — relevant for Pour Over and Immersion methods
 [[modules.coffee.fields]]
 name = "water_temp_c"
 field_type = "number"
 prompt = "Water temp (°C)"
 default = "96"
 target = "frontmatter"
-show_when = { field = "brew_method", equals = "Pour Over" }
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
 
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
@@ -299,6 +308,8 @@ name = "notes"
 field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
+callout = "quote"
+preset_exclude = true
 
 # ─── Templates ───────────────────────────────────────────────────────────────
 # Templates define the note structure created when a user adds a new entry via
