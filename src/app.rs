@@ -40,6 +40,9 @@ pub struct FormState {
     pub textarea_open: bool,
     /// Horizontal scroll offset for the textarea editor (chars).
     pub textarea_scroll_offset: usize,
+    /// Runtime callout type overrides, keyed by field name.
+    /// Initialized from config defaults; cyclable via Left/Right in the form.
+    pub callout_overrides: HashMap<String, String>,
     /// Row data for composite_array fields, keyed by field name.
     /// Each row is a Vec of cell values (one per sub-field column).
     pub composite_values: HashMap<String, Vec<Vec<String>>>,
@@ -351,6 +354,7 @@ impl App {
         let mut field_values = HashMap::new();
         let mut field_options = HashMap::new();
         let mut composite_values = HashMap::new();
+        let mut callout_overrides = HashMap::new();
 
         for field in &module.fields {
             if field.field_type == FieldType::CompositeArray {
@@ -369,6 +373,11 @@ impl App {
             {
                 field_options.insert(field.name.clone(), opts.clone());
             }
+
+            // Seed callout overrides from config defaults
+            if let Some(ref callout) = field.callout {
+                callout_overrides.insert(field.name.clone(), callout.clone());
+            }
         }
 
         // Determine the config index for active_field=0 given initial (default) values.
@@ -385,6 +394,7 @@ impl App {
             dropdown_open: false,
             textarea_open: false,
             textarea_scroll_offset: 0,
+            callout_overrides,
             composite_values,
             composite_open: false,
             composite_row: 0,
@@ -443,6 +453,13 @@ impl App {
             key: "callout_type".to_string(),
             value: module.callout_type.clone().unwrap_or_default(),
             kind: SettingKind::QuickSelect(callout_quick_select()),
+        });
+
+        settings.push(ConfigSetting {
+            label: "Icon".to_string(),
+            key: "icon".to_string(),
+            value: module.icon.clone().unwrap_or_default(),
+            kind: SettingKind::Text,
         });
 
         // Navigation link to the field list
@@ -602,6 +619,13 @@ impl App {
                 kind: SettingKind::QuickSelect(callout_quick_select()),
             });
         }
+
+        settings.push(ConfigSetting {
+            label: "Icon".to_string(),
+            key: "icon".to_string(),
+            value: field.icon.clone().unwrap_or_default(),
+            kind: SettingKind::Text,
+        });
 
         settings
     }

@@ -1032,3 +1032,128 @@ fn sub_form_error_message_can_be_cleared() {
     sf.error_message = None;
     assert!(sf.error_message.is_none());
 }
+
+// ── Callout cycling on textarea fields ──
+
+const CALLOUT_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+
+[[modules.test.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "note"
+"####;
+
+fn make_app_callout() -> App {
+    let config = Config::from_toml(CALLOUT_TOML).expect("parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let mut app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/test-callout-history.json")),
+    );
+    app.selected_module = app.module_keys.iter().position(|k| k == "test").unwrap();
+    app.form_state = app.init_form("test");
+    app.screen = pour::app::Screen::Form;
+    app
+}
+
+#[test]
+fn callout_override_seeded_from_config() {
+    let app = make_app_callout();
+    let fs = app.form_state.as_ref().unwrap();
+    assert_eq!(fs.callout_overrides.get("notes").map(|s| s.as_str()), Some("note"));
+}
+
+#[test]
+fn right_cycles_callout_forward() {
+    let mut app = make_app_callout();
+    app.form_state.as_mut().unwrap().active_field = 1; // notes (textarea)
+    handle_key(&mut app, key(KeyCode::Right));
+    let fs = app.form_state.as_ref().unwrap();
+    // "note" is index 0 in CALLOUT_OPTIONS → Right goes to index 1 = "info"
+    assert_eq!(fs.callout_overrides["notes"], "info");
+}
+
+#[test]
+fn left_cycles_callout_backward() {
+    let mut app = make_app_callout();
+    app.form_state.as_mut().unwrap().active_field = 1; // notes (textarea)
+    handle_key(&mut app, key(KeyCode::Left));
+    let fs = app.form_state.as_ref().unwrap();
+    // "note" is index 0 → Left wraps to last = "danger"
+    assert_eq!(fs.callout_overrides["notes"], "danger");
+}
+
+#[test]
+fn right_wraps_around_callout_list() {
+    let mut app = make_app_callout();
+    let fs = app.form_state.as_mut().unwrap();
+    fs.active_field = 1;
+    // Set to last option "danger" (index 11)
+    fs.callout_overrides.insert("notes".to_string(), "danger".to_string());
+    handle_key(&mut app, key(KeyCode::Right));
+    let fs = app.form_state.as_ref().unwrap();
+    assert_eq!(fs.callout_overrides["notes"], "note", "should wrap to first");
+}
+
+#[test]
+fn custom_callout_value_cycles_to_known_option() {
+    let mut app = make_app_callout();
+    let fs = app.form_state.as_mut().unwrap();
+    fs.active_field = 1;
+    // Set a custom value not in CALLOUT_OPTIONS
+    fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
+    handle_key(&mut app, key(KeyCode::Right));
+    let fs = app.form_state.as_ref().unwrap();
+    // Custom value not found → Right starts at 0 = "note"
+    assert_eq!(fs.callout_overrides["notes"], "note");
+}
+
+#[test]
+fn custom_callout_left_cycles_to_last_option() {
+    let mut app = make_app_callout();
+    let fs = app.form_state.as_mut().unwrap();
+    fs.active_field = 1;
+    fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
+    handle_key(&mut app, key(KeyCode::Left));
+    let fs = app.form_state.as_ref().unwrap();
+    // Custom value not found → Left goes to last = "danger"
+    assert_eq!(fs.callout_overrides["notes"], "danger");
+}
+
+#[test]
+fn no_cycling_on_textarea_without_callout() {
+    let mut app = make_app(); // standard config, notes textarea has no callout
+    app.form_state.as_mut().unwrap().active_field = 3; // notes (textarea, no callout)
+    let fs = app.form_state.as_ref().unwrap();
+    assert!(!fs.callout_overrides.contains_key("notes"), "no callout in config → no override");
+    // Right should NOT cycle callout — it should just move cursor (no-op at pos 0)
+    handle_key(&mut app, key(KeyCode::Right));
+    let fs = app.form_state.as_ref().unwrap();
+    assert!(!fs.callout_overrides.contains_key("notes"), "should remain absent");
+}
+
+#[test]
+fn no_cycling_when_textarea_editor_open() {
+    let mut app = make_app_callout();
+    let fs = app.form_state.as_mut().unwrap();
+    fs.active_field = 1; // notes
+    fs.textarea_open = true;
+    fs.callout_overrides.insert("notes".to_string(), "note".to_string());
+    handle_key(&mut app, key(KeyCode::Right));
+    let fs = app.form_state.as_ref().unwrap();
+    // Should NOT cycle — cursor movement instead
+    assert_eq!(fs.callout_overrides["notes"], "note", "callout unchanged when editor open");
+}

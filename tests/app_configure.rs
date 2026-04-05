@@ -309,6 +309,7 @@ fn make_form_state(
         dropdown_open: false,
         textarea_open: false,
         textarea_scroll_offset: 0,
+        callout_overrides: HashMap::new(),
         composite_values,
         composite_open: false,
         composite_row: 0,
