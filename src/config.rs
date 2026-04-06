@@ -55,6 +55,16 @@ pub struct ModuleConfig {
     /// Optional icon displayed in the TUI dashboard and written to frontmatter
     /// in create-mode output. Typically a Unicode emoji (e.g. "☕").
     pub icon: Option<String>,
+    /// When `true`, create-mode output includes a `daily` frontmatter key
+    /// linking to today's daily note (e.g. `daily: "[[20260405]]"`).
+    #[serde(default)]
+    pub daily_link: Option<bool>,
+    /// When `true`, append-mode insertion treats any subsequent heading as a
+    /// section boundary, not just equal-or-higher level. Useful when the
+    /// target heading should not absorb sub-headings (e.g. `### Tasks` with
+    /// `#### Completed` sub-headings).
+    #[serde(default)]
+    pub append_shallow: Option<bool>,
 }
 
 /// Whether a module appends to an existing note or creates a new one.
@@ -119,6 +129,10 @@ pub struct FieldConfig {
     /// Purely cosmetic — not written to output.
     #[serde(default)]
     pub icon: Option<String>,
+    /// When `true`, this field is excluded from preset capture and application.
+    /// Useful for notes/textarea fields that should not be part of a saved preset.
+    #[serde(default)]
+    pub preset_exclude: Option<bool>,
 }
 
 /// The kind of input widget for a field.
@@ -207,6 +221,10 @@ pub struct ModuleUpdates {
     pub callout_type: Option<Option<String>>,
     /// New icon. `Some(None)` removes the key.
     pub icon: Option<Option<String>>,
+    /// New daily_link value. `Some(None)` removes the key.
+    pub daily_link: Option<Option<bool>>,
+    /// New append_shallow value. `Some(None)` removes the key.
+    pub append_shallow: Option<Option<bool>>,
 }
 
 /// Partial updates to apply to the vault section of the config file.
@@ -251,6 +269,8 @@ pub struct FieldUpdates {
     pub post_create_command: Option<Option<String>>,
     /// Icon displayed next to prompt in TUI. `Some(None)` removes the key.
     pub icon: Option<Option<String>>,
+    /// Exclude from preset capture/apply. `Some(None)` removes the key.
+    pub preset_exclude: Option<Option<bool>>,
 }
 
 /// Partial updates to apply to a single sub-field within a composite_array field.
@@ -497,6 +517,28 @@ impl Config {
             }
         }
 
+        if let Some(ref daily_link_update) = updates.daily_link {
+            match daily_link_update {
+                Some(v) => {
+                    module["daily_link"] = toml_edit::value(*v);
+                }
+                None => {
+                    module.remove("daily_link");
+                }
+            }
+        }
+
+        if let Some(ref shallow_update) = updates.append_shallow {
+            match shallow_update {
+                Some(v) => {
+                    module["append_shallow"] = toml_edit::value(*v);
+                }
+                None => {
+                    module.remove("append_shallow");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing — never touch the file if the result is invalid.
@@ -690,6 +732,15 @@ impl Config {
             }
         }
 
+        if let Some(ref preset_exclude_update) = updates.preset_exclude {
+            match preset_exclude_update {
+                Some(v) => field["preset_exclude"] = toml_edit::value(*v),
+                None => {
+                    field.remove("preset_exclude");
+                }
+            }
+        }
+
         let new_content = doc.to_string();
 
         // Validate before writing.
@@ -825,6 +876,10 @@ impl Config {
 
         if let Some(ref icon) = field.icon {
             new_table["icon"] = toml_edit::value(icon.as_str());
+        }
+
+        if let Some(preset_exclude) = field.preset_exclude {
+            new_table["preset_exclude"] = toml_edit::value(preset_exclude);
         }
 
         // Navigate to the fields array-of-tables and push the new entry.
@@ -1049,6 +1104,14 @@ impl Config {
 
         if let Some(ref icon) = module.icon {
             module_table["icon"] = toml_edit::value(icon.as_str());
+        }
+
+        if module.daily_link == Some(true) {
+            module_table["daily_link"] = toml_edit::value(true);
+        }
+
+        if module.append_shallow == Some(true) {
+            module_table["append_shallow"] = toml_edit::value(true);
         }
 
         // Build fields as an ArrayOfTables.
