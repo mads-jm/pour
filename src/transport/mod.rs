@@ -79,19 +79,24 @@ impl Transport {
     /// Both backends are heading-aware: the API uses its native heading
     /// targeting; the filesystem backend parses the markdown to find the
     /// heading and inserts content before the next same-or-higher-level heading.
+    /// When `shallow` is `true`, any subsequent heading is treated as the
+    /// section boundary regardless of level.
     pub async fn append_under_heading(
         &self,
         vault_path: &str,
         heading: &str,
         content: &str,
+        shallow: bool,
     ) -> Result<()> {
         match self {
             Transport::Api(client) => {
                 client
-                    .append_under_heading(vault_path, heading, content)
+                    .append_under_heading(vault_path, heading, content, shallow)
                     .await
             }
-            Transport::Fs(writer) => writer.append_under_heading(vault_path, heading, content),
+            Transport::Fs(writer) => {
+                writer.append_under_heading(vault_path, heading, content, shallow)
+            }
         }
     }
 

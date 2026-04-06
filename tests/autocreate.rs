@@ -110,6 +110,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         callout_type: None,
         icon: None,
         daily_link: None,
+        append_shallow: None,
     }
 }
 

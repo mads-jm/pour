@@ -136,6 +136,7 @@ impl ApiClient {
         vault_path: &str,
         heading: &str,
         content: &str,
+        shallow: bool,
     ) -> Result<()> {
         let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
 
@@ -161,7 +162,7 @@ impl ApiClient {
             .context("API: failed to read response body")?;
 
         // 2. Splice content under the heading.
-        let modified = splice_under_heading(&raw, heading, content)?;
+        let modified = splice_under_heading(&raw, heading, content, shallow)?;
 
         // 3. Write modified content back.
         let resp = self
@@ -324,7 +325,9 @@ fn encode_vault_path(vault_path: &str) -> String {
 
 /// Splice `content` under `heading` in a markdown document, returning the
 /// modified document. Mirrors the logic in `FsClient::append_under_heading`.
-fn splice_under_heading(raw: &str, heading: &str, content: &str) -> Result<String> {
+/// When `shallow` is `true`, any subsequent heading is treated as the section
+/// boundary rather than only equal-or-higher level headings.
+fn splice_under_heading(raw: &str, heading: &str, content: &str, shallow: bool) -> Result<String> {
     let heading_level = heading.chars().take_while(|&c| c == '#').count();
     if heading_level == 0 {
         anyhow::bail!("not a valid markdown heading: {:?}", heading);
@@ -337,12 +340,14 @@ fn splice_under_heading(raw: &str, heading: &str, content: &str) -> Result<Strin
         .position(|l| l.trim_end() == heading)
         .ok_or_else(|| anyhow::anyhow!("heading {:?} not found in file", heading))?;
 
-    // Find the next heading of equal or higher level.
+    // Find the next heading of equal or higher level, or any heading when shallow.
     let insert_before = lines[heading_idx + 1..]
         .iter()
         .position(|l| {
             let hashes = l.chars().take_while(|&c| c == '#').count();
-            hashes > 0 && l.chars().nth(hashes) == Some(' ') && hashes <= heading_level
+            hashes > 0
+                && l.chars().nth(hashes) == Some(' ')
+                && (shallow || hashes <= heading_level)
         })
         .map(|rel| heading_idx + 1 + rel);
 

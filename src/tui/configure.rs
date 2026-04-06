@@ -76,6 +76,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
     let mut callout_type: Option<Option<String>> = None;
     let mut icon: Option<Option<String>> = None;
     let mut daily_link: Option<Option<bool>> = None;
+    let mut append_shallow: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -122,6 +123,13 @@ fn auto_save_module_settings(app: &mut App) -> bool {
                     None
                 });
             }
+            "append_shallow" => {
+                append_shallow = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -134,6 +142,7 @@ fn auto_save_module_settings(app: &mut App) -> bool {
         callout_type,
         icon,
         daily_link,
+        append_shallow,
     };
 
     match crate::config::Config::update_module_on_disk(&module_key, &updates) {

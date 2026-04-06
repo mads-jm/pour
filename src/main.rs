@@ -1105,6 +1105,7 @@ fn handle_save_new_module(app: &mut App) {
         callout_type: None,
         icon: None,
         daily_link: None,
+        append_shallow: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1356,6 +1357,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut callout_type: Option<Option<String>> = None;
     let mut icon: Option<Option<String>> = None;
     let mut daily_link: Option<Option<bool>> = None;
+    let mut append_shallow: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1402,6 +1404,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     None
                 });
             }
+            "append_shallow" => {
+                append_shallow = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -1414,6 +1423,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         callout_type,
         icon,
         daily_link,
+        append_shallow,
     }
 }
 

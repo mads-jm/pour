@@ -817,6 +817,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         callout_type: None,
         icon: None,
         daily_link: None,
+        append_shallow: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,

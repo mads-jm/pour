@@ -515,6 +515,20 @@ impl App {
             kind: SettingKind::Toggle(vec![String::new(), "true".to_string()]),
         });
 
+        // Only show append_shallow when mode is append
+        if mode_str == "append" {
+            settings.push(ConfigSetting {
+                label: "Shallow Append".to_string(),
+                key: "append_shallow".to_string(),
+                value: if module.append_shallow == Some(true) {
+                    "true".to_string()
+                } else {
+                    String::new()
+                },
+                kind: SettingKind::Toggle(vec![String::new(), "true".to_string()]),
+            });
+        }
+
         // Navigation link to the field list
         let field_count = module.fields.len();
         settings.push(ConfigSetting {

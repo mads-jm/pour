@@ -234,6 +234,29 @@ fn append_under_heading_does_not_stop_at_deeper_subheading() {
 }
 
 #[test]
+fn append_under_heading_shallow_stops_at_deeper_subheading() {
+    // With shallow=true, ### Tasks should treat #### Completed as a boundary.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let initial = "### Tasks\n\n- existing\n\n#### Completed\n\n- [x] done\n\n## Next\n";
+    std::fs::write(dir.path().join("note.md"), initial).unwrap();
+
+    writer
+        .append_under_heading("note.md", "### Tasks", "- new task", true)
+        .expect("should succeed");
+
+    let content = std::fs::read_to_string(dir.path().join("note.md")).unwrap();
+
+    let new_pos = content.find("- new task").unwrap();
+    let completed_pos = content.find("#### Completed").unwrap();
+    assert!(
+        new_pos < completed_pos,
+        "with shallow=true, new task should appear before #### Completed, got:\n{content}"
+    );
+}
+
+#[test]
 fn list_directory_returns_empty_vec_for_empty_dir() {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     std::fs::create_dir_all(dir.path().join("empty")).unwrap();
