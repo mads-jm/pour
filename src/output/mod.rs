@@ -36,6 +36,14 @@ pub async fn write_create(
         }
     }
 
+    if module.daily_link == Some(true) {
+        if !fm_fields.iter().any(|(k, _)| k == "daily") {
+            let date_fmt = date_format.unwrap_or("%Y%m%d");
+            let daily = format!("[[{}]]", chrono::Local::now().format(date_fmt));
+            fm_fields.push(("daily".to_string(), daily));
+        }
+    }
+
     let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
 
     let body = body_parts.join("\n\n");
@@ -107,7 +115,12 @@ pub async fn write_append(
 
     let vault_path = template::render_path(&module.path, field_values, date_format);
     transport
-        .append_under_heading(&vault_path, heading, &content)
+        .append_under_heading(
+            &vault_path,
+            heading,
+            &content,
+            module.append_shallow == Some(true),
+        )
         .await?;
 
     Ok(vault_path)

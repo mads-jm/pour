@@ -104,8 +104,10 @@ pub fn render_append_template(
     result = result.replace("{{time}}", &now.format("%H:%M").to_string());
     result = result.replace("{{date}}", &now.format("%Y-%m-%d").to_string());
 
-    // Replace {{callout}} with the module's configured callout type.
-    if let Some(ref callout) = module.callout_type {
+    let callout_resolved = callout_overrides
+        .get("_callout_type")
+        .or(module.callout_type.as_ref());
+    if let Some(callout) = callout_resolved {
         result = result.replace("{{callout}}", callout);
     }
 
