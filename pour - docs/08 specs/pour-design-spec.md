@@ -94,7 +94,23 @@ Config validation enforces: exactly one of `equals`/`one_of`, no self-reference,
 
 v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only, not supported on `composite_array` sub-fields.
 
-### __3.4 File Write Modes & Field → Output Mapping__
+### __3.4 Module Presets__
+
+*[Deviation: not in original spec. Added to support fast re-entry for repeated captures with the same base configuration (e.g., same bean, method, and dose across a brew series).]*
+
+Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.cache/pour/presets.json` keyed by module name.
+
+**Keybindings:**
+- `Ctrl+S` — save current form values as a named preset (name input overlay appears)
+- `Ctrl+D` — delete the selected preset (y/n confirmation)
+- `Left/Right` on the preset selector row — cycle through `<none>` and saved presets
+- `Ctrl+Left/Right` — reorder presets
+
+A preset selector row appears at the top of every form. Applying a preset is deterministic: fields present in the preset are populated; fields absent from the preset reset to their config defaults.
+
+**`preset_exclude`** — a boolean field-level config key (`Option<bool>`, default `false`). When `true`, the field is excluded from both preset capture and preset application. Intended for notes, observations, or any value that changes on every entry. `composite_array` fields are implicitly excluded regardless of this flag.
+
+### __3.5 File Write Modes & Field → Output Mapping__
 
 Append vs. create modes, and how fields map to frontmatter/body.
 

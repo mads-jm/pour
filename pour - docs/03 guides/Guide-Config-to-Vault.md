@@ -213,6 +213,12 @@ prompt = "Tasting notes"
 preset_exclude = true   # skipped when saving/applying presets
 ```
 
+Use `preset_exclude = true` on:
+- `textarea` body fields where content varies every entry (journal thoughts, tasting notes)
+- `title` or `name` text fields on create-mode modules where each entry has a unique title
+
+Fields marked `preset_exclude` are still filled and submitted normally — they're just invisible to the preset save/apply cycle.
+
 ---
 
 ## 5. Wire Up Dynamic Selects
@@ -374,7 +380,46 @@ Icons are free-form strings. Use Unicode emoji (`"☕"`) for widest compatibilit
 
 ---
 
-## 10. Worked Example: Adapting to a New Vault
+## 10. Presets
+
+Presets let you save a snapshot of a module's current field values and restore them on future entries. They're designed for workflows where most fields stay the same across entries (same bean, same grinder, same dose) but a few fields vary (tasting notes, entry title).
+
+### How presets work
+
+Each module maintains its own preset list, stored in `~/.cache/pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form.
+
+At the top of every module form, Pour shows a preset row:
+
+```
+[ No preset ]   ◂ ▸ to cycle
+```
+
+When you apply a preset, Pour resets **all non-excluded fields** to the preset's saved values. Fields absent from the preset receive their configured `default`. This is deterministic: applying the same preset always produces the same starting state.
+
+### TUI keybindings
+
+| Key | Action |
+|-----|--------|
+| `Left` / `Right` on the preset row | Cycle through saved presets |
+| `Ctrl+S` | Save the current field values as a new preset |
+| `Ctrl+D` | Delete the currently selected preset |
+| `Ctrl+Left` / `Ctrl+Right` | Reorder presets (move selected preset left or right) |
+
+The preset row is always at the top of the form. Navigate to it with `Up` from the first field, or `Down` from the preset row to enter the form.
+
+### When to use presets
+
+Presets pay off most for create-mode modules with many fields that rarely change. A coffee log is the canonical case: bean, grinder, dose, yield, and time are consistent for a given setup, while tasting notes differ every brew. Save one preset per common setup (e.g., "V60 light roast", "Espresso morning shot") and cycle between them at the top of the form.
+
+Append-mode modules with short forms (journal, task) typically don't need presets.
+
+### Configuring preset exclusion
+
+See the `preset_exclude` key under [section 4](#4-design-your-fields). Mark fields like `textarea` body content and unique entry titles with `preset_exclude = true` so they aren't overwritten when a preset is applied.
+
+---
+
+## 11. Worked Example: Adapting to a New Vault
 
 Say your vault looks like this:
 
@@ -483,7 +528,7 @@ target = "body"
 
 ---
 
-## 11. Validation and Testing
+## 12. Validation and Testing
 
 After editing your config, test it:
 
