@@ -2,6 +2,7 @@ use crate::config::{
     Config, FieldType, ModuleConfig, SubFieldType, TemplateConfig, TemplateFieldType, WriteMode,
 };
 use crate::data::history::History;
+use crate::data::presets::Presets;
 use crate::transport::{Transport, TransportMode, VaultEntry};
 use crate::visibility::visible_field_indices;
 use std::collections::{HashMap, HashSet};
@@ -13,6 +14,15 @@ pub enum Screen {
     Form,
     Summary,
     Configure,
+}
+
+/// Dialog state for naming a preset during a save operation.
+#[derive(Debug)]
+pub struct PresetSaveDialog {
+    /// Text typed by the user as the preset name.
+    pub name_buffer: String,
+    /// Cursor position within `name_buffer`.
+    pub cursor_position: usize,
 }
 
 /// State for the module entry form.
@@ -57,6 +67,15 @@ pub struct FormState {
     pub search_buffers: HashMap<String, String>,
     /// Active sub-form overlay for template-driven inline note creation.
     pub sub_form: Option<SubFormState>,
+    /// Ordered list of preset names for the current module.
+    /// Index 0 conceptually represents `<none>` (no preset applied).
+    pub preset_names: Vec<String>,
+    /// Index into `preset_names`; 0 means no preset is selected.
+    pub selected_preset: usize,
+    /// Open preset-save dialog, if the user is naming a new preset.
+    pub preset_overlay: Option<PresetSaveDialog>,
+    /// Whether the delete-preset confirmation prompt is shown.
+    pub confirm_delete_preset: bool,
 }
 
 /// State for the template-driven sub-form overlay.
@@ -295,6 +314,8 @@ pub struct App {
     pub history: History,
     /// Whether the dashboard help overlay is visible.
     pub help_open: bool,
+    /// Saved presets for all modules.
+    pub presets: Presets,
 }
 
 impl App {
@@ -303,7 +324,7 @@ impl App {
     /// Starts on the Dashboard screen with the first module selected.
     /// Module keys are ordered by `module_order` from config if present,
     /// with any unlisted modules appended alphabetically.
-    pub fn new(config: Config, transport: Transport, history: History) -> Self {
+    pub fn new(config: Config, transport: Transport, history: History, presets: Presets) -> Self {
         let module_keys = match &config.module_order {
             Some(order) => {
                 let mut keys: Vec<String> = order
@@ -340,6 +361,7 @@ impl App {
             startup_warnings: Vec::new(),
             history,
             help_open: false,
+            presets,
         }
     }
 
@@ -380,14 +402,30 @@ impl App {
             }
         }
 
+        if let Some(ref callout) = module.callout_type {
+            callout_overrides.insert("_callout_type".to_string(), callout.clone());
+        }
+
         // Determine the config index for active_field=0 given initial (default) values.
         let initial_visible = crate::visibility::visible_field_indices(&module.fields, &field_values);
         let initial_config_idx = initial_visible.first().copied();
 
+        // Populate preset names from saved presets for this module.
+        let preset_names = self
+            .presets
+            .get(module_key)
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+
+        // Start on the first real field (active_field 1), not the preset row (0).
+        // The preset row is always visible at position 0 but is not the default focus.
+        let start_field = if initial_config_idx.is_some() { 1 } else { 0 };
+
         Some(FormState {
             field_values,
             field_options,
-            active_field: 0,
+            active_field: start_field,
             active_config_idx: initial_config_idx,
             validation_errors: Vec::new(),
             cursor_position: 0,
@@ -401,6 +439,10 @@ impl App {
             composite_col: 0,
             search_buffers: HashMap::new(),
             sub_form: None,
+            preset_names,
+            selected_preset: 0,
+            preset_overlay: None,
+            confirm_delete_preset: false,
         })
     }
 
@@ -460,6 +502,17 @@ impl App {
             key: "icon".to_string(),
             value: module.icon.clone().unwrap_or_default(),
             kind: SettingKind::Text,
+        });
+
+        settings.push(ConfigSetting {
+            label: "Daily Link".to_string(),
+            key: "daily_link".to_string(),
+            value: if module.daily_link == Some(true) {
+                "true".to_string()
+            } else {
+                String::new()
+            },
+            kind: SettingKind::Toggle(vec![String::new(), "true".to_string()]),
         });
 
         // Navigation link to the field list
@@ -625,6 +678,17 @@ impl App {
             key: "icon".to_string(),
             value: field.icon.clone().unwrap_or_default(),
             kind: SettingKind::Text,
+        });
+
+        settings.push(ConfigSetting {
+            label: "Preset Exclude".to_string(),
+            key: "preset_exclude".to_string(),
+            value: if field.preset_exclude.unwrap_or(false) {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            },
+            kind: SettingKind::Toggle(vec!["false".to_string(), "true".to_string()]),
         });
 
         settings
@@ -815,6 +879,71 @@ impl App {
             status_message: None,
             help_overlay_open: false,
             quick_select_open: false,
+        }
+    }
+
+    /// Apply a preset (or `None` for `<none>`) to the given form state.
+    ///
+    /// Rules:
+    /// - Fields with `preset_exclude = true` are never touched.
+    /// - `CompositeArray` fields are never touched (no scalar representation).
+    /// - When `preset` is `Some`, all eligible fields are set: fields present in the preset
+    ///   receive the preset value, fields absent from the preset are reset to their config
+    ///   default (or empty string). This makes preset application deterministic — the result
+    ///   does not depend on previous form state.
+    /// - When `preset` is `None`, all eligible fields are reset to their config default
+    ///   (or empty string if no default is configured).
+    /// - After applying, `show_when` visibility is re-evaluated: `active_config_idx` is updated
+    ///   to stay within the newly visible set (moves to first visible field when the current
+    ///   focused field becomes hidden).
+    /// - UI state (`cursor_position`, `dropdown_open`, `textarea_open`, `search_buffers`) is
+    ///   reset to avoid stale state from the previous form values.
+    pub fn apply_preset(
+        form_state: &mut FormState,
+        fields: &[crate::config::FieldConfig],
+        preset: Option<&crate::data::presets::PresetEntry>,
+    ) {
+        for field in fields {
+            // Never touch excluded or composite fields.
+            if field.preset_exclude == Some(true) {
+                continue;
+            }
+            if field.field_type == FieldType::CompositeArray {
+                continue;
+            }
+
+            let new_val = match preset {
+                Some(p) => p
+                    .values
+                    .get(&field.name)
+                    .cloned()
+                    .unwrap_or_else(|| field.default.clone().unwrap_or_default()),
+                None => field.default.clone().unwrap_or_default(),
+            };
+            form_state.field_values.insert(field.name.clone(), new_val);
+        }
+
+        // Reset UI state to avoid stale cursor/overlay positions.
+        form_state.cursor_position = 0;
+        form_state.dropdown_open = false;
+        form_state.textarea_open = false;
+        form_state.search_buffers.clear();
+
+        // Re-evaluate visibility and fix up focus if the active field became hidden.
+        let visible = crate::visibility::visible_field_indices(fields, &form_state.field_values);
+
+        // Map the current active_config_idx back to a visible position.
+        let current_visible_pos = form_state.active_config_idx.and_then(|cfg_idx| {
+            visible.iter().position(|&v| v == cfg_idx)
+        });
+
+        if let Some(pos) = current_visible_pos {
+            // Field is still visible — keep focus where it is.
+            form_state.active_field = pos;
+        } else {
+            // Field became hidden — move to first visible field.
+            form_state.active_field = 0;
+            form_state.active_config_idx = visible.first().copied();
         }
     }
 

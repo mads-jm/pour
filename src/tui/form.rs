@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, FormState, SubFormState};
+use crate::app::{App, FormState, PresetSaveDialog, SubFormState};
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 use crate::visibility::visible_field_indices;
 
@@ -60,18 +60,35 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Fields
     render_fields(frame, chunks[1], &module.fields, form_state);
 
-    // Footer: validation errors or key hints
+    // Footer: validation errors, delete confirmation, or key hints
     let footer_content = if !form_state.validation_errors.is_empty() {
         let error_text = form_state.validation_errors.join("; ");
         Line::from(Span::styled(
             format!(" Error: {error_text}"),
             Style::default().fg(Color::Red),
         ))
+    } else if form_state.confirm_delete_preset {
+        let name = form_state
+            .preset_names
+            .get(form_state.selected_preset.saturating_sub(1))
+            .cloned()
+            .unwrap_or_default();
+        Line::from(vec![
+            Span::styled(
+                format!(" Delete \"{name}\"?"),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" (y/n)", Style::default().fg(Color::Yellow)),
+        ])
     } else {
         Line::from(vec![
-            Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
-            Span::raw("/"),
-            Span::styled("Tab", Style::default().fg(Color::Yellow)),
+            Span::styled(" s", Style::default().fg(Color::Yellow)),
+            Span::raw(" save  "),
+            Span::styled("d", Style::default().fg(Color::Yellow)),
+            Span::raw(" delete  "),
+            Span::styled("←→", Style::default().fg(Color::Yellow)),
+            Span::raw(" cycle  "),
+            Span::styled("↑↓/Tab", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" interact  "),
@@ -81,6 +98,11 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
+
+    // Preset save overlay renders before sub-form overlay
+    if let Some(ref overlay) = form_state.preset_overlay {
+        render_preset_save_overlay(frame, area, overlay);
+    }
 
     // Sub-form overlay renders LAST so it paints over footer and fields
     if let Some(sub_form) = &form_state.sub_form {
@@ -93,20 +115,65 @@ pub fn render(app: &App, frame: &mut Frame) {
 }
 
 /// Render the vertical list of form fields plus a submit button row.
+///
+/// `active_field` layout:
+///   0                      = preset row
+///   1..=visible_count      = real fields (visible_indices[active_field - 1])
+///   visible_count + 1      = submit button
 fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState) {
     // Compute which fields are currently visible given the form's current values.
     // `vi` (visible index) is the render position; `ci` (config index) is the field's
     // position in the original `fields` slice.
     let visible_indices = visible_field_indices(fields, &form_state.field_values);
+    let visible_count = visible_indices.len();
 
-    let submit_active = form_state.active_field == visible_indices.len();
+    let on_preset_row = form_state.active_field == 0;
+    let submit_active = form_state.active_field == visible_count + 1;
 
-    let mut items: Vec<ListItem> = visible_indices
+    // --- Preset row (always at position 0) ---
+    let preset_label_style = if on_preset_row {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let preset_value_style = if on_preset_row {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Gray)
+    };
+    let preset_name_display = if form_state.selected_preset == 0 {
+        "<none>".to_string()
+    } else {
+        form_state
+            .preset_names
+            .get(form_state.selected_preset - 1)
+            .cloned()
+            .unwrap_or_else(|| "<none>".to_string())
+    };
+    let preset_value_text = if on_preset_row {
+        format!("◂ {preset_name_display} ▸")
+    } else {
+        preset_name_display
+    };
+    let preset_indicator = if on_preset_row { "▸" } else { " " };
+    let preset_item = ListItem::new(Line::from(vec![
+        Span::styled(format!("{preset_indicator} "), preset_label_style),
+        Span::styled("Preset: ", preset_label_style),
+        Span::styled(preset_value_text, preset_value_style),
+    ]));
+
+    let mut items: Vec<ListItem> = vec![preset_item];
+
+    // --- Real fields (offset: visible index vi maps to active_field vi+1) ---
+    items.extend(visible_indices
         .iter()
         .enumerate()
         .map(|(vi, &ci)| {
             let field = &fields[ci];
-            let is_active = vi == form_state.active_field;
+            // active_field == vi+1 because preset row occupies slot 0
+            let is_active = (vi + 1) == form_state.active_field;
             let value = form_state
                 .field_values
                 .get(&field.name)
@@ -149,7 +216,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                         if form_state.dropdown_open {
                             format!("{display_text} [^]")
                         } else {
-                            format!("{display_text} [v]")
+                            format!("◂ {display_text} ▸ [v]")
                         }
                     } else {
                         display_text
@@ -159,6 +226,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                     let callout_prefix = form_state
                         .callout_overrides
                         .get(&field.name)
+                        .or_else(|| form_state.callout_overrides.get("_callout_type"))
                         .map(|c| format!("[!{c}] "))
                         .unwrap_or_default();
                     let label = if value.is_empty() {
@@ -249,10 +317,9 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
             ]);
 
             ListItem::new(line)
-        })
-        .collect();
+        }));
 
-    // Submit button row
+    // Submit button row (now at visual index visible_count + 1, because preset row is at 0)
     let submit_style = if submit_active {
         Style::default()
             .fg(Color::Green)
@@ -273,12 +340,18 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     super::render_overflow_hints(frame, area, item_count, 0);
 
     // Resolve the active field's config-index from the visible list.
-    let active_config_field = visible_indices
-        .get(form_state.active_field)
-        .and_then(|&ci| fields.get(ci));
+    // active_field == 0 => preset row (no real field config)
+    // active_field == vi+1 => visible_indices[vi]
+    let active_config_field = if form_state.active_field > 0 && !submit_active {
+        visible_indices
+            .get(form_state.active_field - 1)
+            .and_then(|&ci| fields.get(ci))
+    } else {
+        None
+    };
 
     // Place the terminal block cursor for text/textarea/number fields
-    if !submit_active
+    if !submit_active && !on_preset_row
         && let Some(field) = active_config_field
     {
         let is_text_input = matches!(field.field_type, FieldType::Text | FieldType::Number);
@@ -286,7 +359,7 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
             // prefix: "▸ " (2) + prompt + required_marker (1) + ": " (2)
             let prefix_len = 2 + field.prompt.len() + 1 + 2;
             let cursor_x = area.x + prefix_len as u16 + form_state.cursor_position as u16;
-            // `active_field` is the visible index, which is the render row.
+            // active_field is the visual row index (preset row at 0, fields at 1+).
             let cursor_y = area.y + form_state.active_field as u16;
             if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -330,6 +403,68 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         && field.field_type == FieldType::CompositeArray
     {
         render_composite_editor(frame, area, field, form_state);
+    }
+}
+
+/// Render the centered overlay for naming a preset before saving.
+fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSaveDialog) {
+    if area.height < 8 || area.width < 30 {
+        return;
+    }
+
+    let modal_width = (area.width * 3 / 5).max(40).min(area.width.saturating_sub(4));
+    let modal_height = 5u16;
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    frame.render_widget(Clear, modal_area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Save Preset ")
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, modal_area);
+
+    let inner = Rect::new(
+        modal_area.x + 1,
+        modal_area.y + 1,
+        modal_area.width.saturating_sub(2),
+        modal_area.height.saturating_sub(2),
+    );
+
+    // Name input line
+    let name_area = Rect::new(inner.x, inner.y, inner.width, 1);
+    let name_text = if overlay.name_buffer.is_empty() {
+        "<name>".to_string()
+    } else {
+        overlay.name_buffer.clone()
+    };
+    let name_style = if overlay.name_buffer.is_empty() {
+        Style::default().fg(Color::DarkGray)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let name_widget = Paragraph::new(Line::from(vec![
+        Span::styled("Name: ", Style::default().fg(Color::Cyan)),
+        Span::styled(name_text, name_style),
+    ]));
+    frame.render_widget(name_widget, name_area);
+
+    // Hint line
+    let hint_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(" save  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" cancel"),
+    ]));
+    frame.render_widget(hint, hint_area);
+
+    // Place cursor inside the name input
+    let cx = inner.x + 6 + overlay.cursor_position as u16; // "Name: " = 6 chars
+    let cy = inner.y;
+    if cx < modal_area.x + modal_area.width - 1 {
+        frame.set_cursor_position(Position::new(cx, cy));
     }
 }
 
@@ -975,12 +1110,23 @@ fn clamp_active_to_visible(
 ) {
     let visible = visible_field_indices(fields, &form_state.field_values);
     let visible_count = visible.len();
-    let submit_idx = visible_count;
+    // active_field layout: 0=preset, 1..=visible_count=fields, visible_count+1=submit
+    let submit_idx = visible_count + 1;
+
+    if form_state.active_field == 0 {
+        // On preset row — always valid, no config_idx to sync.
+        form_state.active_config_idx = None;
+        return;
+    }
 
     if form_state.active_field <= submit_idx {
         // Phase 1: active_field is in a valid position.
-        let current_ci = visible.get(form_state.active_field).copied(); // None = submit
-        // Always keep active_field, just sync the config index.
+        // Map real-field slot (1..=visible_count) to visible index (0..visible_count).
+        let current_ci = if form_state.active_field <= visible_count {
+            visible.get(form_state.active_field - 1).copied()
+        } else {
+            None // submit button
+        };
         form_state.active_config_idx = current_ci;
         return;
     }
@@ -988,7 +1134,7 @@ fn clamp_active_to_visible(
     // Phase 2: active_field is out of range — visible set shrank.
     let prev_ci = match form_state.active_config_idx {
         None => {
-            // Was on submit — keep on submit.
+            // Was on submit or preset — keep on submit (new boundary).
             form_state.active_field = submit_idx;
             return;
         }
@@ -996,13 +1142,13 @@ fn clamp_active_to_visible(
     };
 
     if let Some(new_vi) = visible.iter().position(|&ci| ci == prev_ci) {
-        form_state.active_field = new_vi;
+        form_state.active_field = new_vi + 1; // +1 for preset row offset
         form_state.active_config_idx = visible.get(new_vi).copied();
     } else if let Some(new_vi) = visible.iter().position(|&ci| ci > prev_ci) {
-        form_state.active_field = new_vi;
+        form_state.active_field = new_vi + 1;
         form_state.active_config_idx = visible.get(new_vi).copied();
     } else if let Some(new_vi) = visible.iter().rposition(|&ci| ci < prev_ci) {
-        form_state.active_field = new_vi;
+        form_state.active_field = new_vi + 1;
         form_state.active_config_idx = visible.get(new_vi).copied();
     } else {
         form_state.active_field = submit_idx;
@@ -1012,14 +1158,18 @@ fn clamp_active_to_visible(
 
 /// Resolve the currently active `FieldConfig` using the visible index.
 ///
-/// Returns `None` when the form is on the submit button.
+/// Returns `None` when the form is on the preset row (active_field == 0) or submit button.
 fn active_field_config<'a>(
     form_state: &FormState,
     module: &'a crate::config::ModuleConfig,
 ) -> Option<&'a crate::config::FieldConfig> {
+    if form_state.active_field == 0 {
+        return None; // preset row
+    }
     let visible = visible_field_indices(&module.fields, &form_state.field_values);
+    let vi = form_state.active_field - 1; // convert from visual index to 0-based visible index
     visible
-        .get(form_state.active_field)
+        .get(vi)
         .and_then(|&ci| module.fields.get(ci))
 }
 
@@ -1048,15 +1198,22 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     clamp_active_to_visible(form_state, &module.fields);
 
     // navigable_count and submit detection are based on the VISIBLE set.
+    // Layout: 0=preset row, 1..=visible_count=real fields, visible_count+1=submit
     let visible_indices = visible_field_indices(&module.fields, &form_state.field_values);
     let visible_count = visible_indices.len();
-    let navigable_count = visible_count + 1; // +1 for submit button
+    let navigable_count = visible_count + 2; // +1 preset row, +1 submit button
 
-    let on_submit_button = form_state.active_field == visible_count;
-    // Resolve the active FieldConfig through the visible index.
-    let active_field = visible_indices
-        .get(form_state.active_field)
-        .and_then(|&ci| module.fields.get(ci));
+    let on_preset_row = form_state.active_field == 0;
+    let on_submit_button = form_state.active_field == visible_count + 1;
+    // Resolve the active FieldConfig through the visible index (offset by 1 for preset row).
+    let active_field = if form_state.active_field > 0 && !on_submit_button {
+        let vi = form_state.active_field - 1;
+        visible_indices
+            .get(vi)
+            .and_then(|&ci| module.fields.get(ci))
+    } else {
+        None
+    };
     let is_select = active_field
         .map(|f| {
             matches!(
@@ -1076,6 +1233,32 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         .map(|f| f.field_type == FieldType::DynamicSelect && f.allow_create.unwrap_or(false))
         .unwrap_or(false);
 
+    // Preset save overlay intercepts ALL keys when open (before sub-form check)
+    if form_state.preset_overlay.is_some() {
+        return handle_preset_overlay_key(form_state, &module_key, module, key);
+    }
+
+    // Delete confirmation intercepts y/n/Esc
+    if form_state.confirm_delete_preset {
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let name = form_state
+                    .preset_names
+                    .get(form_state.selected_preset.saturating_sub(1))
+                    .cloned()
+                    .unwrap_or_default();
+                form_state.confirm_delete_preset = false;
+                return FormAction::DeletePreset { name };
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                form_state.confirm_delete_preset = false;
+                return FormAction::None;
+            }
+            _ => return FormAction::None,
+        }
+    }
+
     // Sub-form overlay takes priority over all other overlays
     if form_state.sub_form.is_some() {
         return handle_sub_form_key(form_state, &app.config, key);
@@ -1084,6 +1267,138 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     // Composite overlay has its own key handling
     if is_composite && form_state.composite_open {
         return handle_composite_key(form_state, active_field.unwrap(), key);
+    }
+
+    // Save preset: bare 's' on preset/submit row, or Ctrl+S from any non-editing context.
+    // Bare 's' is safe on preset/submit rows because no text input is active there.
+    // Ctrl+S covers the case where the user is on a field row but not inside an overlay.
+    if key.code == KeyCode::Char('s')
+        && !form_state.textarea_open
+        && !form_state.composite_open
+        && ((on_preset_row || on_submit_button)
+            || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+    {
+        let prefill = if form_state.selected_preset > 0 {
+            form_state
+                .preset_names
+                .get(form_state.selected_preset - 1)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let cursor_position = prefill.chars().count();
+        form_state.preset_overlay = Some(PresetSaveDialog {
+            name_buffer: prefill,
+            cursor_position,
+        });
+        return FormAction::None;
+    }
+
+    // Delete preset: bare 'd' or Ctrl+D on preset row with a real preset selected.
+    if key.code == KeyCode::Char('d')
+        && on_preset_row
+        && form_state.selected_preset > 0
+    {
+        form_state.confirm_delete_preset = true;
+        return FormAction::None;
+    }
+
+    // Preset row navigation: Left/Right cycle; Ctrl+Left/Right reorder
+    if on_preset_row {
+        let preset_count = form_state.preset_names.len();
+        let total = preset_count + 1; // 0=<none>, 1..=preset_count
+
+        match key.code {
+            KeyCode::Left => {
+                if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                    // Ctrl+Left: reorder backward
+                    if form_state.selected_preset > 0 {
+                        let name = form_state
+                            .preset_names
+                            .get(form_state.selected_preset - 1)
+                            .cloned()
+                            .unwrap_or_default();
+                        return FormAction::ReorderPreset { name, direction: -1 };
+                    }
+                } else {
+                    // Left: cycle backward
+                    if total > 0 {
+                        form_state.selected_preset = (form_state.selected_preset + total - 1) % total;
+                        let preset_entry = if form_state.selected_preset > 0 {
+                            let pname = form_state.preset_names.get(form_state.selected_preset - 1).cloned();
+                            pname.and_then(|name| {
+                                app.presets.get(&module_key).into_iter().find(|p| p.name == name)
+                            })
+                        } else {
+                            None
+                        };
+                        App::apply_preset(form_state, &module.fields, preset_entry.as_ref());
+                        // apply_preset sets active_field to a raw visible index (0-based).
+                        // We stay on the preset row after cycling.
+                        form_state.active_field = 0;
+                        form_state.active_config_idx = None;
+                    }
+                }
+                return FormAction::None;
+            }
+            KeyCode::Right => {
+                if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                    // Ctrl+Right: reorder forward
+                    if form_state.selected_preset > 0 {
+                        let name = form_state
+                            .preset_names
+                            .get(form_state.selected_preset - 1)
+                            .cloned()
+                            .unwrap_or_default();
+                        return FormAction::ReorderPreset { name, direction: 1 };
+                    }
+                } else {
+                    // Right: cycle forward
+                    if total > 0 {
+                        form_state.selected_preset = (form_state.selected_preset + 1) % total;
+                        let preset_entry = if form_state.selected_preset > 0 {
+                            let pname = form_state.preset_names.get(form_state.selected_preset - 1).cloned();
+                            pname.and_then(|name| {
+                                app.presets.get(&module_key).into_iter().find(|p| p.name == name)
+                            })
+                        } else {
+                            None
+                        };
+                        App::apply_preset(form_state, &module.fields, preset_entry.as_ref());
+                        // Stay on the preset row after cycling.
+                        form_state.active_field = 0;
+                        form_state.active_config_idx = None;
+                    }
+                }
+                return FormAction::None;
+            }
+            KeyCode::Up => {
+                // Navigate away from preset row — wrap to submit
+                form_state.active_field = visible_count + 1;
+                form_state.active_config_idx = None;
+                form_state.cursor_position = 0;
+                return FormAction::None;
+            }
+            KeyCode::Down | KeyCode::Tab => {
+                // Navigate to first real field
+                form_state.active_field = if visible_count > 0 { 1 } else { visible_count + 1 };
+                form_state.active_config_idx = visible_indices.first().copied();
+                form_state.cursor_position = current_value_len(form_state, module);
+                return FormAction::None;
+            }
+            KeyCode::BackTab => {
+                // Shift+Tab from preset row: go to submit
+                form_state.active_field = visible_count + 1;
+                form_state.active_config_idx = None;
+                form_state.cursor_position = 0;
+                return FormAction::None;
+            }
+            KeyCode::Esc => {
+                return FormAction::Cancel;
+            }
+            _ => return FormAction::None,
+        }
     }
 
     match key.code {
@@ -1144,7 +1459,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             form_state.composite_open = false;
             let new_af = (form_state.active_field + 1) % navigable_count;
             form_state.active_field = new_af;
-            form_state.active_config_idx = visible_indices.get(new_af).copied();
+            // active_field 0=preset (no config), 1..=vc=fields, vc+1=submit
+            form_state.active_config_idx = if new_af > 0 && new_af <= visible_count {
+                visible_indices.get(new_af - 1).copied()
+            } else {
+                None
+            };
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
@@ -1164,7 +1484,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state.active_field - 1
             };
             form_state.active_field = new_af;
-            form_state.active_config_idx = visible_indices.get(new_af).copied();
+            form_state.active_config_idx = if new_af > 0 && new_af <= visible_count {
+                visible_indices.get(new_af - 1).copied()
+            } else {
+                None
+            };
             form_state.cursor_position = current_value_len(form_state, module);
             FormAction::None
         }
@@ -1206,7 +1530,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     form_state.active_field - 1
                 };
                 form_state.active_field = new_af;
-                form_state.active_config_idx = visible_indices.get(new_af).copied();
+                form_state.active_config_idx = if new_af > 0 && new_af <= visible_count {
+                    visible_indices.get(new_af - 1).copied()
+                } else {
+                    None
+                };
                 form_state.cursor_position = current_value_len(form_state, module);
             }
             FormAction::None
@@ -1245,7 +1573,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state.composite_open = false;
                 let new_af = (form_state.active_field + 1) % navigable_count;
                 form_state.active_field = new_af;
-                form_state.active_config_idx = visible_indices.get(new_af).copied();
+                form_state.active_config_idx = if new_af > 0 && new_af <= visible_count {
+                    visible_indices.get(new_af - 1).copied()
+                } else {
+                    None
+                };
                 form_state.cursor_position = current_value_len(form_state, module);
             }
             FormAction::None
@@ -1368,7 +1700,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 // text / number fields: advance to next field (like Tab)
                 let new_af = (form_state.active_field + 1) % navigable_count;
                 form_state.active_field = new_af;
-                form_state.active_config_idx = visible_indices.get(new_af).copied();
+                form_state.active_config_idx = if new_af > 0 && new_af <= visible_count {
+                    visible_indices.get(new_af - 1).copied()
+                } else {
+                    None
+                };
                 form_state.cursor_position = current_value_len(form_state, module);
                 FormAction::None
             }
@@ -1490,6 +1826,44 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     .insert(field.name.clone(), options[prev].1.to_string());
                 return FormAction::None;
             }
+            if is_textarea
+                && !form_state.textarea_open
+                && let Some(field) = active_field
+                && !form_state.callout_overrides.contains_key(&field.name)
+                && form_state.callout_overrides.contains_key("_callout_type")
+            {
+                let options = crate::app::CALLOUT_OPTIONS;
+                let current = &form_state.callout_overrides["_callout_type"];
+                let prev = match options.iter().position(|(_, s)| *s == current) {
+                    Some(0) => options.len() - 1,
+                    Some(idx) => idx - 1,
+                    None => options.len() - 1,
+                };
+                form_state
+                    .callout_overrides
+                    .insert("_callout_type".to_string(), options[prev].1.to_string());
+                return FormAction::None;
+            }
+            // Cycle select fields backward when dropdown is closed
+            if is_select && !form_state.dropdown_open {
+                if let Some(field) = active_field {
+                    if let Some(opts) = form_state.field_options.get(&field.name).cloned() {
+                        if !opts.is_empty() {
+                            let current = form_state
+                                .field_values
+                                .get(&field.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                            let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
+                            form_state
+                                .field_values
+                                .insert(field.name.clone(), opts[new_idx].clone());
+                        }
+                    }
+                }
+                return FormAction::None;
+            }
             if form_state.cursor_position > 0 {
                 form_state.cursor_position -= 1;
             }
@@ -1525,6 +1899,43 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 form_state
                     .callout_overrides
                     .insert(field.name.clone(), options[next].1.to_string());
+                return FormAction::None;
+            }
+            if is_textarea
+                && !form_state.textarea_open
+                && let Some(field) = active_field
+                && !form_state.callout_overrides.contains_key(&field.name)
+                && form_state.callout_overrides.contains_key("_callout_type")
+            {
+                let options = crate::app::CALLOUT_OPTIONS;
+                let current = &form_state.callout_overrides["_callout_type"];
+                let next = match options.iter().position(|(_, s)| *s == current) {
+                    Some(idx) => (idx + 1) % options.len(),
+                    None => 0,
+                };
+                form_state
+                    .callout_overrides
+                    .insert("_callout_type".to_string(), options[next].1.to_string());
+                return FormAction::None;
+            }
+            // Cycle select fields forward when dropdown is closed
+            if is_select && !form_state.dropdown_open {
+                if let Some(field) = active_field {
+                    if let Some(opts) = form_state.field_options.get(&field.name).cloned() {
+                        if !opts.is_empty() {
+                            let current = form_state
+                                .field_values
+                                .get(&field.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                            let new_idx = (idx + 1) % opts.len();
+                            form_state
+                                .field_values
+                                .insert(field.name.clone(), opts[new_idx].clone());
+                        }
+                    }
+                }
                 return FormAction::None;
             }
             if let Some(field) = active_field {
@@ -1567,6 +1978,15 @@ pub enum FormAction {
         note_name: String,
         field_values: std::collections::HashMap<String, String>,
     },
+    /// Save a preset with the given name and field values for the current module.
+    SavePreset {
+        name: String,
+        values: std::collections::HashMap<String, String>,
+    },
+    /// Delete the preset with the given name for the current module.
+    DeletePreset { name: String },
+    /// Reorder the preset with the given name by `direction` (+1 or -1).
+    ReorderPreset { name: String, direction: i32 },
 }
 
 /// Cycle the selected value within the subset of options matching `search`
@@ -1664,6 +2084,108 @@ fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u1
 
     if form_state.textarea_scroll_offset > cursor_col {
         form_state.textarea_scroll_offset = 0;
+    }
+}
+
+/// Handle key events while the preset save overlay is open.
+///
+/// All keys are consumed. Enter saves, Esc cancels, text keys edit the name buffer.
+fn handle_preset_overlay_key(
+    form_state: &mut FormState,
+    module_key: &str,
+    module: &crate::config::ModuleConfig,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crossterm::event::KeyCode;
+
+    let overlay = match &mut form_state.preset_overlay {
+        Some(o) => o,
+        None => return FormAction::None,
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            form_state.preset_overlay = None;
+            FormAction::None
+        }
+        KeyCode::Enter => {
+            let name = overlay.name_buffer.trim().to_string();
+            if name.is_empty() {
+                return FormAction::None;
+            }
+            // Collect values from visible, non-excluded, non-composite fields
+            let visible_indices =
+                crate::visibility::visible_field_indices(&module.fields, &form_state.field_values);
+            let mut values = std::collections::HashMap::new();
+            for &ci in &visible_indices {
+                let field = &module.fields[ci];
+                if field.preset_exclude == Some(true) {
+                    continue;
+                }
+                if field.field_type == crate::config::FieldType::CompositeArray {
+                    continue;
+                }
+                let val = form_state
+                    .field_values
+                    .get(&field.name)
+                    .cloned()
+                    .unwrap_or_default();
+                if !val.is_empty() {
+                    values.insert(field.name.clone(), val);
+                }
+            }
+            // Also include non-visible field values for excluded-from-visibility fields
+            // (only visible fields are written — skip non-visible intentionally)
+            let _ = module_key; // used by caller when handling FormAction::SavePreset
+            form_state.preset_overlay = None;
+            FormAction::SavePreset { name, values }
+        }
+        KeyCode::Backspace => {
+            let overlay = form_state.preset_overlay.as_mut().unwrap();
+            if overlay.cursor_position > 0 {
+                // Convert char-based cursor to byte offset for safe removal.
+                let byte_pos = overlay
+                    .name_buffer
+                    .char_indices()
+                    .nth(overlay.cursor_position - 1)
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                overlay.name_buffer.remove(byte_pos);
+                overlay.cursor_position -= 1;
+            }
+            FormAction::None
+        }
+        KeyCode::Left => {
+            let overlay = form_state.preset_overlay.as_mut().unwrap();
+            if overlay.cursor_position > 0 {
+                overlay.cursor_position -= 1;
+            }
+            FormAction::None
+        }
+        KeyCode::Right => {
+            let overlay = form_state.preset_overlay.as_mut().unwrap();
+            let char_count = overlay.name_buffer.chars().count();
+            if overlay.cursor_position < char_count {
+                overlay.cursor_position += 1;
+            }
+            FormAction::None
+        }
+        KeyCode::Char(c) => {
+            let overlay = form_state.preset_overlay.as_mut().unwrap();
+            if overlay.name_buffer.chars().count() < 50 {
+                // Convert char-based cursor to byte offset for safe insertion.
+                let byte_pos = overlay
+                    .name_buffer
+                    .char_indices()
+                    .nth(overlay.cursor_position)
+                    .map(|(i, _)| i)
+                    .unwrap_or(overlay.name_buffer.len());
+                overlay.name_buffer.insert(byte_pos, c);
+                overlay.cursor_position += 1;
+            }
+            FormAction::None
+        }
+        _ => FormAction::None,
     }
 }
 
