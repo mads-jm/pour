@@ -11,6 +11,7 @@ use pour::config::{
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::output;
 use pour::tui;
 use pour::visibility::visible_field_indices;
@@ -23,7 +24,20 @@ async fn main() {
     // Handle `pour init` before config loading
     if args.get(1).map(|s| s.as_str()) == Some("init") {
         let force = args.iter().any(|a| a == "--force");
-        match pour::init::run(pour::init::InitOptions { force }) {
+        let template = args
+            .iter()
+            .position(|a| a == "--template")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+
+        if let Some(ref t) = template {
+            if !t.exists() {
+                eprintln!("pour init: template not found: {}", t.display());
+                process::exit(1);
+            }
+        }
+
+        match pour::init::run(pour::init::InitOptions { force, template }) {
             Ok(_) => process::exit(0),
             Err(e) => {
                 eprintln!("pour init: {e}");
@@ -49,8 +63,11 @@ async fn main() {
     // Load capture history for dashboard stats
     let history = History::load();
 
+    // Load saved presets
+    let presets = Presets::load();
+
     // Build app state
-    let mut app = App::new(config, transport, history);
+    let mut app = App::new(config, transport, history, presets);
 
     // Check for path issues at startup; shown as a dismissable overlay on the dashboard
     app.startup_warnings = app
@@ -276,12 +293,94 @@ async fn run_loop(
                     }
                 }
 
+                tui::Action::SavePreset { name, values } => {
+                    handle_save_preset(app, &name, values);
+                }
+
+                tui::Action::DeletePreset { name } => {
+                    handle_delete_preset(app, &name);
+                }
+
+                tui::Action::ReorderPreset { name, direction } => {
+                    handle_reorder_preset(app, &name, direction);
+                }
+
                 tui::Action::None => {}
             }
         }
     }
 
     Ok(())
+}
+
+/// Upsert a preset for the current module and refresh form state.
+fn handle_save_preset(app: &mut App, name: &str, values: std::collections::HashMap<String, String>) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    let entry = pour::data::presets::PresetEntry {
+        name: name.to_string(),
+        values,
+    };
+    app.presets.set(&module_key, entry);
+    if let Err(e) = app.presets.save() {
+        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
+        let _ = e;
+    }
+
+    // Refresh preset_names and select the newly saved preset
+    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    if let Some(ref mut fs) = app.form_state {
+        let new_idx = names.iter().position(|n| n == name).map(|i| i + 1).unwrap_or(0);
+        fs.preset_names = names;
+        fs.selected_preset = new_idx;
+    }
+}
+
+/// Delete a preset for the current module and reset preset selection.
+///
+/// Only removes the preset from the saved list — does NOT reset form field
+/// values, since the user may have manually edited fields they want to keep.
+fn handle_delete_preset(app: &mut App, name: &str) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    app.presets.delete(&module_key, name);
+    if let Err(e) = app.presets.save() {
+        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
+        let _ = e;
+    }
+
+    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    if let Some(ref mut fs) = app.form_state {
+        fs.preset_names = names;
+        fs.selected_preset = 0; // Back to <none>, but keep current field values.
+    }
+}
+
+/// Reorder a preset for the current module in the given direction.
+fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    app.presets.reorder(&module_key, name, direction);
+    if let Err(e) = app.presets.save() {
+        let _ = e;
+    }
+
+    // Refresh preset_names and find the moved preset's new position
+    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    if let Some(ref mut fs) = app.form_state {
+        let new_idx = names.iter().position(|n| n == name).map(|i| i + 1).unwrap_or(fs.selected_preset);
+        fs.preset_names = names;
+        fs.selected_preset = new_idx;
+    }
 }
 
 /// Handle form submission: validate, write, transition to summary.
@@ -718,6 +817,7 @@ fn handle_add_field(app: &mut App) {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -1004,6 +1104,7 @@ fn handle_save_new_module(app: &mut App) {
         display_name,
         callout_type: None,
         icon: None,
+        daily_link: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1021,6 +1122,7 @@ fn handle_save_new_module(app: &mut App) {
             post_create_command: None,
             show_when: None,
             icon: None,
+            preset_exclude: None,
         }],
     };
 
@@ -1253,6 +1355,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut append_under_header: Option<Option<String>> = None;
     let mut callout_type: Option<Option<String>> = None;
     let mut icon: Option<Option<String>> = None;
+    let mut daily_link: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1292,6 +1395,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     Some(setting.value.clone())
                 });
             }
+            "daily_link" => {
+                daily_link = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -1303,6 +1413,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         append_under_header,
         callout_type,
         icon,
+        daily_link,
     }
 }
 

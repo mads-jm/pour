@@ -7,6 +7,7 @@ use crate::config::Config;
 
 pub struct InitOptions {
     pub force: bool,
+    pub template: Option<PathBuf>,
 }
 
 const DEFAULT_CONFIG_TEMPLATE: &str = include_str!("../resources/default_config.toml");
@@ -40,6 +41,64 @@ pub fn generate_config(vault_path: &str) -> String {
     DEFAULT_CONFIG_TEMPLATE.replace("VAULT_PATH_PLACEHOLDER", &escaped)
 }
 
+/// Load a user-provided template file. If it contains VAULT_PATH_PLACEHOLDER,
+/// prompt for a vault path and substitute it. Otherwise use the content as-is.
+fn load_template(path: &Path) -> Result<(String, Config)> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read template: {}", path.display()))?;
+
+    let content = if raw.contains("VAULT_PATH_PLACEHOLDER") {
+        let vault_path = detect_or_prompt_vault()?;
+        let escaped = escape_toml_string(&vault_path);
+        raw.replace("VAULT_PATH_PLACEHOLDER", &escaped)
+    } else {
+        raw
+    };
+
+    let config = Config::from_toml(&content)
+        .map_err(|e| anyhow::anyhow!("template config failed validation: {e}"))?;
+
+    Ok((content, config))
+}
+
+/// Print post-init instructions with module names from the config.
+fn print_next_steps(target: &Path, config: &Config) {
+    println!("pour: config written to {}", target.display());
+    println!();
+    println!("Next steps:");
+    println!(
+        "  1. Open {} and set your vault path if needed",
+        target.display()
+    );
+
+    let module_names: Vec<&String> = match &config.module_order {
+        Some(order) => {
+            let mut names: Vec<&String> = order.iter().collect();
+            let mut remaining: Vec<&String> = config
+                .modules
+                .keys()
+                .filter(|k| !order.contains(k))
+                .collect();
+            remaining.sort();
+            names.extend(remaining);
+            names
+        }
+        None => {
+            let mut names: Vec<&String> = config.modules.keys().collect();
+            names.sort();
+            names
+        }
+    };
+
+    for (i, name) in module_names.iter().enumerate().take(4) {
+        println!("  {}. Run `pour {name}` to try it out", i + 2);
+    }
+    println!(
+        "  {}. Add your own modules to the config",
+        module_names.len().min(4) + 2
+    );
+}
+
 /// Run the init flow: detect/prompt vault, write config, validate.
 /// Returns the path of the written config file.
 pub fn run(options: InitOptions) -> Result<PathBuf> {
@@ -53,14 +112,18 @@ pub fn run(options: InitOptions) -> Result<PathBuf> {
         return Ok(target);
     }
 
-    let vault_path = detect_or_prompt_vault()?;
-
-    let config_content = generate_config(&vault_path);
-
-    // Validate before touching disk — a broken config on disk blocks both
-    // `pour` (parse error) and `pour init` (exists guard).
-    Config::from_toml(&config_content)
-        .map_err(|e| anyhow::anyhow!("generated config failed validation: {e}"))?;
+    let (config_content, config) = match &options.template {
+        Some(template_path) => load_template(template_path)?,
+        None => {
+            let vault_path = detect_or_prompt_vault()?;
+            let content = generate_config(&vault_path);
+            // Validate before touching disk — a broken config on disk blocks both
+            // `pour` (parse error) and `pour init` (exists guard).
+            let cfg = Config::from_toml(&content)
+                .map_err(|e| anyhow::anyhow!("generated config failed validation: {e}"))?;
+            (content, cfg)
+        }
+    };
 
     // Create parent directories if needed
     if let Some(parent) = target.parent() {
@@ -71,17 +134,7 @@ pub fn run(options: InitOptions) -> Result<PathBuf> {
     std::fs::write(&target, &config_content)
         .with_context(|| format!("failed to write config to {}", target.display()))?;
 
-    println!("pour: config written to {}", target.display());
-    println!();
-    println!("Next steps:");
-    println!(
-        "  1. Open {} and set your vault path if needed",
-        target.display()
-    );
-    println!("  2. Run `pour me` to capture a journal entry");
-    println!("  3. Run `pour todo` to add a task to your daily note");
-    println!("  4. Run `pour coffee` to log a brew");
-    println!("  5. Add your own modules to the config");
+    print_next_steps(&target, &config);
 
     Ok(target)
 }
