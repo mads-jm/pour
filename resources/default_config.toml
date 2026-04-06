@@ -57,6 +57,7 @@ prompt = "What's on your mind?"
 required = true
 # textarea fields default to target = "body", but can be overridden
 target = "body"
+preset_exclude = true      # journal content varies every entry
 
 # ── todo ─────────────────────────────────────────────────────────────────────
 # Usage: `pour todo`
@@ -68,6 +69,7 @@ display_name = "Task"
 icon = "✅"
 append_under_header = "## Tasks"
 append_template = "- [ ] {{body}}"
+append_shallow = true
 
 [[modules.todo.fields]]
 name = "body"
@@ -84,6 +86,7 @@ mode = "create"
 path = "Notes/%Y%m%d-{{title}}.md"
 display_name = "Note"
 icon = "📝"
+daily_link = true
 
 [[modules.note.fields]]
 name = "title"
@@ -91,12 +94,14 @@ field_type = "text"
 prompt = "Title"
 required = true
 target = "frontmatter"
+preset_exclude = true      # each note has a unique title
 
 [[modules.note.fields]]
 name = "body"
 field_type = "textarea"
 prompt = "Content"
 target = "body"
+preset_exclude = true      # freeform content varies every entry
 
 # ── coffee ───────────────────────────────────────────────────────────────────
 # Usage: `pour coffee`
@@ -110,6 +115,7 @@ mode = "create"
 path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"
 display_name = "Coffee"
 icon = "☕"
+daily_link = true
 
 # ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]
@@ -130,6 +136,7 @@ prompt = "Brewer"
 source = "Coffee/Brewers/Pour Over"
 target = "frontmatter"
 show_when = { field = "brew_method", equals = "Pour Over" }
+wikilink = true
 allow_create = true
 create_template = "brewer"
 post_create_command = "templater:run"
@@ -141,6 +148,7 @@ prompt = "Machine"
 source = "Coffee/Brewers/Espresso"
 target = "frontmatter"
 show_when = { field = "brew_method", equals = "Espresso" }
+wikilink = true
 allow_create = true
 create_template = "brewer"
 post_create_command = "templater:run"
@@ -152,6 +160,7 @@ prompt = "Brewer"
 source = "Coffee/Brewers/Immersion"
 target = "frontmatter"
 show_when = { field = "brew_method", equals = "Immersion" }
+wikilink = true
 allow_create = true
 create_template = "brewer"
 post_create_command = "templater:run"
