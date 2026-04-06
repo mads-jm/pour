@@ -137,7 +137,7 @@ fn append_under_heading_inserts_before_next_same_level_heading() {
     std::fs::write(dir.path().join("daily.md"), initial).unwrap();
 
     writer
-        .append_under_heading("daily.md", "## Log", "- new entry")
+        .append_under_heading("daily.md", "## Log", "- new entry", false)
         .expect("should succeed");
 
     let content = std::fs::read_to_string(dir.path().join("daily.md")).unwrap();
@@ -159,7 +159,7 @@ fn append_under_heading_last_section_appends_at_eof() {
     std::fs::write(dir.path().join("note.md"), initial).unwrap();
 
     writer
-        .append_under_heading("note.md", "## Log", "- second")
+        .append_under_heading("note.md", "## Log", "- second", false)
         .expect("should succeed");
 
     let content = std::fs::read_to_string(dir.path().join("note.md")).unwrap();
@@ -179,7 +179,7 @@ fn append_under_heading_errors_when_heading_not_found() {
 
     std::fs::write(dir.path().join("note.md"), "## Present\n\ncontent\n").unwrap();
 
-    let result = writer.append_under_heading("note.md", "## Missing", "data");
+    let result = writer.append_under_heading("note.md", "## Missing", "data", false);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -193,7 +193,7 @@ fn append_under_heading_errors_when_file_not_found() {
     let dir = tempfile::tempdir().expect("tempdir");
     let writer = FsWriter::new(dir.path().to_path_buf());
 
-    let result = writer.append_under_heading("ghost.md", "## Log", "data");
+    let result = writer.append_under_heading("ghost.md", "## Log", "data", false);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -212,7 +212,7 @@ fn append_under_heading_does_not_stop_at_deeper_subheading() {
     std::fs::write(dir.path().join("note.md"), initial).unwrap();
 
     writer
-        .append_under_heading("note.md", "## Log", "- appended")
+        .append_under_heading("note.md", "## Log", "- appended", false)
         .expect("should succeed");
 
     let content = std::fs::read_to_string(dir.path().join("note.md")).unwrap();

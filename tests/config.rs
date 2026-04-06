@@ -1630,3 +1630,44 @@ show_when = { field = "field_c", equals = "y" }
         "expected both A↔B and C↔D cycles to be reported, got: {msg}"
     );
 }
+
+// --- preset_exclude tests ---
+
+#[test]
+fn preset_exclude_true_parses_correctly() {
+    let toml = r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+preset_exclude = true
+"#;
+
+    let config = Config::from_toml(toml).expect("preset_exclude = true should parse");
+    let field = &config.modules["coffee"].fields[0];
+    assert_eq!(
+        field.preset_exclude,
+        Some(true),
+        "preset_exclude should be Some(true)"
+    );
+}
+
+#[test]
+fn preset_exclude_absent_defaults_to_none() {
+    // Backward compat: existing configs without preset_exclude must parse identically.
+    let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should parse");
+    for field in &config.modules["coffee"].fields {
+        assert_eq!(
+            field.preset_exclude, None,
+            "preset_exclude should default to None for field '{}'",
+            field.name
+        );
+    }
+}

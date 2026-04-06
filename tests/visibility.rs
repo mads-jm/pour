@@ -25,6 +25,7 @@ fn unconditional(name: &str) -> FieldConfig {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     }
 }
 
@@ -50,6 +51,7 @@ fn with_equals(name: &str, controlling_field: &str, equals: &str) -> FieldConfig
             one_of: None,
         }),
         icon: None,
+        preset_exclude: None,
     }
 }
 
@@ -75,6 +77,7 @@ fn with_one_of(name: &str, controlling_field: &str, values: &[&str]) -> FieldCon
             one_of: Some(values.iter().map(|s| s.to_string()).collect()),
         }),
         icon: None,
+        preset_exclude: None,
     }
 }
 

@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::App;
 use pour::config::Config;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::transport::Transport;
 use pour::transport::fs::FsWriter;
 use pour::tui::form::{FormAction, handle_key};
@@ -59,6 +60,7 @@ fn make_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-form-history.json")),
+        Presets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "test").unwrap();
     app.form_state = app.init_form("test");
@@ -75,26 +77,28 @@ fn key(code: KeyCode) -> KeyEvent {
 #[test]
 fn tab_advances_to_next_field() {
     let mut app = make_app();
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, 0);
-    handle_key(&mut app, key(KeyCode::Tab));
+    // active_field=1 is "title" (the first real field; 0 is the preset row)
     assert_eq!(app.form_state.as_ref().unwrap().active_field, 1);
+    handle_key(&mut app, key(KeyCode::Tab));
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, 2);
 }
 
 #[test]
 fn shift_tab_goes_to_previous_field() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 1;
+    app.form_state.as_mut().unwrap().active_field = 2; // count
     handle_key(&mut app, key(KeyCode::BackTab));
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, 0);
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, 1); // title
 }
 
 #[test]
 fn tab_wraps_around() {
     let mut app = make_app();
     let field_count = app.config.modules["test"].fields.len();
-    // Set to submit button (last navigable position)
-    app.form_state.as_mut().unwrap().active_field = field_count;
+    // Set to submit button: preset(0) + fields(1..=field_count) + submit(field_count+1)
+    app.form_state.as_mut().unwrap().active_field = field_count + 1;
     handle_key(&mut app, key(KeyCode::Tab));
+    // Wraps to preset row (0)
     assert_eq!(app.form_state.as_ref().unwrap().active_field, 0);
 }
 
@@ -102,33 +106,35 @@ fn tab_wraps_around() {
 fn shift_tab_wraps_around() {
     let mut app = make_app();
     let field_count = app.config.modules["test"].fields.len();
+    // BackTab from preset row (0) wraps to submit (field_count+1)
     app.form_state.as_mut().unwrap().active_field = 0;
     handle_key(&mut app, key(KeyCode::BackTab));
     // Should wrap to submit button
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, field_count);
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, field_count + 1);
 }
 
 #[test]
 fn down_arrow_navigates_forward() {
     let mut app = make_app();
+    // Starting at active_field=1 (title). Down goes to 2 (count).
     handle_key(&mut app, key(KeyCode::Down));
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, 1);
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, 2);
 }
 
 #[test]
 fn up_arrow_navigates_backward() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 1;
+    app.form_state.as_mut().unwrap().active_field = 2; // count
     handle_key(&mut app, key(KeyCode::Up));
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, 0);
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, 1); // title
 }
 
 #[test]
 fn enter_on_text_field_advances() {
     let mut app = make_app();
-    // Field 0 is text ("title")
+    // Field 1 is "title" (text); Enter advances to next field (2 = count)
     assert_eq!(handle_key(&mut app, key(KeyCode::Enter)), FormAction::None);
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, 1);
+    assert_eq!(app.form_state.as_ref().unwrap().active_field, 2);
 }
 
 // ── Text Input ──
@@ -218,7 +224,7 @@ fn right_arrow_stops_at_end() {
 #[test]
 fn number_field_accepts_digits() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 1; // count (number)
+    app.form_state.as_mut().unwrap().active_field = 2; // count (number) is at visual index 2
     handle_key(&mut app, key(KeyCode::Char('5')));
     assert_eq!(
         app.form_state
@@ -234,7 +240,7 @@ fn number_field_accepts_digits() {
 #[test]
 fn number_field_accepts_decimal_and_minus() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 1;
+    app.form_state.as_mut().unwrap().active_field = 2; // count
     handle_key(&mut app, key(KeyCode::Char('-')));
     handle_key(&mut app, key(KeyCode::Char('3')));
     handle_key(&mut app, key(KeyCode::Char('.')));
@@ -253,7 +259,7 @@ fn number_field_accepts_decimal_and_minus() {
 #[test]
 fn number_field_rejects_letters() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 1;
+    app.form_state.as_mut().unwrap().active_field = 2; // count
     handle_key(&mut app, key(KeyCode::Char('a')));
     assert_eq!(
         app.form_state
@@ -271,7 +277,7 @@ fn number_field_rejects_letters() {
 #[test]
 fn enter_toggles_dropdown() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 2; // origin (static_select)
+    app.form_state.as_mut().unwrap().active_field = 3; // origin (static_select) is at visual index 3
     assert!(!app.form_state.as_ref().unwrap().dropdown_open);
     handle_key(&mut app, key(KeyCode::Enter));
     assert!(app.form_state.as_ref().unwrap().dropdown_open);
@@ -282,7 +288,7 @@ fn enter_toggles_dropdown() {
 #[test]
 fn down_cycles_options_when_dropdown_open() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 2;
+    app.form_state.as_mut().unwrap().active_field = 3; // origin
     // Open dropdown
     handle_key(&mut app, key(KeyCode::Enter));
     // Cycle to first option
@@ -314,7 +320,7 @@ fn down_cycles_options_when_dropdown_open() {
 fn up_cycles_options_backward_when_dropdown_open() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 2;
+    fs.active_field = 3; // origin is at visual index 3
     fs.field_values
         .insert("origin".to_string(), "Colombia".to_string());
     fs.dropdown_open = true;
@@ -333,7 +339,7 @@ fn up_cycles_options_backward_when_dropdown_open() {
 #[test]
 fn char_input_blocked_on_select_fields() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 2;
+    app.form_state.as_mut().unwrap().active_field = 3; // origin
     handle_key(&mut app, key(KeyCode::Char('x')));
     // Value should still be empty/default
     let val = app
@@ -352,7 +358,7 @@ fn char_input_blocked_on_select_fields() {
 #[test]
 fn enter_opens_textarea_editor() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 3; // notes (textarea)
+    app.form_state.as_mut().unwrap().active_field = 4; // notes (textarea) at visual index 4
     assert!(!app.form_state.as_ref().unwrap().textarea_open);
     handle_key(&mut app, key(KeyCode::Enter));
     assert!(app.form_state.as_ref().unwrap().textarea_open);
@@ -362,7 +368,7 @@ fn enter_opens_textarea_editor() {
 fn enter_inserts_newline_when_editor_open() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 3;
+    fs.active_field = 4; // notes
     fs.textarea_open = true;
     fs.field_values
         .insert("notes".to_string(), "hello".to_string());
@@ -383,7 +389,7 @@ fn enter_inserts_newline_when_editor_open() {
 fn char_input_works_in_open_textarea() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 3;
+    fs.active_field = 4; // notes
     fs.textarea_open = true;
     fs.cursor_position = 0;
     handle_key(&mut app, key(KeyCode::Char('H')));
@@ -401,7 +407,7 @@ fn char_input_works_in_open_textarea() {
 #[test]
 fn char_input_blocked_when_textarea_closed() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 3;
+    app.form_state.as_mut().unwrap().active_field = 4; // notes
     assert!(!app.form_state.as_ref().unwrap().textarea_open);
     handle_key(&mut app, key(KeyCode::Char('x')));
     let val = app
@@ -420,7 +426,7 @@ fn char_input_blocked_when_textarea_closed() {
 #[test]
 fn enter_opens_composite_overlay() {
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 4; // recipe (composite_array)
+    app.form_state.as_mut().unwrap().active_field = 5; // recipe (composite_array) at visual index 5
     assert!(!app.form_state.as_ref().unwrap().composite_open);
     handle_key(&mut app, key(KeyCode::Enter));
     assert!(app.form_state.as_ref().unwrap().composite_open);
@@ -430,7 +436,7 @@ fn enter_opens_composite_overlay() {
 fn enter_adds_row_in_composite_overlay() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 4;
+    fs.active_field = 5; // recipe
     fs.composite_open = true;
     // No rows yet, Enter adds one
     handle_key(&mut app, key(KeyCode::Enter));
@@ -449,7 +455,7 @@ fn enter_adds_row_in_composite_overlay() {
 fn tab_navigates_cells_in_composite() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 4;
+    fs.active_field = 5; // recipe
     fs.composite_open = true;
     // Add a row
     fs.composite_values.insert(
@@ -466,7 +472,7 @@ fn tab_navigates_cells_in_composite() {
 fn delete_removes_row_in_composite() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 4;
+    fs.active_field = 5; // recipe
     fs.composite_open = true;
     fs.composite_values.insert(
         "recipe".to_string(),
@@ -492,7 +498,7 @@ fn delete_removes_row_in_composite() {
 fn backspace_in_composite_cell() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 4;
+    fs.active_field = 5; // recipe
     fs.composite_open = true;
     fs.composite_values.insert(
         "recipe".to_string(),
@@ -510,7 +516,7 @@ fn backspace_in_composite_cell() {
 fn number_filtering_in_composite_number_sub_field() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 4;
+    fs.active_field = 5; // recipe
     fs.composite_open = true;
     fs.composite_values.insert(
         "recipe".to_string(),
@@ -535,7 +541,7 @@ fn number_filtering_in_composite_number_sub_field() {
 fn esc_closes_dropdown_first() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 2;
+    fs.active_field = 3; // origin (static_select)
     fs.dropdown_open = true;
     let action = handle_key(&mut app, key(KeyCode::Esc));
     assert_eq!(action, FormAction::None);
@@ -546,7 +552,7 @@ fn esc_closes_dropdown_first() {
 fn esc_closes_textarea_first() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 3;
+    fs.active_field = 4; // notes (textarea)
     fs.textarea_open = true;
     let action = handle_key(&mut app, key(KeyCode::Esc));
     assert_eq!(action, FormAction::None);
@@ -586,7 +592,8 @@ fn esc_on_empty_field_cancels_form() {
 fn enter_on_submit_button_returns_submit() {
     let mut app = make_app();
     let field_count = app.config.modules["test"].fields.len();
-    app.form_state.as_mut().unwrap().active_field = field_count;
+    // Submit is at field_count+1 (preset row at 0, fields at 1..=field_count, submit at field_count+1)
+    app.form_state.as_mut().unwrap().active_field = field_count + 1;
     let action = handle_key(&mut app, key(KeyCode::Enter));
     assert_eq!(action, FormAction::Submit);
 }
@@ -597,24 +604,24 @@ fn enter_on_submit_button_returns_submit() {
 fn tab_closes_dropdown_and_advances() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 2; // select field
+    fs.active_field = 3; // origin (static_select) at visual index 3
     fs.dropdown_open = true;
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
     assert!(!fs.dropdown_open);
-    assert_eq!(fs.active_field, 3);
+    assert_eq!(fs.active_field, 4); // advances to notes
 }
 
 #[test]
 fn tab_closes_textarea_and_advances() {
     let mut app = make_app();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 3; // textarea
+    fs.active_field = 4; // notes (textarea) at visual index 4
     fs.textarea_open = true;
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
     assert!(!fs.textarea_open);
-    assert_eq!(fs.active_field, 4);
+    assert_eq!(fs.active_field, 5); // advances to recipe
 }
 
 // ── allow_create dynamic_select ──
@@ -644,6 +651,7 @@ fn make_app_allow_create() -> App {
         History::load_from(std::path::PathBuf::from(
             "/tmp/test-allow-create-history.json",
         )),
+        Presets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -746,7 +754,7 @@ fn esc_clears_search_buffer_before_closing_dropdown() {
 fn char_input_still_blocked_on_static_select_without_allow_create() {
     // This is the existing static_select in the main test app — behaviour unchanged.
     let mut app = make_app();
-    app.form_state.as_mut().unwrap().active_field = 2; // origin (static_select)
+    app.form_state.as_mut().unwrap().active_field = 3; // origin (static_select) at visual index 3
     handle_key(&mut app, key(KeyCode::Char('e')));
     let fs = app.form_state.as_ref().unwrap();
     assert_eq!(fs.field_values.get("origin").unwrap(), "");
@@ -778,6 +786,7 @@ source = "beans"
         History::load_from(std::path::PathBuf::from(
             "/tmp/test-no-allow-create-history.json",
         )),
+        Presets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -858,6 +867,7 @@ fn make_app_conditional() -> App {
         History::load_from(std::path::PathBuf::from(
             "/tmp/test-conditional-history.json",
         )),
+        Presets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -871,24 +881,25 @@ fn make_app_conditional() -> App {
 fn navigable_count_reflects_visible_fields_only() {
     let mut app = make_app_conditional();
     // method has no default, so grind and pressure are hidden.
-    // visible = [method(0), notes(3)] → navigable_count = 3 (positions 0, 1, 2=submit).
-    // From notes (visible index 1), Tab should go to submit (visible index 2).
-    app.form_state.as_mut().unwrap().active_field = 1; // notes
+    // visible = [method(0), notes(3)] → visible_count=2.
+    // Layout: preset(0), method(1), notes(2), submit(3).
+    // From notes (active_field=2), Tab should go to submit (active_field=3).
+    app.form_state.as_mut().unwrap().active_field = 2; // notes
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.active_field, 2, "should land on submit, not total_fields(4)");
+    assert_eq!(fs.active_field, 3, "should land on submit, not total_fields(4)");
     assert_eq!(fs.active_config_idx, None, "submit has no config idx");
 }
 
-/// Tab from method (vi=0) should skip hidden grind/pressure and land on notes (vi=1).
+/// Tab from method (vi=1) should skip hidden grind/pressure and land on notes (vi=2).
 #[test]
 fn tab_skips_hidden_conditional_field() {
     let mut app = make_app_conditional();
-    // active_field=0 is method, no value set so grind/pressure are hidden.
-    // Tab should advance to notes (visible index 1).
+    // init_form starts at active_field=1 (method, first real field).
+    // Tab should advance to notes (active_field=2).
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.active_field, 1, "should land on notes (visible index 1)");
+    assert_eq!(fs.active_field, 2, "should land on notes (active_field=2)");
     assert_eq!(fs.active_config_idx, Some(3), "notes is config field 3");
 }
 
@@ -896,12 +907,12 @@ fn tab_skips_hidden_conditional_field() {
 #[test]
 fn tab_wraps_using_visible_count() {
     let mut app = make_app_conditional();
-    // visible = [method(0), notes(3)], navigable_count = 3
-    // active_field=1 is notes. Tab should go to submit (visible index 2).
-    app.form_state.as_mut().unwrap().active_field = 1;
+    // visible = [method(0), notes(3)], visible_count=2, submit at active_field=3.
+    // active_field=2 is notes. Tab should go to submit (active_field=3).
+    app.form_state.as_mut().unwrap().active_field = 2; // notes
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.active_field, 2, "should land on submit (visible index 2)");
+    assert_eq!(fs.active_field, 3, "should land on submit (active_field=3)");
     assert_eq!(fs.active_config_idx, None, "submit button has no config idx");
 }
 
@@ -915,8 +926,8 @@ fn active_field_hidden_moves_to_next_visible() {
         .unwrap()
         .field_values
         .insert("method".to_string(), "V60".to_string());
-    // Navigate to grind (visible index 1, config index 1).
-    app.form_state.as_mut().unwrap().active_field = 1;
+    // Navigate to grind (active_field=2, config index 1).
+    app.form_state.as_mut().unwrap().active_field = 2; // grind at visual index 2
     // Simulate a key to trigger clamp — then change method to "Espresso" which hides grind.
     // We set the value directly and then fire a key to trigger clamp_active_to_visible.
     app.form_state
@@ -927,8 +938,8 @@ fn active_field_hidden_moves_to_next_visible() {
     // Fire a no-op key (Right at position 0 won't change navigation but will trigger clamp).
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
-    // grind is now hidden. Next visible after config idx 1 is notes (config idx 3).
-    // pressure (config 2) is visible when method=Espresso, so next after grind (1) is pressure (2).
+    // grind is now hidden. With method=Espresso, visible = [method, pressure, notes].
+    // active_field was 2, which now points to pressure (ci=2).
     assert_eq!(fs.active_config_idx, Some(2), "should land on pressure");
 }
 
@@ -944,14 +955,8 @@ fn active_field_hidden_falls_back_to_previous_visible() {
         .unwrap()
         .field_values
         .insert("method".to_string(), "Espresso".to_string());
-    // Navigate to notes (visible index 2, config index 3).
-    app.form_state.as_mut().unwrap().active_field = 2;
-    // Now set method = "" — pressure becomes hidden, notes stays visible.
-    // visible = [method(0), notes(3)], notes is still at visible index 1.
-    // active_field=2 would be out of range (submit), but notes is still visible.
-    // Actually notes stays visible so this tests active_field shifting for a different reason.
-    // Let's instead test: navigate to pressure (vi=1, ci=2), then hide it.
-    app.form_state.as_mut().unwrap().active_field = 1; // pressure
+    // Navigate to pressure (active_field=2, visible index 1, config index 2).
+    app.form_state.as_mut().unwrap().active_field = 2; // pressure
     app.form_state
         .as_mut()
         .unwrap()
@@ -960,8 +965,7 @@ fn active_field_hidden_falls_back_to_previous_visible() {
     // Fire a key to trigger clamp.
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
-    // pressure is hidden, no config idx > 2 visible (notes=3 IS visible).
-    // next after ci=2 is notes (ci=3), so we land on notes.
+    // pressure is hidden, next after ci=2 is notes (ci=3), so we land on notes.
     assert_eq!(fs.active_config_idx, Some(3), "should land on notes (next after hidden pressure)");
 }
 
@@ -969,7 +973,7 @@ fn active_field_hidden_falls_back_to_previous_visible() {
 #[test]
 fn newly_visible_field_does_not_steal_focus() {
     let mut app = make_app_conditional();
-    // Start on method (active_field=0). Set method=V60 which makes grind appear.
+    // Start on method (active_field=1, the first real field). Set method=V60 which makes grind appear.
     // Focus should stay on method.
     app.form_state
         .as_mut()
@@ -978,7 +982,7 @@ fn newly_visible_field_does_not_steal_focus() {
         .insert("method".to_string(), "V60".to_string());
     handle_key(&mut app, key(KeyCode::Right)); // trigger clamp, no navigation
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.active_field, 0, "focus stays on method");
+    assert_eq!(fs.active_field, 1, "focus stays on method");
     assert_eq!(fs.active_config_idx, Some(0), "config idx still method");
 }
 
@@ -1062,6 +1066,7 @@ fn make_app_callout() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-callout-history.json")),
+        Presets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "test").unwrap();
     app.form_state = app.init_form("test");
@@ -1079,7 +1084,7 @@ fn callout_override_seeded_from_config() {
 #[test]
 fn right_cycles_callout_forward() {
     let mut app = make_app_callout();
-    app.form_state.as_mut().unwrap().active_field = 1; // notes (textarea)
+    app.form_state.as_mut().unwrap().active_field = 2; // notes (textarea) at visual index 2
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
     // "note" is index 0 in CALLOUT_OPTIONS → Right goes to index 1 = "info"
@@ -1089,7 +1094,7 @@ fn right_cycles_callout_forward() {
 #[test]
 fn left_cycles_callout_backward() {
     let mut app = make_app_callout();
-    app.form_state.as_mut().unwrap().active_field = 1; // notes (textarea)
+    app.form_state.as_mut().unwrap().active_field = 2; // notes (textarea) at visual index 2
     handle_key(&mut app, key(KeyCode::Left));
     let fs = app.form_state.as_ref().unwrap();
     // "note" is index 0 → Left wraps to last = "danger"
@@ -1100,7 +1105,7 @@ fn left_cycles_callout_backward() {
 fn right_wraps_around_callout_list() {
     let mut app = make_app_callout();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 1;
+    fs.active_field = 2; // notes at visual index 2
     // Set to last option "danger" (index 11)
     fs.callout_overrides.insert("notes".to_string(), "danger".to_string());
     handle_key(&mut app, key(KeyCode::Right));
@@ -1112,7 +1117,7 @@ fn right_wraps_around_callout_list() {
 fn custom_callout_value_cycles_to_known_option() {
     let mut app = make_app_callout();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 1;
+    fs.active_field = 2; // notes at visual index 2
     // Set a custom value not in CALLOUT_OPTIONS
     fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
     handle_key(&mut app, key(KeyCode::Right));
@@ -1125,7 +1130,7 @@ fn custom_callout_value_cycles_to_known_option() {
 fn custom_callout_left_cycles_to_last_option() {
     let mut app = make_app_callout();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 1;
+    fs.active_field = 2; // notes at visual index 2
     fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
     handle_key(&mut app, key(KeyCode::Left));
     let fs = app.form_state.as_ref().unwrap();
@@ -1136,7 +1141,7 @@ fn custom_callout_left_cycles_to_last_option() {
 #[test]
 fn no_cycling_on_textarea_without_callout() {
     let mut app = make_app(); // standard config, notes textarea has no callout
-    app.form_state.as_mut().unwrap().active_field = 3; // notes (textarea, no callout)
+    app.form_state.as_mut().unwrap().active_field = 4; // notes (textarea, no callout) at visual index 4
     let fs = app.form_state.as_ref().unwrap();
     assert!(!fs.callout_overrides.contains_key("notes"), "no callout in config → no override");
     // Right should NOT cycle callout — it should just move cursor (no-op at pos 0)
@@ -1149,7 +1154,7 @@ fn no_cycling_on_textarea_without_callout() {
 fn no_cycling_when_textarea_editor_open() {
     let mut app = make_app_callout();
     let fs = app.form_state.as_mut().unwrap();
-    fs.active_field = 1; // notes
+    fs.active_field = 2; // notes at visual index 2
     fs.textarea_open = true;
     fs.callout_overrides.insert("notes".to_string(), "note".to_string());
     handle_key(&mut app, key(KeyCode::Right));

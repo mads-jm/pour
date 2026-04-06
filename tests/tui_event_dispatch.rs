@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::{App, Screen, SummaryState};
 use pour::config::Config;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::transport::fs::FsWriter;
 use pour::transport::{Transport, TransportMode};
 use pour::tui::{Action, handle_event};
@@ -27,6 +28,7 @@ fn make_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dispatch-history.json")),
+        Presets::empty(),
     )
 }
 
@@ -85,9 +87,9 @@ fn form_submit_on_submit_button() {
     app.form_state = app.init_form("test");
     app.screen = Screen::Form;
 
-    // Navigate to submit button (1 field + submit = active_field=1)
+    // Navigate to submit button (preset row at 0, fields at 1..=field_count, submit at field_count+1)
     let field_count = app.config.modules["test"].fields.len();
-    app.form_state.as_mut().unwrap().active_field = field_count;
+    app.form_state.as_mut().unwrap().active_field = field_count + 1;
 
     assert_eq!(handle_event(&mut app, key(KeyCode::Enter)), Action::Submit);
 }

@@ -68,6 +68,8 @@ fn update_preserves_comments() {
         append_under_header: None,
         callout_type: None,
         icon: None,
+        daily_link: None,
+        append_shallow: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("update should succeed");
@@ -106,6 +108,8 @@ fn update_mode_toggle() {
         append_under_header: Some(None), // remove the header key so validation passes
         callout_type: None,
         icon: None,
+        daily_link: None,
+        append_shallow: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("mode toggle should succeed");
@@ -146,6 +150,8 @@ fn update_validation_prevents_bad_writes() {
         append_under_header: Some(None),
         callout_type: None,
         icon: None,
+        daily_link: None,
+        append_shallow: None,
     };
 
     let result = Config::update_module_on_disk("journal", &updates);
@@ -176,6 +182,8 @@ fn update_nonexistent_module_errors() {
         append_under_header: None,
         callout_type: None,
         icon: None,
+        daily_link: None,
+        append_shallow: None,
     };
 
     let result = Config::update_module_on_disk("nonexistent", &updates);
@@ -231,6 +239,7 @@ fn update_field_name_and_prompt() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("field update should succeed");
@@ -265,6 +274,7 @@ fn update_field_type_with_options() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("type change should succeed");
@@ -296,6 +306,7 @@ fn update_field_preserves_comments() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
@@ -332,6 +343,7 @@ fn update_field_validation_rejects_select_without_options() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 1, &updates);
@@ -368,6 +380,7 @@ fn update_field_out_of_range_errors() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     let result = Config::update_field_on_disk("coffee", 99, &updates);
@@ -398,6 +411,7 @@ fn update_field_remove_optional_keys() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("remove should succeed");
@@ -432,6 +446,7 @@ fn add_field_with_show_when_persisted() {
             one_of: None,
         }),
         icon: None,
+        preset_exclude: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -469,6 +484,7 @@ fn update_field_add_show_when() {
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
@@ -522,6 +538,7 @@ show_when = { field = "method", equals = "V60" }
         create_template: None,
         post_create_command: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
@@ -652,6 +669,7 @@ fn add_field_appends_to_module() {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -693,6 +711,7 @@ fn add_field_to_nonexistent_module_errors() {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -772,6 +791,7 @@ fn add_field_preserves_comments() {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -796,6 +816,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         append_template: None,
         callout_type: None,
         icon: None,
+        daily_link: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,
@@ -813,6 +834,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             post_create_command: None,
             show_when: None,
             icon: None,
+            preset_exclude: None,
         }],
     }
 }
@@ -1241,6 +1263,8 @@ fn icon_round_trips_through_update_module() {
         append_under_header: None,
         callout_type: None,
         icon: Some(Some("☕".to_string())),
+        daily_link: None,
+        append_shallow: None,
     };
 
     Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
@@ -1269,6 +1293,7 @@ fn icon_round_trips_through_update_field() {
         create_template: None,
         post_create_command: None,
         icon: Some(Some("🫘".to_string())),
+        preset_exclude: None,
     };
 
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
@@ -1308,6 +1333,8 @@ prompt = "Note?"
         append_under_header: None,
         callout_type: None,
         icon: Some(None),
+        daily_link: None,
+        append_shallow: None,
     };
 
     Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
@@ -1317,4 +1344,101 @@ prompt = "Note?"
 
     let config = Config::load().expect("reload should succeed");
     assert!(config.modules["coffee"].icon.is_none());
+}
+
+// --- preset_exclude tests ---
+
+#[test]
+fn preset_exclude_round_trips_through_update_field() {
+    let (_f, _guard) = write_temp_config(FIELD_TOML);
+
+    // Set preset_exclude = true on the notes field.
+    let updates = FieldUpdates {
+        name: None,
+        field_type: None,
+        prompt: None,
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
+        icon: None,
+        preset_exclude: Some(Some(true)),
+    };
+
+    Config::update_field_on_disk("coffee", 1, &updates).expect("update should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    assert_eq!(
+        config.modules["coffee"].fields[1].preset_exclude,
+        Some(true),
+        "preset_exclude should be Some(true) after update"
+    );
+}
+
+#[test]
+fn preset_exclude_removed_via_update() {
+    const WITH_PRESET_EXCLUDE: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["V60", "AeroPress"]
+
+[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+preset_exclude = true
+"###;
+
+    let (_f, _guard) = write_temp_config(WITH_PRESET_EXCLUDE);
+
+    let updates = FieldUpdates {
+        name: None,
+        field_type: None,
+        prompt: None,
+        required: None,
+        default: None,
+        options: None,
+        source: None,
+        target: None,
+        callout: None,
+        show_when: None,
+        wikilink: None,
+        allow_create: None,
+        create_template: None,
+        post_create_command: None,
+        icon: None,
+        preset_exclude: Some(None), // remove the key
+    };
+
+    Config::update_field_on_disk("coffee", 1, &updates).expect("remove should succeed");
+
+    let written = std::fs::read_to_string(std::env::var("POUR_CONFIG").unwrap())
+        .expect("failed to read config");
+    assert!(
+        !written.contains("preset_exclude"),
+        "preset_exclude key should have been removed from the config"
+    );
+
+    let config = Config::load().expect("reload should succeed");
+    assert_eq!(
+        config.modules["coffee"].fields[1].preset_exclude,
+        None,
+        "preset_exclude should be None after removal"
+    );
 }

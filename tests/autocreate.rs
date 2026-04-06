@@ -109,6 +109,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         display_name: None,
         callout_type: None,
         icon: None,
+        daily_link: None,
     }
 }
 
@@ -130,6 +131,7 @@ fn dynamic_field(name: &str, source: &str, allow_create: bool) -> FieldConfig {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     }
 }
 
@@ -325,6 +327,7 @@ async fn transport_error_does_not_block_and_returns_empty() {
         post_create_command: None,
         show_when: None,
         icon: None,
+        preset_exclude: None,
     };
     let module = make_module_with_field(field);
 

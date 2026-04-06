@@ -784,3 +784,209 @@ async fn create_mode_includes_module_icon_in_frontmatter() {
         "icon should appear after date in frontmatter"
     );
 }
+
+// --- daily_link frontmatter tests ---
+
+fn daily_link_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.note]
+mode = "create"
+path = "Notes/note.md"
+daily_link = true
+
+[[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"####
+    );
+    Config::from_toml(&toml).expect("daily_link config should parse")
+}
+
+fn daily_link_disabled_config(base_path: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base_path}"
+
+[modules.note]
+mode = "create"
+path = "Notes/note.md"
+
+[[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"####
+    );
+    Config::from_toml(&toml).expect("daily_link disabled config should parse")
+}
+
+#[tokio::test]
+async fn daily_link_injects_daily_frontmatter_key() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = daily_link_config(&base);
+    let module = &config.modules["note"];
+
+    std::fs::create_dir_all(tmp.path().join("Notes")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut values = HashMap::new();
+    values.insert("title".to_string(), "My Note".to_string());
+
+    write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        Some("%Y%m%d"),
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Notes/note.md")).unwrap();
+
+    // daily key should exist and be a wikilink
+    assert!(
+        content.contains("daily: \"[["),
+        "frontmatter should contain daily wikilink, got:\n{content}"
+    );
+    assert!(
+        content.contains("]]\""),
+        "daily wikilink should be closed, got:\n{content}"
+    );
+}
+
+#[tokio::test]
+async fn daily_link_uses_date_format_from_caller() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = daily_link_config(&base);
+    let module = &config.modules["note"];
+
+    std::fs::create_dir_all(tmp.path().join("Notes")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut values = HashMap::new();
+    values.insert("title".to_string(), "Formatted".to_string());
+
+    write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        Some("%Y-%m-%d"),
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Notes/note.md")).unwrap();
+
+    // The date format %Y-%m-%d produces e.g. 2026-04-05 — confirm dashes are present
+    let daily_line = content
+        .lines()
+        .find(|l| l.starts_with("daily:"))
+        .expect("daily key should be present");
+    assert!(
+        daily_line.contains('-'),
+        "date format with dashes should produce dashes in daily link, got: {daily_line}"
+    );
+}
+
+#[tokio::test]
+async fn daily_link_false_does_not_inject_daily_key() {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = daily_link_disabled_config(&base);
+    let module = &config.modules["note"];
+
+    std::fs::create_dir_all(tmp.path().join("Notes")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut values = HashMap::new();
+    values.insert("title".to_string(), "No Daily".to_string());
+
+    write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        Some("%Y%m%d"),
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Notes/note.md")).unwrap();
+
+    assert!(
+        !content.contains("daily:"),
+        "module without daily_link should not have daily key, got:\n{content}"
+    );
+}
+
+#[tokio::test]
+async fn daily_link_does_not_override_user_daily_field() {
+    // If the user has a field named "daily", daily_link should not inject a duplicate.
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{base}"
+
+[modules.note]
+mode = "create"
+path = "Notes/note.md"
+daily_link = true
+
+[[modules.note.fields]]
+name = "daily"
+field_type = "text"
+prompt = "Daily"
+"####
+    );
+    let config = Config::from_toml(&toml).expect("config with user daily field should parse");
+    let module = &config.modules["note"];
+
+    std::fs::create_dir_all(tmp.path().join("Notes")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    let mut values = HashMap::new();
+    values.insert("daily".to_string(), "[[custom]]".to_string());
+
+    write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        Some("%Y%m%d"),
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Notes/note.md")).unwrap();
+
+    let daily_count = content.matches("daily:").count();
+    assert_eq!(
+        daily_count, 1,
+        "should have exactly one daily key, got:\n{content}"
+    );
+    assert!(
+        content.contains("[[custom]]"),
+        "user-provided daily value should be preserved, got:\n{content}"
+    );
+}
