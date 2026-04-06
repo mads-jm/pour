@@ -62,6 +62,8 @@ target = "body"
 
 #[test]
 fn round_trip_sample_config() {
+    // Hold the env lock to prevent POUR_API_KEY leaking from concurrent tests.
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
     let config = Config::from_toml(SAMPLE_TOML).expect("should parse sample TOML");
 
     // Vault
@@ -311,14 +313,24 @@ fn invalid_toml_produces_parse_error() {
 
 #[test]
 fn api_key_env_var_overrides_config() {
-    // SAFETY: test is single-threaded via cargo test -- --test-threads=1 or
-    // env var is scoped tightly. Acceptable in test code.
+    use tempfile::tempdir;
+    // Shares SECRETS_ENV_LOCK to prevent racing with other env-var tests.
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, SAMPLE_TOML).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
     unsafe {
+        std::env::set_var("POUR_CONFIG", &config_path);
         std::env::set_var("POUR_API_KEY", "env-secret");
     }
-    let result = Config::from_toml(SAMPLE_TOML);
+    let result = Config::load();
+    // Clean up before asserting so a panic cannot leak state.
     unsafe {
         std::env::remove_var("POUR_API_KEY");
+        std::env::remove_var("POUR_CONFIG");
     }
 
     let config = result.expect("should parse");
@@ -1670,4 +1682,245 @@ fn preset_exclude_absent_defaults_to_none() {
             field.name
         );
     }
+}
+
+// --- secrets.toml tests ---
+
+/// Minimal config TOML without an api_key (used for secrets isolation tests).
+const MINIMAL_TOML_NO_KEY: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "note"
+field_type = "text"
+prompt = "Note"
+"####;
+
+/// Serialize all secrets tests that mutate POUR_CONFIG/POUR_API_KEY.
+/// Without this, parallel test threads race on the env vars.
+static SECRETS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[test]
+fn secrets_path_is_sibling_of_config() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    let expected_secrets = dir.path().join("secrets.toml");
+
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // Point POUR_CONFIG at our temp config so secrets_path() resolves relative to it.
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+    let secrets = Config::secrets_path();
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert_eq!(secrets, expected_secrets);
+}
+
+#[test]
+fn read_secret_api_key_returns_none_when_file_absent() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+    let result = Config::read_secret_api_key();
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn write_and_read_secret_api_key_round_trips() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+
+    Config::write_secret_api_key(Some("my-secret-key")).expect("write should succeed");
+    let read_back = Config::read_secret_api_key();
+
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert_eq!(read_back.as_deref(), Some("my-secret-key"));
+}
+
+#[test]
+fn write_secret_api_key_none_removes_key() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+
+    Config::write_secret_api_key(Some("temp-key")).expect("write should succeed");
+    Config::write_secret_api_key(None).expect("remove should succeed");
+    let result = Config::read_secret_api_key();
+
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert!(result.is_none(), "key should be absent after removal");
+}
+
+#[test]
+fn secrets_toml_overrides_config_toml_api_key() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    // config.toml has one key value...
+    std::fs::write(&config_path, SAMPLE_TOML).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+
+    // ...secrets.toml has a different value.
+    Config::write_secret_api_key(Some("secrets-wins")).expect("write should succeed");
+    // Use load() so the secrets.toml overlay is applied.
+    let config = Config::load().expect("should load");
+
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert_eq!(
+        config.vault.api_key.as_deref(),
+        Some("secrets-wins"),
+        "secrets.toml should override config.toml api_key"
+    );
+}
+
+#[test]
+fn env_var_overrides_secrets_toml() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe {
+        std::env::set_var("POUR_CONFIG", &config_path);
+    }
+    Config::write_secret_api_key(Some("from-secrets")).expect("write should succeed");
+    unsafe {
+        std::env::set_var("POUR_API_KEY", "from-env");
+    }
+
+    // Use load() so both secrets.toml and env-var overlays are applied.
+    let config = Config::load();
+
+    // Always clean up both vars before asserting, so a panic cannot leak state.
+    unsafe {
+        std::env::remove_var("POUR_API_KEY");
+        std::env::remove_var("POUR_CONFIG");
+    }
+
+    let config = config.expect("should load");
+    assert_eq!(
+        config.vault.api_key.as_deref(),
+        Some("from-env"),
+        "POUR_API_KEY env var should win over secrets.toml"
+    );
+}
+
+#[test]
+fn update_vault_on_disk_writes_api_key_to_secrets() {
+    use pour::config::VaultUpdates;
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    std::fs::write(&config_path, MINIMAL_TOML_NO_KEY).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+
+    let updates = VaultUpdates {
+        base_path: None,
+        api_port: None,
+        api_key: Some(Some("written-via-update".to_string())),
+        date_format: None,
+    };
+    Config::update_vault_on_disk(&updates).expect("update should succeed");
+
+    let secret = Config::read_secret_api_key();
+
+    // api_key must NOT appear in config.toml after the update.
+    let config_content = std::fs::read_to_string(&config_path).unwrap();
+    let doc = config_content.parse::<toml_edit::DocumentMut>().unwrap();
+    let key_in_config = doc
+        .get("vault")
+        .and_then(|v| v.get("api_key"))
+        .and_then(|v| v.as_str());
+
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert_eq!(secret.as_deref(), Some("written-via-update"));
+    assert!(
+        key_in_config.is_none(),
+        "api_key must not be written to config.toml"
+    );
+}
+
+#[test]
+fn migrate_api_key_moves_key_from_config_to_secrets() {
+    use tempfile::tempdir;
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+
+    let dir = tempdir().unwrap();
+    let config_path = dir.path().join("config.toml");
+    // Start with api_key in config.toml only (pre-migration state).
+    std::fs::write(&config_path, SAMPLE_TOML).unwrap();
+
+    // SAFETY: serialized by SECRETS_ENV_LOCK mutex.
+    unsafe { std::env::set_var("POUR_CONFIG", &config_path) };
+
+    // Ensure secrets.toml doesn't exist yet.
+    let secrets_path = Config::secrets_path();
+    let _ = std::fs::remove_file(&secrets_path);
+
+    let _ = Config::load().expect("load should succeed");
+
+    let secret = Config::read_secret_api_key();
+    let config_content = std::fs::read_to_string(&config_path).unwrap();
+    let doc = config_content.parse::<toml_edit::DocumentMut>().unwrap();
+    let key_in_config = doc
+        .get("vault")
+        .and_then(|v| v.get("api_key"))
+        .and_then(|v| v.as_str());
+
+    unsafe { std::env::remove_var("POUR_CONFIG") };
+
+    assert_eq!(
+        secret.as_deref(),
+        Some("secret-token"),
+        "api_key should be migrated to secrets.toml"
+    );
+    assert!(
+        key_in_config.is_none(),
+        "api_key should be removed from config.toml after migration"
+    );
 }

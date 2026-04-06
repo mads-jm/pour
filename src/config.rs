@@ -369,31 +369,106 @@ impl Config {
     /// 1. `POUR_CONFIG` environment variable (if set)
     /// 2. `~/.config/pour/config.toml` (via `dirs::config_dir()`)
     ///
-    /// The `api_key` is resolved from `POUR_API_KEY` env var first, falling
-    /// back to whatever is in the config file.
+    /// The `api_key` is resolved via `from_toml` in this order:
+    /// env var > secrets.toml > config.toml.
+    ///
+    /// After a successful parse, a best-effort migration runs: if `api_key`
+    /// exists in `config.toml` but not yet in `secrets.toml`, it is moved.
+    /// All migration errors are silently ignored.
     pub fn load() -> Result<Config, ConfigError> {
         let path = Self::resolve_config_path()?;
 
         let content = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
 
-        Self::from_toml(&content)
+        let mut config = Self::from_toml(&content)?;
+
+        // Apply secrets.toml and env-var overlays.
+        Self::apply_api_key_overlay(&mut config);
+
+        // Best-effort migration: move api_key from config.toml to secrets.toml.
+        Self::migrate_api_key_to_secrets(&path);
+
+        Ok(config)
+    }
+
+    /// Move `api_key` from `config.toml` into `secrets.toml` if it is present
+    /// in `config.toml` and absent from `secrets.toml`.
+    ///
+    /// All errors are swallowed — this is a non-critical background migration.
+    /// Re-reads config.toml from disk before writing to avoid clobbering
+    /// concurrent modifications.
+    fn migrate_api_key_to_secrets(config_path: &Path) {
+        // Only migrate if secrets.toml doesn't already have the key.
+        if Self::read_secret_api_key().is_some() {
+            return;
+        }
+
+        // Re-read config.toml from disk to get fresh content for the write-back.
+        let fresh_content = match std::fs::read_to_string(config_path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let mut doc = match fresh_content.parse::<DocumentMut>() {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let key_value = doc
+            .get("vault")
+            .and_then(|v| v.get("api_key"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let Some(key) = key_value else {
+            return;
+        };
+
+        // Write to secrets.toml.
+        if Self::write_secret_api_key(Some(&key)).is_err() {
+            return;
+        }
+
+        // Remove from config.toml using the same parsed doc (no second parse needed).
+        if let Some(vault) = doc.get_mut("vault").and_then(|v| v.as_table_mut()) {
+            vault.remove("api_key");
+        }
+        let new_content = doc.to_string();
+        let tmp_path = config_path.with_extension("toml.tmp");
+        if std::fs::write(&tmp_path, &new_content).is_ok() {
+            let _ = crate::util::atomic_replace(&tmp_path, config_path);
+        }
+        // Clean up tmp file if atomic_replace failed or write succeeded.
+        let _ = std::fs::remove_file(&tmp_path);
     }
 
     /// Parse and validate a config from a TOML string.
-    /// Also applies `POUR_API_KEY` env var override.
+    ///
+    /// This is a pure parse+validate step. The caller is responsible for
+    /// applying secrets.toml and env-var overlays if needed (see `load()`).
     pub fn from_toml(toml_content: &str) -> Result<Config, ConfigError> {
-        let mut config: Config = toml::from_str(toml_content).map_err(ConfigError::ParseError)?;
+        let config: Config = toml::from_str(toml_content).map_err(ConfigError::ParseError)?;
+        config.validate()?;
+        Ok(config)
+    }
 
-        // Resolve api_key: env var takes precedence over config file
+    /// Apply the `api_key` resolution chain to an already-parsed config:
+    ///
+    /// 1. `config.toml [vault] api_key` (already present via serde)
+    /// 2. `~/.config/pour/secrets.toml`  (overrides config.toml)
+    /// 3. `POUR_API_KEY` env var          (overrides everything)
+    fn apply_api_key_overlay(config: &mut Config) {
+        // Layer 2: secrets.toml overrides config.toml value.
+        if let Some(secret_key) = Self::read_secret_api_key() {
+            config.vault.api_key = Some(secret_key);
+        }
+
+        // Layer 1: env var overrides everything.
         if let Ok(env_key) = std::env::var("POUR_API_KEY")
             && !env_key.is_empty()
         {
             config.vault.api_key = Some(env_key);
         }
-
-        config.validate()?;
-
-        Ok(config)
     }
 
     /// Return the expected config file path without checking if it exists.
@@ -406,6 +481,71 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from(".config"))
             .join("pour")
             .join("config.toml")
+    }
+
+    /// Return the path to `secrets.toml`, a sibling of `config.toml`.
+    ///
+    /// When `POUR_CONFIG` is set the secrets file sits in the same directory
+    /// as the overridden config, which provides automatic test isolation.
+    pub fn secrets_path() -> PathBuf {
+        Self::default_config_path()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("secrets.toml")
+    }
+
+    /// Read `api_key` from `secrets.toml`.
+    ///
+    /// Returns `None` if the file is absent or the key is not present.
+    /// All I/O and parse errors are silently swallowed — this is a best-effort
+    /// read with env-var and config.toml as fallbacks.
+    pub fn read_secret_api_key() -> Option<String> {
+        let content = std::fs::read_to_string(Self::secrets_path()).ok()?;
+        let doc = content.parse::<DocumentMut>().ok()?;
+        let value = doc.get("api_key")?.as_str()?;
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    }
+
+    /// Write or remove `api_key` in `secrets.toml`.
+    ///
+    /// `Some(key)` sets the value; `None` removes the key (leaving an empty
+    /// document so the file persists without dangling keys).
+    ///
+    /// Creates parent directories and the file itself if they don't exist.
+    pub fn write_secret_api_key(key: Option<&str>) -> Result<(), ConfigError> {
+        let path = Self::secrets_path();
+
+        // Create parent dir if needed.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(ConfigError::WriteError)?;
+        }
+
+        // Load existing doc or start fresh.
+        let mut doc: DocumentMut = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| c.parse::<DocumentMut>().ok())
+            .unwrap_or_default();
+
+        match key {
+            Some(k) => {
+                doc["api_key"] = toml_edit::value(k);
+            }
+            None => {
+                doc.remove("api_key");
+            }
+        }
+
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
+        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
+        let _ = std::fs::remove_file(&tmp_path); // clean up orphan if rename failed
+        result?;
+
+        Ok(())
     }
 
     /// Determine the config file path, checking `POUR_CONFIG` env var first.
@@ -1010,14 +1150,10 @@ impl Config {
         }
 
         if let Some(ref key_update) = updates.api_key {
-            match key_update {
-                Some(k) => {
-                    vault["api_key"] = toml_edit::value(k.as_str());
-                }
-                None => {
-                    vault.remove("api_key");
-                }
-            }
+            // Write api_key to secrets.toml instead of config.toml.
+            Self::write_secret_api_key(key_update.as_deref())?;
+            // Also remove any legacy api_key from config.toml on save.
+            vault.remove("api_key");
         }
 
         if let Some(ref fmt_update) = updates.date_format {

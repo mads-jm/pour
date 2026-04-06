@@ -711,21 +711,18 @@ async fn handle_save(app: &mut App) {
                     // Read api_key from the raw config file rather than the in-memory
                     // value, which may carry a POUR_API_KEY env-var override. Without
                     // this guard a second save would write the env-var value to disk.
-                    let api_key_display = if std::env::var("POUR_API_KEY").is_ok() {
-                        // Read raw file value instead of env-overridden in-memory value,
-                        // to prevent writing the env var secret to disk on save.
-                        let config_path = pour::config::Config::default_config_path();
-                        std::fs::read_to_string(config_path)
-                            .ok()
-                            .and_then(|content| {
-                                let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-                                let key = doc.get("vault")?.get("api_key")?.as_str()?;
-                                Some(key.to_string())
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        vault.api_key.clone().unwrap_or_default()
-                    };
+                    // Always show the persisted value, never the env-var override.
+                    // secrets.toml is authoritative; config.toml is the legacy fallback.
+                    let api_key_display = pour::config::Config::read_secret_api_key()
+                        .or_else(|| {
+                            std::fs::read_to_string(pour::config::Config::default_config_path())
+                                .ok()
+                                .and_then(|content| {
+                                    let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+                                    doc.get("vault")?.get("api_key")?.as_str().map(String::from)
+                                })
+                        })
+                        .unwrap_or_default();
                     if let Some(ref mut s) = app.configure_state {
                         s.settings = vec![
                             pour::app::ConfigSetting {

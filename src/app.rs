@@ -769,22 +769,18 @@ impl App {
     pub fn init_vault_configure(&self) -> ConfigureState {
         let vault = &self.config.vault;
 
-        // For api_key, use the config-file value rather than the in-memory
-        // value which may include POUR_API_KEY env var override. This prevents
-        // leaking env var secrets into the config file on save.
-        let api_key_from_file = if std::env::var("POUR_API_KEY").is_ok() {
-            // Env var is set — read the raw file value instead of the override.
-            std::fs::read_to_string(Config::default_config_path())
-                .ok()
-                .and_then(|content| {
-                    let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-                    let key = doc.get("vault")?.get("api_key")?.as_str()?;
-                    Some(key.to_string())
-                })
-                .unwrap_or_default()
-        } else {
-            vault.api_key.clone().unwrap_or_default()
-        };
+        // Always show the persisted value, never the env-var override.
+        // secrets.toml is authoritative; config.toml is the legacy fallback.
+        let api_key_from_file = Config::read_secret_api_key()
+            .or_else(|| {
+                std::fs::read_to_string(Config::default_config_path())
+                    .ok()
+                    .and_then(|content| {
+                        let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+                        doc.get("vault")?.get("api_key")?.as_str().map(String::from)
+                    })
+            })
+            .unwrap_or_default();
 
         let settings = vec![
             ConfigSetting {
