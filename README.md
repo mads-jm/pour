@@ -4,9 +4,9 @@ A terminal-native capture tool that logs structured data into an [Obsidian](http
 
 ## Why
 
-We don't write enough about the things that matter to us. Not because we don't want to — because the friction kills the impulse before we act on it.
+We don't write enough about the things that matter to us. Not because we don't want to - because the friction kills the impulse before we act on it.
 
-Pour exists to close that gap. One command, a few keystrokes, back to what you were doing. If we can capture the thought, the meaning isn't lost to time. A moment, a cup, a song, a passing thought — permanent in your hands.
+Pour exists to close that gap. One command, a few keystrokes, back to what you were doing. If we can capture the thought, the meaning isn't lost to time. A moment, a cup, a song, a passing thought - permanent in your hands.
 
 Write more... pour.
 
@@ -23,13 +23,13 @@ pour              # open the dashboard
 ```bash
 # From source
 cargo build --release
-# Binary is at target/release/pour — put it on your PATH
+# Binary is at target/release/pour - put it on your PATH
 
 # Or install directly
 cargo install --path .
 ```
 
-Requires Rust 2024 edition. No other system dependencies — Obsidian Local REST API is optional.
+Requires Rust 2024 edition. No other system dependencies - Obsidian Local REST API is optional.
 
 ## Quick Start
 
@@ -85,12 +85,12 @@ Each module uses one of two modes:
 
 ### Field Types
 
-- `text` — single-line input
-- `number` — numeric input
-- `textarea` — multi-line; goes to the Markdown body by default
-- `static_select` — fixed options list
-- `dynamic_select` — options pulled from your vault (see Transport below)
-- `composite_array` — repeatable set of sub-fields (e.g. brew recipe stages)
+- `text` - single-line input
+- `number` - numeric input
+- `textarea` - multi-line; goes to the Markdown body by default
+- `static_select` - fixed options list
+- `dynamic_select` - options pulled from your vault (see Transport below)
+- `composite_array` - repeatable set of sub-fields (e.g. brew recipe stages)
 
 Fields go to YAML frontmatter by default. Override with `target = "body"` or `target = "frontmatter"`.
 
@@ -159,14 +159,14 @@ Save and recall named field-value sets per module.
 | `Left / Right` | Cycle through saved presets |
 | `Ctrl+Left/Right` | Reorder presets |
 
-Fields with `preset_exclude = true` are skipped during save and apply — useful for notes or observations that change every entry.
+Fields with `preset_exclude = true` are skipped during save and apply - useful for notes or observations that change every entry.
 
 ## Transport
 
 Pour writes to Obsidian via two paths, falling back automatically:
 
-1. **API** — HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in config or via `POUR_API_KEY` env var.
-2. **Filesystem** — Direct `std::fs` writes to `vault.base_path`. Always available.
+1. **API** - HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in config or via `POUR_API_KEY` env var.
+2. **Filesystem** - Direct `std::fs` writes to `vault.base_path`. Always available.
 
 ```toml
 [vault]
@@ -199,8 +199,8 @@ Tests live in `tests/` mirroring `src/` structure. Use `POUR_CONFIG` env var to 
 
 ## Documentation
 
-Full docs in [`pour - docs/`](pour%20-%20docs/index.md) — design spec, field type reference, architecture overview, and release notes.
+Full docs in [`pour - docs/`](pour%20-%20docs/index.md) - design spec, field type reference, architecture overview, and release notes.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
