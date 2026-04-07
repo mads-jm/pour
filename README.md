@@ -1,4 +1,4 @@
-# Pour
+# [Pour](https://pour.madigan.app/)
 
 A terminal-native capture tool that logs structured data into an [Obsidian](https://obsidian.md) vault. Config-driven, keyboard-first, no friction.
 
