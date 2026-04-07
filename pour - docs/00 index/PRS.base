@@ -1,0 +1,39 @@
+filters:
+  and:
+    - file.inFolder("10 PRs")
+views:
+  - type: table
+    name: Recent First
+    order:
+      - date merged
+  - type: table
+    name: By Reviewer
+    filters:
+      and:
+        - note.reviewers:*
+    groupBy:
+      property: reviewers
+      direction: ASC
+    order:
+      - date merged
+  - type: table
+    name: By Review Result
+    filters:
+      and:
+        - note.review-result:*
+    groupBy:
+      property: review-result
+      direction: ASC
+    order:
+      - date merged
+  - type: table
+    name: By Tag
+    filters:
+      and:
+        - note.tags:*
+    groupBy:
+      property: tags
+      direction: ASC
+    order:
+      - property: date merged
+        direction: DESC

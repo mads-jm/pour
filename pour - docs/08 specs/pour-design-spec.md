@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Friday, April 3rd 2026, 4:11:41 am
+date modified: Tuesday, April 7th 2026, 3:30:34 am
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -100,7 +100,7 @@ v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only
 
 Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.cache/pour/presets.json` keyed by module name.
 
-**Keybindings:**
+__Keybindings:__
 - `Ctrl+S` — save current form values as a named preset (name input overlay appears)
 - `Ctrl+D` — delete the selected preset (y/n confirmation)
 - `Left/Right` on the preset selector row — cycle through `<none>` and saved presets
@@ -108,7 +108,7 @@ Per-module named presets let users save the current form's field values and reca
 
 A preset selector row appears at the top of every form. Applying a preset is deterministic: fields present in the preset are populated; fields absent from the preset reset to their config defaults.
 
-**`preset_exclude`** — a boolean field-level config key (`Option<bool>`, default `false`). When `true`, the field is excluded from both preset capture and preset application. Intended for notes, observations, or any value that changes on every entry. `composite_array` fields are implicitly excluded regardless of this flag.
+__`preset_exclude`__ — a boolean field-level config key (`Option<bool>`, default `false`). When `true`, the field is excluded from both preset capture and preset application. Intended for notes, observations, or any value that changes on every entry. `composite_array` fields are implicitly excluded regardless of this flag.
 
 ### __3.5 File Write Modes & Field → Output Mapping__
 

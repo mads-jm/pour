@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Friday, April 3rd 2026, 4:11:43 am
+date modified: Tuesday, April 7th 2026, 3:30:37 am
 ---
 
 # Pour Design Language

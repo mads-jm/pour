@@ -1,0 +1,12 @@
+{
+  "new-note-folder": "",
+  "new-note-template": "",
+  "prepend-archive-date": true,
+  "prepend-archive-format": "YYYY-MM-DD",
+  "date-picker-date-format": "YYYY-MM-DD",
+  "link-date-to-daily-note": false,
+  "hide-card-count": false,
+  "hide-date-display": false,
+  "show-checkboxes": true,
+  "tag-colors": []
+}

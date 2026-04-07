@@ -1,15 +1,550 @@
-<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[pour docs]]></title><description><![CDATA[Obsidian digital garden]]></description><link>http://github.com/dylang/node-rss</link><image><url>site-lib/media/favicon.png</url><title>pour docs</title><link/></image><generator>Webpage HTML Export plugin for Obsidian</generator><lastBuildDate>Thu, 02 Apr 2026 09:18:48 GMT</lastBuildDate><atom:link href="site-lib/rss.xml" rel="self" type="application/rss+xml"/><pubDate>Thu, 02 Apr 2026 09:18:40 GMT</pubDate><ttl>60</ttl><dc:creator/><item><title><![CDATA[ARCHITECTURE]]></title><description><![CDATA[
-<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (v0.2) <br><a data-href="v1-implementation-plan" href="04-architecture/v1-implementation-plan.html" class="internal-link" target="_self" rel="noopener nofollow">v1-implementation-plan</a> — V1 task backlog and sprint sequencing <br><a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a> — Why Pour uses a dual API/filesystem transport
-<br><a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a> — Why frontmatter uses custom serialization instead of serde_yaml
-<br><a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a> — How sync TUI coexists with async network calls
-]]></description><link>00-index/architecture.html</link><guid isPermaLink="false">00 index/ARCHITECTURE.md</guid><pubDate>Thu, 02 Apr 2026 09:18:40 GMT</pubDate></item><item><title><![CDATA[README]]></title><description><![CDATA[00 index - Index files for the vault; Act both as a hub for 'spokes' of knowledge but also enforce knowledge mapping structure. <a data-href="index" href="index.html" class="internal-link" target="_self" rel="noopener nofollow">index</a> captures the documentation structure01 concepts - Persistent atomic notes, permanent broad knowledge acting as an ever expanding wiki of knowledge gathered working on this project02 references - Library API references, external documentation, and OpenAPI specs03 guides - DX guides, developer workflow documentation<br>04 architecture - Design spec, <a data-tooltip-position="top" aria-label="ARCHITECTURE > Architecture Decision Records" data-href="ARCHITECTURE#Architecture Decision Records" href="00-index/architecture.html#Architecture Decision Records" class="internal-link" target="_self" rel="noopener nofollow">ADR</a>s and broader architectural decisions05 notes - 'Fleeting' development notes; precursor to atomic notes in persistent vault above07 stories - User stories and vision documents08 specs - Feature and component specifications99 meta -
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title><![CDATA[pour docs]]></title><description><![CDATA[Obsidian digital garden]]></description><link>http://github.com/dylang/node-rss</link><image><url>site-lib/media/favicon.png</url><title>pour docs</title><link/></image><generator>Webpage HTML Export plugin for Obsidian</generator><lastBuildDate>Tue, 07 Apr 2026 03:30:38 GMT</lastBuildDate><atom:link href="site-lib/rss.xml" rel="self" type="application/rss+xml"/><pubDate>Tue, 07 Apr 2026 03:30:15 GMT</pubDate><ttl>60</ttl><dc:creator/><item><title><![CDATA[BACKLOG.kanban]]></title><description><![CDATA[Inbox0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a cardScoping0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a cardReady0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a cardIn Progress0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a cardIn Review0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a cardDone0<a aria-label="More options" class="kanban-plugin__lane-settings-button clickable-icon"><span data-icon="lucide-more-vertical" class="kanban-plugin__icon "><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-more-vertical"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></span></a>+ Add a card]]></description><link>00-index/backlog.kanban.html</link><guid isPermaLink="false">00 index/BACKLOG.kanban.md</guid><pubDate>Tue, 07 Apr 2026 03:30:15 GMT</pubDate></item><item><title><![CDATA[PRS]]></title><description><![CDATA[PR history and merge records.]]></description><link>10-prs/prs.html</link><guid isPermaLink="false">10 PRs/PRS.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[STORIES]]></title><description><![CDATA[Vision documents, project narratives, and manifestos.]]></description><link>07-stories/stories.html</link><guid isPermaLink="false">07 stories/STORIES.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[Feature and component specifications.]]></description><link>08-specs/specs.html</link><guid isPermaLink="false">08 specs/SPECS.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[Library API references and external documentation relevant to this project.]]></description><link>02-references/references.html</link><guid isPermaLink="false">02 references/REFERENCES.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Fleeting development notes and working drafts. These may be promoted to concepts, guides, or specs as they mature.]]></description><link>05-notes/notes.html</link><guid isPermaLink="false">05 notes/NOTES.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[GUIDES]]></title><description><![CDATA[Developer workflow and implementation guides.]]></description><link>03-guides/guides.html</link><guid isPermaLink="false">03 guides/GUIDES.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[CONCEPTS]]></title><description><![CDATA[Atomic concept notes — durable, reusable knowledge about technologies and patterns used in this project.]]></description><link>01-concepts/concepts.html</link><guid isPermaLink="false">01 concepts/CONCEPTS.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[ADR]]></title><description><![CDATA[Chronological log of significant architectural decisions.]]></description><link>04-architecture/adr/adr.html</link><guid isPermaLink="false">04 architecture/adr/ADR.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[ARCHITECTURE]]></title><description><![CDATA[Architecture design documents and system overview.]]></description><link>04-architecture/architecture.html</link><guid isPermaLink="false">04 architecture/ARCHITECTURE.md</guid><pubDate>Tue, 07 Apr 2026 03:14:07 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Recent First2 resultsSort1Filter0PropertiesSearchNewShowing 2date modifiedFriday, April 3rd 2026, 4:11:40 amTuesday, April 7th 2026, 3:30:18 am]]></description><link>00-index/notes.html</link><guid isPermaLink="false">00 index/NOTES.base</guid><pubDate>Tue, 07 Apr 2026 03:03:38 GMT</pubDate></item><item><title><![CDATA[PRS]]></title><description><![CDATA[Recent First2 resultsSort1Filter0PropertiesSearchNewShowing 2Unable to parse your base file:e.startsWith is not a function]]></description><link>00-index/prs.html</link><guid isPermaLink="false">00 index/PRS.base</guid><pubDate>Tue, 07 Apr 2026 03:03:09 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[All Specs3 resultsSort0Filter0PropertiesSearchNewShowing 3file namepour-design-specpour-fit-module-briefSPECS]]></description><link>00-index/specs.html</link><guid isPermaLink="false">00 index/SPECS.base</guid><pubDate>Tue, 07 Apr 2026 03:03:07 GMT</pubDate></item><item><title><![CDATA[GUIDES]]></title><description><![CDATA[All Guides4 resultsSort0Filter0PropertiesSearchNewShowing 4file nameDesign-LanguageGuide-Adding-New-Field-TypesGuide-Config-to-VaultGUIDES]]></description><link>00-index/guides.html</link><guid isPermaLink="false">00 index/GUIDES.base</guid><pubDate>Tue, 07 Apr 2026 03:03:04 GMT</pubDate></item><item><title><![CDATA[CONCEPTS]]></title><description><![CDATA[All Concepts3 resultsSort0Filter0PropertiesSearchNewShowing 3file nameCONCEPTSInline-Note-CreationThe-3-Tier-Data-Fallback]]></description><link>00-index/concepts.html</link><guid isPermaLink="false">00 index/CONCEPTS.base</guid><pubDate>Tue, 07 Apr 2026 03:03:04 GMT</pubDate></item><item><title><![CDATA[ADR]]></title><description><![CDATA[All ADRs5 resultsSort0Filter0PropertiesSearchNewShowing 5file nameADRADR-001-Hybrid-Transport-LayerADR-002-Custom-YAML-SerializationADR-003-Synchronous-TUI-Async-OperationsADR-004-API-Append-Read-Modify-Write]]></description><link>00-index/adr.html</link><guid isPermaLink="false">00 index/ADR.base</guid><pubDate>Tue, 07 Apr 2026 03:03:04 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[All References9 resultsSort0Filter0PropertiesSearchNewShowing 9file namechronocrosstermfield-typesobsidian-local-rest-apiobsidian-local-rest-api-openapi.yamlratatuiREFERENCESreqwesttoml-serde]]></description><link>00-index/references.html</link><guid isPermaLink="false">00 index/REFERENCES.base</guid><pubDate>Tue, 07 Apr 2026 02:52:17 GMT</pubDate></item><item><title><![CDATA[v0.2.0-report]]></title><description><![CDATA[
+Atomic writes on Windows (cache, history, FS transport → util::atomic_replace)
+Vault settings rebuild missing date_format row
+serde_yaml removed
+Default config placeholder syntax ({{bean}})
+Version bump to 0.2.0
+API key moved to secrets.toml (env var → secrets.toml → config.toml fallback)
+API key auto-migration from config.toml to secrets.toml on first load
+Percent-encode API URLs for vault paths with spaces
+config_version serde default via #[serde(default)]
+Leading zeros in config_version rejected
+Empty one_of = [] rejected at parse time
+add_field_on_disk serializes show_when, allow_create, wikilink, create_template, post_create_command
+validate_form skips hidden fields
+partition_fields filters hidden field values from output
+clamp_active_to_visible for form navigation
+Duplicate YAML key when user field named "icon" (guard added) Strftime injection — render_path and render_append_template expand % in user values
+YAML escaping — format_scalar doesn't escape newlines, backslashes, or YAML reserved words
+Comma-in-value splits to list — ", " in icon/field values produces YAML list instead of scalar
+API key env var leak — resolved by secrets.toml; api_key no longer written to config.toml
+Duplicate field names in modules — sub-field/template duplicates checked, module-level not; causes silent HashMap overwrite
+FS transport path traversal — no .. check at transport layer (config validates at load, but no defense-in-depth)
+prefix_len byte vs display width — non-ASCII prompts cause cursor drift
+eprintln! during raw mode — garbled output in autocreate.rs expect() calls in config TOML operations and reqwest client builder
+BrowserState.loading is dead state (never set to true)
+Browse errors swallowed (unwrap_or_default)
+Zero test coverage for configure.rs
+TODO comment on VaultConfig
+base_url public on ApiClient (test convenience)
+config_version parsing nits (error message, runtime parse, dead reported_cycles HashSet)
+No TUI tests for icon rendering CHANGELOG.md (v0.1.0 → v0.2.0)
+pour init in README Quick Start
+Field name interpolation ({{field_name}} in paths)
+Keyboard shortcut reference (consolidated)
+Dashboard keybindings (e, v, n, o, r, Ctrl+Up/Down)
+"Open in Obsidian" feature (o key)
+open and percent-encoding in tech stack
+src/util.rs in architecture overview
+date_format in config reference
+v1.0.0-Release keybinding fix (Ctrl+E → e)
+README config_version migration claim (aspirational, not real)
+Design spec deviation annotations
+Fix NOTES index, vault README structure, design spec section numbering
+Append-mode filesystem fallback behavior
+3-tier vs 4-tier fallback terminology
+]]></description><link>06-reports/v0.2.0-report.html</link><guid isPermaLink="false">06 reports/v0.2.0-report.md</guid><pubDate>Mon, 06 Apr 2026 02:51:02 GMT</pubDate></item><item><title><![CDATA[v0.1.0-report]]></title><description><![CDATA[
+Config-driven module system (TOML → typed structs → validated)
+Hybrid transport: API (Obsidian Local REST) with FS fallback
+Two write modes: append (daily note) and create (new file with frontmatter)
+YAML frontmatter + template rendering with strftime and field interpolation
+Dynamic select with 3-tier fallback (API → cache → empty)
+TUI: dashboard → form → summary flow
+CLI fast-path: pour &lt;module&gt; skips dashboard
+Panic hook restores terminal cleanly Synchronous event loop (draw/poll/handle per tick) — async would add complexity without meaningful UX gain for v0.1
+std::fs::rename for atomic writes (later found broken on Windows — fixed in v0.2)
+serde_yaml initially used, removed in v0.2 prep
+Comma-in-value heuristic splits ", " into YAML lists — intentional for multi-select, problematic for literal commas Background async refresh of dynamic selects
+History pruning
+Configurator TUI
+Undo/confirmation before write
+]]></description><link>06-reports/v0.1.0-report.html</link><guid isPermaLink="false">06 reports/v0.1.0-report.md</guid><pubDate>Mon, 06 Apr 2026 02:28:25 GMT</pubDate></item><item><title><![CDATA[Guide-Config-to-Vault]]></title><description><![CDATA[Pour is config-driven — every module, field, path, and template is defined in ~/.config/pour/config.toml. This guide walks through mapping that config to your Obsidian vault structure, starting from the default config and building up to fully customized modules.For the complete field reference, see <a data-href="field-types" href="02-references/field-types.html" class="internal-link" target="_self" rel="noopener nofollow">field-types</a>. For module patterns, see <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>.[vault]
+base_path = "/absolute/path/to/your/vault"
+This is the root — every path, source, and template path is relative to this. Find it by looking at where your .obsidian/ folder lives.Windows: Use escaped backslashes or forward slashes.base_path = "C:\\Users\\You\\Documents\\MyVault"
+base_path = "C:/Users/You/Documents/MyVault"
+<br>API (optional): If you run the <a data-tooltip-position="top" aria-label="https://github.com/coddingtonbear/obsidian-local-rest-api" rel="noopener nofollow" class="external-link is-unresolved" href="https://github.com/coddingtonbear/obsidian-local-rest-api" target="_self">Obsidian Local REST API</a> plugin, Pour can write via API and fall back to filesystem when Obsidian is closed.api_port = 27124
+api_key = "your-key" # or set POUR_API_KEY env var
+Every module is either append or create. This is the most important design decision per module.Adds content under a heading in an existing note. Best for:
+Daily journals — append thoughts to today's note
+Running logs — add entries to a single note over time
+Task capture — add checkboxes under a heading
+[modules.me]
+mode = "append"
+path = "Journal/%Y/%Y-%m-%d.md" # strftime tokens resolve at runtime
+append_under_header = "## Log" # must match an existing heading
+append_template = "#### {{time}}\n{{body}}" # {{time}}, {{field_name}} placeholders
+Key constraint: The note must already exist with the target heading. Pour doesn't create the file in append mode — it finds the heading and inserts below it. Daily note plugins (Templater, Periodic Notes) typically handle file creation.Mapping to your vault: Open your daily note template. Find the heading you want to append under. Copy it exactly (including any wikilinks or formatting).Generates a new file per entry. Best for:
+Brew logs, recipes, workouts — one note per event
+Fleeting notes — standalone captures
+Anything that becomes its own page in the vault graph
+[modules.coffee]
+mode = "create"
+path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md" # {{field_name}} interpolation
+Mapping to your vault: Decide where these notes should live. Use existing folder structures. The path supports both strftime tokens (%Y, %m, %d) and field value interpolation ({{field_name}}).The most common mistake is getting paths wrong. Here's how to audit your vault structure and map it to config.Common Obsidian patterns:For each module, trace the path from vault root to where notes should land:Vault root
+└── 02 - Areas/ └── 204 - Cooking/ └── Coffee/ ├── Beans/ ← dynamic_select source ├── Brewers/ ← dynamic_select source (subfolder per category) └── Brews/ ← create-mode output path
+This maps to:[modules.coffee]
+path = "02 - Areas/204 - Cooking/Coffee/Brews/{{bean}}@{{time}}-%Y%m%d.md" [[modules.coffee.fields]]
+name = "bean"
+source = "02 - Areas/204 - Cooking/Coffee/Beans"
+Every dynamic_select field's source path must point to an existing folder in the vault. Pour lists .md files in that folder to populate the dropdown. If the folder doesn't exist, Pour falls back to the cache, then to freetext input.Create the folders first, then add at least one .md file so the dropdown has content.Fields flow top-to-bottom in the TUI form. Group them by workflow:
+Category/selector fields first — these control conditional visibility via show_when
+Conditional fields next — equipment, method-specific params
+Universal fields — fields that appear regardless of selection
+Wrap-up last — rating, notes, tasting notes
+Is the set of values fixed and small? → static_select (options in config) Does the set of values come from vault folders? → dynamic_select (source = vault path) → Add allow_create = true if the user should be able to add new values Is it a number? → number Is it multi-line text? → textarea (defaults to body output) Is it tabular / multi-row data? → composite_array (sub_fields define columns) Otherwise: → text
+Use show_when to hide fields that don't apply to the current context:# This field only appears when brew_method is "Espresso"
+[[modules.coffee.fields]]
+name = "shot_style"
+field_type = "static_select"
+options = ["Standard", "Turbo", "Soup"]
+show_when = { field = "brew_method", equals = "Espresso" }
+Use one_of when a field should appear for multiple values:# Shows for both Pour Over and Immersion methods
+[[modules.coffee.fields]]
+name = "water_temp_c"
+field_type = "number"
+prompt = "Water temp (°C)"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+The pattern: a controlling static_select at the top, then dependent fields gated by its value. Hidden fields are excluded from validation and output — a hidden required field doesn't block submit.Textarea fields targeting body can be wrapped in an Obsidian callout:[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+target = "body"
+callout = "quote" # wraps output in &gt; [!quote] block
+This is separate from the module-level callout_type (which controls {{callout}} in append templates). Field-level callout wraps individual field output.Fields that shouldn't be captured or restored by presets (e.g., free-form notes that change every entry) can be excluded:[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+preset_exclude = true # skipped when saving/applying presets
+Use preset_exclude = true on:
+textarea body fields where content varies every entry (journal thoughts, tasting notes)
+title or name text fields on create-mode modules where each entry has a unique title
+Fields marked preset_exclude are still filled and submitted normally — they're just invisible to the preset save/apply cycle.Dynamic selects are Pour's most powerful feature — they connect the config to your vault's living data.[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans" # vault-relative folder
+Pour lists .md files in &lt;vault&gt;/Coffee/Beans/ and strips the extension to get option names. Subdirectories are excluded.allow_create = true # enable novel value entry
+wikilink = true # wrap output in [[...]]
+create_template = "bean" # open sub-form for structured creation
+post_create_command = "templater:run" # fire Templater after creation
+This requires a matching [templates.bean] section — see step 6.For category-dependent equipment (e.g., different brewers per brew method):# Each category gets its own dynamic_select pointing to a subfolder
+[[modules.coffee.fields]]
+name = "brewer"
+source = "Coffee/Brewers/Pour Over"
+show_when = { field = "brew_method", equals = "Pour Over" } [[modules.coffee.fields]]
+name = "machine"
+source = "Coffee/Brewers/Espresso"
+show_when = { field = "brew_method", equals = "Espresso" }
+This pattern is reusable for any domain with category-dependent options.When a dynamic_select has allow_create = true and create_template, typing a novel value opens a sub-form overlay. The template defines what fields to collect and where to save the file.[templates.bean]
+path = "Coffee/Beans/{{name}}.md" # {{name}} = the typed value [[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster" [[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil"]
+Path routing with fields: Template paths can interpolate template field values. This is useful for sorting new notes into subfolders:[templates.brewer]
+path = "Coffee/Brewers/{{category}}/{{name}}.md" [[templates.brewer.fields]]
+name = "category"
+field_type = "static_select"
+prompt = "Brewer category"
+options = ["Pour Over", "Espresso", "Immersion"]
+Pour writes frontmatter. Templater adds body content. The bridge is post_create_command:
+Pour creates Beans/Ethiopia Guji.md with YAML frontmatter
+post_create_command = "templater:run" fires via the REST API
+Your Obsidian Templater template reads tp.frontmatter.roaster, etc. and adds the body
+This separation means Pour handles data capture and Templater handles presentation. If you don't use Templater, the note still has clean frontmatter — it just won't have body structure.For append-mode modules, the append_template controls what gets inserted:append_template = "#### {{time}}\n&gt; [!{{callout}}] {{title}}\n&gt; {{body}}"
+Available placeholders:
+{{time}} — current time (HH:MM format)
+{{date}} — current date
+{{callout}} — value of callout_type on the module
+{{field_name}} — any field's value by name
+Matching your daily note structure: Your template's output should be consistent with the note's existing format. If your daily note uses callout blocks under headings, design the append template to match.module_order = ["me", "todo", "note", "coffee"]
+Controls dashboard display order. Modules not listed appear alphabetically after listed ones. Put your most-used modules first for quick access.Modules and fields support an optional icon for visual identification.Module icons appear on the TUI dashboard next to the module name. For create-mode modules, they're also written to the output YAML frontmatter as icon: &lt;value&gt;, making them queryable by Dataview and compatible with Obsidian plugins like Iconize and Supercharged Links.[modules.coffee]
+mode = "create"
+path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"
+display_name = "Coffee"
+icon = "☕" # shown on dashboard, written to frontmatter
+Dashboard appearance: ▸ ☕ [coffee] CoffeeField icons appear next to the prompt label in the TUI form. They are purely cosmetic — not written to output.[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+icon = "🫘" # shown in form only
+Form appearance: ▸ 🫘 Bean*: Ethiopian GujiIcons are free-form strings. Use Unicode emoji ("☕") for widest compatibility, or Iconize pack format ("LiCoffee") if your vault uses the Iconize plugin. Pour stores whatever you configure — it doesn't validate or interpret the value.Presets let you save a snapshot of a module's current field values and restore them on future entries. They're designed for workflows where most fields stay the same across entries (same bean, same grinder, same dose) but a few fields vary (tasting notes, entry title).Each module maintains its own preset list, stored in ~/.cache/pour/presets.json. Presets are per-module — a coffee preset won't appear in the journal form.At the top of every module form, Pour shows a preset row:[ No preset ] ◂ ▸ to cycle
+When you apply a preset, Pour resets all non-excluded fields to the preset's saved values. Fields absent from the preset receive their configured default. This is deterministic: applying the same preset always produces the same starting state.The preset row is always at the top of the form. Navigate to it with Up from the first field, or Down from the preset row to enter the form.Presets pay off most for create-mode modules with many fields that rarely change. A coffee log is the canonical case: bean, grinder, dose, yield, and time are consistent for a given setup, while tasting notes differ every brew. Save one preset per common setup (e.g., "V60 light roast", "Espresso morning shot") and cycle between them at the top of the form.Append-mode modules with short forms (journal, task) typically don't need presets.<br>See the preset_exclude key under <a class="internal-link" data-href="#4-design-your-fields" href="#4-design-your-fields" target="_self" rel="noopener nofollow">section 4</a>. Mark fields like textarea body content and unique entry titles with preset_exclude = true so they aren't overwritten when a preset is applied.Say your vault looks like this:MyVault/
+├── Daily/
+│ └── 2026-04-04.md (daily notes with ## Journal heading)
+├── Projects/
+│ └── ...
+├── Recipes/
+│ ├── Ingredients/
+│ │ ├── Flour.md
+│ │ └── Sugar.md
+│ └── ...
+└── Notes/ └── ... (fleeting notes)
+Your config might be:config_version = "0.2.0"
+module_order = ["journal", "recipe", "note"] [vault]
+base_path = "/Users/you/MyVault" # Journal — append to daily note
+[modules.journal]
+mode = "append"
+path = "Daily/%Y-%m-%d.md"
+display_name = "Journal"
+append_under_header = "## Journal"
+append_template = "#### {{time}}\n{{body}}" [[modules.journal.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "What's on your mind?"
+required = true
+target = "body" # Recipe — create a new recipe note
+[modules.recipe]
+mode = "create"
+path = "Recipes/%Y-%m-%d-{{title}}.md"
+display_name = "Recipe" [[modules.recipe.fields]]
+name = "title"
+field_type = "text"
+prompt = "Recipe name"
+required = true
+target = "frontmatter" [[modules.recipe.fields]]
+name = "servings"
+field_type = "number"
+prompt = "Servings"
+default = "4"
+target = "frontmatter" [[modules.recipe.fields]]
+name = "ingredients"
+field_type = "composite_array"
+prompt = "Ingredients"
+target = "frontmatter" [[modules.recipe.fields.sub_fields]]
+name = "item"
+field_type = "dynamic_select" # ERROR: sub_fields don't support dynamic_select
+# Use text instead:
+# field_type = "text"
+prompt = "Item" [[modules.recipe.fields.sub_fields]]
+name = "amount"
+field_type = "number"
+prompt = "Amount" [[modules.recipe.fields]]
+name = "instructions"
+field_type = "textarea"
+prompt = "Instructions"
+target = "body" # Quick note — fleeting capture
+[modules.note]
+mode = "create"
+path = "Notes/%Y%m%d-{{title}}.md"
+display_name = "Note" [[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter" [[modules.note.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Content"
+target = "body"
+After editing your config, test it:cargo run # opens dashboard — catches parse errors
+cargo run -- &lt;module_name&gt; # test a specific module form
+Common errors:
+"field requires source" — dynamic_select is missing source path
+"options must not be empty" — static_select is missing options
+"path is not vault-relative" — path starts with /, C:\, \\, or contains ..
+"circular show_when dependency" — field A depends on B which depends on A
+"unknown template reference" — create_template names a template that doesn't exist in [templates] Decide mode: append (add to existing note) or create (new file)
+Set path using vault-relative path with strftime tokens and/or {{field}} interpolation
+For append: set append_under_header matching an exact heading in the target note
+For append: design append_template matching the note's existing format
+Define fields top-to-bottom: selectors → conditional → universal → wrap-up
+For dynamic_selects: verify source folders exist in vault with .md files
+For allow_create: add [templates.&lt;name&gt;] section with path and fields
+For Templater coordination: set post_create_command = "templater:run" and create matching Obsidian template
+Set icon on the module for dashboard display (and create-mode frontmatter)
+Set icon on key fields for form display
+Mark notes/textarea fields with preset_exclude = true if they shouldn't be part of presets
+Add module to module_order for dashboard positioning
+Test with cargo run -- &lt;module&gt;
+]]></description><link>03-guides/guide-config-to-vault.html</link><guid isPermaLink="false">03 guides/Guide-Config-to-Vault.md</guid><pubDate>Sun, 05 Apr 2026 21:34:22 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
+Offline-First Resilience: Works with the Obsidian Local REST API, but falls back seamlessly to direct file-system operations if the vault is closed.
+Snappy &amp; Rhythmic: Designed around the pour command. Fast muscle memory.
+Data Integrity: Generates strict YAML frontmatter and standard Markdown to ensure 100% compatibility with Obsidian Properties (Bases) and Dataview.
+The application has two primary execution paths:Running the base command opens the main interactive hub.
+Header: Displays vault connection status (🟢 API Connected | 🟡 Direct File Mode).
+Body: Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). [Deviation: not implemented in v1 — dashboard shows module list with connection status only.]
+Menu: Navigable list to launch specific modules (me, coffee).
+Bypasses the dashboard and launches directly into a specific data-entry view.
+pour me — Opens the journal appending view.
+pour coffee — Opens the coffee logging form.
+Upon submitting a form, the app does not immediately exit. It transitions to a Summary View displaying:
+A success message with the destination file path.
+Options: [Enter] Main Menu, [A] Pour Another → .., [Q] Quit, [O] Open file in $EDITOR. [Deviation: [O] not implemented in v1 — summary supports Enter, A, and Q only.]
+Pour uses a dual-pronged approach to writing data:
+<br>Primary (API): Attempts a fast local HTTPS request via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs). [Deviation: originally spec'd as HTTP; implementation uses HTTPS with danger_accept_invalid_certs.]
+Fallback (File System): If the connection is refused, it gracefully falls back to std::fs to write directly to the absolute vault path defined in the configuration.
+API Authentication: The REST API plugin requires a Bearer token. Pour supports two sources:
+api_key field under [vault] in config.toml.
+POUR_API_KEY environment variable (takes precedence over config if set).
+3-tier fallback (API → disk scan → cache → freetext) with async background refresh.When allow_create = true on a dynamic_select field, the dropdown enters search mode as the user types — filtering options by case-insensitive substring match and showing a "Create new" affordance for unmatched text. Submitting a novel value auto-creates a bare note at {source}/{sanitized_value}.md (via the transport layer) before the module output is written. The new entry is appended to the in-memory cache immediately. [Deviation: the original spec described dynamic_select as a closed list only; inline creation was added post-spec.]When a dynamic_select field has create_template referencing a [templates.&lt;name&gt;] section, novel values trigger a sub-form overlay instead of bare stub creation. The overlay prompts the user for template-defined fields (text, number, static_select), then writes a note with full YAML frontmatter. [Deviation: not in original spec. Added to support richer inline-created notes without leaving the TUI.]An optional post_create_command fires an Obsidian plugin command (e.g. templater:run) via the REST API's /commands/ endpoint after note creation. This bridges Pour's structured data capture with Obsidian's plugin ecosystem — Pour handles frontmatter, the plugin handles body/presentation. The command is best-effort: silently skipped on filesystem transport. [Deviation: command execution via REST API was not in original spec.][Deviation: not in original spec. Added to support method-specific form layouts (e.g., espresso-only fields that are meaningless for pour-over).]Any field can declare a show_when block that gates its visibility on the value of another field in the same module:show_when = { field = "brew_method", equals = "Espresso" }
+# or match multiple values:
+show_when = { field = "brew_method", one_of = ["Espresso", "Moka"] }
+The visibility computation lives in src/visibility.rs (is_field_visible, visible_field_indices) — pure functions called on every key event. Hidden fields are excluded from TUI rendering, navigation, validation, and output. Hidden required fields do not block submit. Hidden field values are cleared on submit.Config validation enforces: exactly one of equals/one_of, no self-reference, no composite_array controllers, no circular chains. Forward references are allowed.v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only, not supported on composite_array sub-fields.[Deviation: not in original spec. Added to support fast re-entry for repeated captures with the same base configuration (e.g., same bean, method, and dose across a brew series).]Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in ~/.cache/pour/presets.json keyed by module name.Keybindings:
+Ctrl+S — save current form values as a named preset (name input overlay appears)
+Ctrl+D — delete the selected preset (y/n confirmation)
+Left/Right on the preset selector row — cycle through &lt;none&gt; and saved presets
+Ctrl+Left/Right — reorder presets
+A preset selector row appears at the top of every form. Applying a preset is deterministic: fields present in the preset are populated; fields absent from the preset reset to their config defaults.preset_exclude — a boolean field-level config key (Option&lt;bool&gt;, default false). When true, the field is excluded from both preset capture and preset application. Intended for notes, observations, or any value that changes on every entry. composite_array fields are implicitly excluded regardless of this flag.Append vs. create modes, and how fields map to frontmatter/body.When wikilink = true on a text, static_select, or dynamic_select field, the output value is wrapped in Obsidian wikilink syntax ([[value]]) before being written to frontmatter. This creates graph edges between the current note and the named note. For comma-separated multi-values, each item is wrapped individually. [Deviation: wikilink wrapping was not in the original field spec; added alongside inline creation.]Full TOML schema, field type reference, and validation rules — see config schema section.An optional top-level string field in config.toml that declares the schema version the file was written against.config_version = "0.2.0" Format: Semver string (e.g. "0.2.0"). Non-semver values are rejected at config load.
+Default: When absent, Pour treats the file as "0.1.0" — all existing configs without this field continue to work unchanged.
+Validation: Unsupported major versions are rejected with a clear error. All versions with major version 0 are currently accepted (e.g., 0.1.0, 0.2.0). The current version is 0.2.0.
+Purpose: Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. [Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.] Language: Rust (2024 Edition)
+<br>TUI Framework: <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> + <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>
+<br>Serialization: serde, serde_json, <a data-tooltip-position="top" aria-label="toml-serde" data-href="toml-serde" href="02-references/toml-serde.html" class="internal-link" target="_self" rel="noopener nofollow">toml</a>, toml_edit [Deviation: serde_yaml was originally included but removed — YAML frontmatter uses custom serialization instead. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.]
+<br>Network: <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> (with tokio for async fetching)
+<br>Time: <a data-href="chrono" href="02-references/chrono.html" class="internal-link" target="_self" rel="noopener nofollow">chrono</a> (for file formatting and timestamps)
+The following are explicitly in scope for v0.1:
+Dashboard with connection status and module menu
+pour me (append mode with Templater integration + atomic note fallback)
+pour coffee (create mode with frontmatter generation)
+Hybrid transport layer (API → filesystem fallback)
+Dynamic data fetching (API → disk scan → cache → freetext)
+Configurable append templates with {{callout}} placeholder resolved from module-level callout_type; field-level callout wraps textarea body output in &gt; [!type] blockquote syntax
+allow_create on dynamic_select fields — inline creation with freetext filtering, "Create new" affordance, and auto-created bare notes
+wikilink on text, static_select, and dynamic_select fields — wraps output in [[...]] for Obsidian graph connectivity
+Configurable theme (accent color, border style) [Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]
+Post-execution summary view
+required field validation
+The following are explicitly in scope for v0.2:
+Template-driven inline creation with sub-form overlay (create_template + [templates])
+Post-creation command hook (post_create_command) for Obsidian plugin integration
+Command execution via REST API transport (/commands/{commandId}/)
+Conditional field visibility (show_when) — gates field rendering, navigation, validation, and output on another field's value
+The following are explicitly deferred:
+pour music module (generic config supports it when ready)
+Rich validation (min/max, regex)
+Tag-based dynamic_select sources
+Plugin/extension system
+Nested templates / recursive sub-forms
+Dynamic data sources in template fields (only static_select, not dynamic_select)
+TUI configure screen support for create_template / post_create_command fields
+]]></description><link>08-specs/pour-design-spec.html</link><guid isPermaLink="false">08 specs/pour-design-spec.md</guid><pubDate>Sun, 05 Apr 2026 21:07:43 GMT</pubDate></item><item><title><![CDATA[System-Architecture-Overview]]></title><description><![CDATA[The codebase strictly separates concerns to isolate terminal drawing from data logic. This note is the short-form companion to <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>.
+<br>src/main.rs: Entry point. Owns CLI parsing, config load, terminal lifecycle, event loop polling, and orchestrates submit/cache persistence. See also <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
+src/init.rs: First-run setup. Implements the pour init flow — generates a starter config.toml with interactive vault path selection and example modules.
+<br>src/tui/: Presentation layer. Routes events to screen handlers (dashboard.rs, form.rs, summary.rs, configure.rs) and dispatches Action enums. The dashboard acts as an ambient capture surface — showing recent activity, capture rhythm stats, and module gaps rather than a simple launcher. Built with <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> and <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>.
+src/tui/configure.rs: In-app configurator. Provides a TUI form for editing module scalar fields (path, mode, display_name, append_under_header, callout_type, icon) with a vault directory browser for path selection, and a QuickSelect picker for callout types. Also hosts vault-level settings (ConfigureLevel::VaultSettings) accessible via Ctrl+V from the dashboard.
+src/app.rs: State management. Owns FormState, ConfigureState, BrowserState, active field indices, and input validation. FormState.active_field is a visible-set index (into the list returned by visible_field_indices); active_config_idx mirrors it as the config-level index and is used by clamp_active_to_visible to correctly recover focus when the visible set shrinks. FormState.callout_overrides holds per-entry callout type selections (seeded from config, cyclable via Left/Right on textarea fields).
+src/visibility.rs: Conditional field visibility. visible_field_indices(fields, values) returns the subset of config field indices that are currently visible given show_when rules. Called on every form key event to keep navigation bounded to visible fields. Integration points: src/app.rs uses visible_field_indices to compute FormState.active_field bounds and clamp focus on visibility change; src/output/ skips hidden fields during frontmatter/body generation; src/config.rs validates show_when constraints (no self-reference, no circular chains, no composite_array controllers) at load time; src/tui/configure.rs serializes show_when when writing fields back to disk via add_field_on_disk / update_field_on_disk.
+<br>src/output/: Write execution. Orchestrates frontmatter.rs generation and template.rs path/template rendering (including {{callout}} resolution and field-level callout wrapping). Both create mode (partition_fields) and append mode (render_append_template) apply callout wrapping; runtime overrides from FormState.callout_overrides take precedence over config values. Related: <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
+<br>src/data/: Fetch, cache, and history tier. cache.rs backs dynamic select dropdowns; history.rs tracks capture events (timestamp, module, vault path) persisted at ~/.cache/pour/history.json and surfaces ambient stats on the dashboard (last pour, today/week counts, streak, per-module activity, gaps); presets.rs stores and retrieves per-module saved field-value sets persisted at ~/.cache/pour/presets.json — same JSON persistence pattern as history.json. Related: <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
+<br>src/transport/: Network/disk boundary. Hides the complexity of API vs filesystem from the rest of the application. Exposes execute_command() for firing Obsidian plugin commands via the REST API /commands/ endpoint (no-op on filesystem transport). Related: <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
+src/autocreate.rs: Inline note creation. On form submit, scans dynamic_select fields with allow_create = true for novel values (not in the existing options list), sanitizes the value into a safe cross-platform filename, and creates a note via the transport layer. Updates the in-memory cache on success. Supports two creation modes: bare stub (minimal date-only frontmatter) for fields without create_template, and template-driven (full frontmatter from [templates.&lt;name&gt;] fields via sub-form overlay) for fields with create_template. Template path resolution expands strftime tokens before {{name}} substitution to prevent injection. Also handles post_create_command dispatch after successful template-driven creation.
+<br>For the integrated event loop and subsystem wiring, see <a data-href="sprint-6-integration-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/system-architecture-overview.html</link><guid isPermaLink="false">04 architecture/System-Architecture-Overview.md</guid><pubDate>Sun, 05 Apr 2026 21:07:18 GMT</pubDate></item><item><title><![CDATA[field-types]]></title><description><![CDATA[This document covers all field types available in Pour's config.toml schema, their config keys, validation rules, default output targets, and TUI rendering behavior.Every module defined in [modules.&lt;name&gt;] supports these keys:Every field in a module's [[modules.&lt;name&gt;.fields]] array supports these keys:Any field can override its default via target = "frontmatter" or target = "body".Any field can be conditionally shown using a show_when block. Hidden fields are skipped during rendering and navigation.[[modules.brew.fields]]
+name = "pressure"
+field_type = "number"
+prompt = "Pressure"
+[modules.brew.fields.show_when]
+field = "method" # name of the controlling field
+equals = "Espresso" # show only when method == "Espresso"
+Or using one_of to match multiple values:[modules.brew.fields.show_when]
+field = "method"
+one_of = ["Espresso", "Moka"]
+Visibility rules:
+equals: visible if field_values[field] == equals (case-sensitive).
+one_of: visible if field_values[field] matches any listed value (case-sensitive).
+If the controlling field is absent or empty, the conditional field is hidden.
+Submit behavior:
+Hidden fields are skipped during validation — a hidden required field does not block submit.
+Hidden field values are cleared on submit, so no stale data appears in output.
+Hidden fields are excluded from frontmatter, body, and template placeholder resolution. Template placeholders for hidden fields resolve to empty string.
+Navigation behavior:
+Tab/Shift-Tab/Up/Down bounds are computed from the visible field set, not total field count.
+If a field becomes hidden while focused (e.g. the user changes a controlling field), focus moves to the next visible field, then previous, then the submit button.
+New fields becoming visible do not steal focus.
+Config validation rules:
+Exactly one of equals or one_of must be specified — not both, not neither.
+equals must not be an empty string.
+one_of must not be an empty array.
+show_when.field must reference an existing field in the same module.
+A field cannot reference itself.
+A field cannot reference a composite_array field as the controller.
+Circular dependencies are rejected (A→B→A, or longer chains).
+Forward references (referencing a field defined later in the array) are allowed.
+Limitations (v1):
+show_when is not supported on composite_array sub-fields.
+Only a single condition per field — no AND/OR combinators.
+No negation operators (not_equals, none_of).
+Matching is case-sensitive only.
+Single-line free text input.[[modules.coffee.fields]]
+name = "origin"
+field_type = "text"
+prompt = "Bean origin"
+TUI: Inline text input with cursor. Accepts any characters.
+Output: Value written as-is to frontmatter (or body if overridden). If wikilink = true, the value is wrapped in [[...]] before output.Multi-line text input with an editor overlay.[[modules.me.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "What's on your mind?"
+target = "body"
+TUI: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
+Output: Defaults to Markdown body. Can be overridden to frontmatter.
+Callout wrapping: When callout = "note" (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax. This applies in both create mode (partition_fields) and append mode (template {{field}} substitution).[[modules.me.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "tip"
+Produces:&gt; [!tip]
+&gt; First line of content
+&gt; Second line
+Runtime cycling: When a textarea field has callout configured, Left/Right arrow keys cycle through callout types while the editor overlay is closed. The [!type] label is shown on the field row. The selected type overrides the config default for that entry only.Available callout types: note, info, todo, tip, success, question, warning, failure, danger, bug, example, quote.Numeric input. Restricts keyboard input to digits, ., and -.[[modules.coffee.fields]]
+name = "rating"
+field_type = "number"
+prompt = "Rating (1-5)"
+default = "3"
+TUI: Inline text input, filtered to numeric characters only.
+Output: Written to frontmatter as an unquoted YAML number (if parseable as integer or float). Falls back to quoted string if the value contains non-numeric content.
+Validation: Non-numeric characters are rejected at input time, not at submit time.Dropdown with hardcoded options defined in config.[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["V60", "AeroPress", "Espresso", "French Press"]
+TUI: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
+Output: Selected string written to frontmatter. If wikilink = true, the value is wrapped in [[...]] before output (e.g. roaster: "[[Onyx]]"), creating an Obsidian backlink to the named note.
+Validation: options must be present and non-empty. Config load fails otherwise.Dropdown populated from vault directory contents at runtime.[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+TUI: Same dropdown interaction as static_select. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (~/.cache/pour/state.json), then freetext input if all fail.When allow_create = true, the user can type characters directly into the field to filter the dropdown options (case-insensitive substring match). If typing produces no matching options, Enter accepts the typed text as a novel value. Backspace trims the typed text. Esc clears the search buffer before closing the dropdown. Navigating away (Tab/Shift-Tab) discards any unsaved search text.Output: Selected (or typed) string written to frontmatter. If wikilink = true, the value is wrapped in [[...]] before output.
+Validation: source must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or .. traversal paths). Config load fails otherwise. allow_create is only valid on dynamic_select; using it on any other field type fails config validation.
+Source path: Relative to the vault root. Example: "Coffee/Beans" resolves to &lt;vault_base_path&gt;/Coffee/Beans/.When allow_create = true and the submitted value is not in the existing options list (case-insensitive), Pour automatically creates a note at {source}/{sanitized_value}.md before writing the module output.Without create_template — a bare stub note is created:---
+date: YYYY-MM-DD
+---
+With create_template — a sub-form overlay appears in the TUI, prompting the user to fill in the template's fields. The created note gets full frontmatter from the template. See <a data-href="#Template-Driven Creation" href="02-references/field-types.html#Template-Driven_Creation_0" class="internal-link" target="_self" rel="noopener nofollow">Template-Driven Creation</a> below.The filename is sanitized: characters invalid on any platform (: ? * &lt; &gt; | " \ /) are replaced with -, consecutive dashes are collapsed, and Windows reserved device names (CON, NUL, COM1–COM9, etc.) are rejected. If the value sanitizes to an empty or reserved string, auto-creation is skipped silently.The new entry is appended to the in-memory cache so the next dropdown opens with the value available immediately. Creation is best-effort — a transport failure is logged to stderr but does not block form submission.[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+wikilink = true
+With this config, selecting or typing "Ethiopia Guji" writes bean: "[[Ethiopia Guji]]" to frontmatter and, if the value is novel, creates Coffee/Beans/Ethiopia Guji.md with a date frontmatter entry.When create_template references a [templates.&lt;name&gt;] section, novel values trigger a sub-form overlay instead of creating a bare stub. This lets you capture structured metadata for the new note without leaving the TUI.
+User types a value that doesn't match any existing option.
+The sub-form overlay appears with the template's fields (text, number, static_select).
+User fills in the fields. Tab/Shift+Tab navigates, Enter on the submit button creates the note.
+Pour writes the note with full YAML frontmatter: date, name (the typed value), and all template fields.
+If post_create_command is set and the API is connected, the Obsidian command fires (e.g. Templater processes the new file to add body content).
+The parent form field is populated with the new value.
+Esc cancels the sub-form without creating anything. If the terminal is too small for the overlay (&lt; 10 rows or &lt; 30 cols), Pour falls back to bare stub creation.# Field references the template
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "02 - Areas/204 - Cooking/Coffee/Beans"
+allow_create = true
+wikilink = true
+create_template = "bean"
+post_create_command = "templater:run" # Template defines the sub-form fields and output path
+[templates.bean]
+path = "02 - Areas/204 - Cooking/Coffee/Beans/{{name}}.md" [[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster" [[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen", "Blend"] [[templates.bean.fields]]
+name = "process"
+field_type = "static_select"
+prompt = "Process"
+options = ["Washed", "Natural", "Honey", "Anaerobic", "Wet Hulled"]
+default = "Washed" [[templates.bean.fields]]
+name = "roast_level"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Light-Medium", "Medium", "Medium-Dark", "Dark"]
+default = "Light" [[templates.bean.fields]]
+name = "bag_weight_g"
+field_type = "number"
+prompt = "Bag weight (g)"
+default = "250"
+Typing "Ethiopia Guji" opens the sub-form. After filling in roaster, origin, etc., Pour creates Beans/Ethiopia Guji.md:---
+date: 2026-04-02
+name: Ethiopia Guji
+roaster: Onyx
+origin: Ethiopia
+process: Washed
+roast_level: Light
+bag_weight_g: 250
+---
+Then post_create_command fires templater:run, which can add body content (brew log table, tasting notes section, metadata) via an Obsidian Templater template.Tabular data entry with multiple columns (sub-fields). Renders as a YAML array of objects in frontmatter or a Markdown table in body.[[modules.recipe.fields]]
+name = "ingredients"
+field_type = "composite_array"
+prompt = "Ingredients" [[modules.recipe.fields.sub_fields]]
+name = "item"
+field_type = "text"
+prompt = "Item" [[modules.recipe.fields.sub_fields]]
+name = "amount"
+field_type = "number"
+prompt = "Amount" [[modules.recipe.fields.sub_fields]]
+name = "unit"
+field_type = "static_select"
+prompt = "Unit"
+options = ["g", "ml", "oz", "cups", "tbsp", "tsp"]
+TUI: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output.
+Output (frontmatter): Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers.ingredients: - item: "flour" amount: 200 unit: "g" - item: "milk" amount: 250 unit: "ml"
+Output (body): Rendered as a Markdown table.
+Validation: sub_fields must be present and non-empty. Sub-field names must be unique. static_select sub-fields must have non-empty options.Sub-fields support a restricted set of types — no nesting or dynamic data:These keys are set on the module itself, not on individual fields:Templates define the note structure created when a dynamic_select field with create_template triggers inline creation. Each [templates.&lt;name&gt;] block specifies the output path and a set of fields that appear in a sub-form overlay.Pour templates and Obsidian's Templater plugin serve complementary roles:
+Pour templates define and collect structured frontmatter at capture time (in the terminal, before the file exists).
+Templater templates add body content, dynamic expressions, and formatting after the file is created (inside Obsidian).
+The post_create_command config key bridges the two: after Pour writes the note with frontmatter, it fires an Obsidian command (e.g. templater:run) via the REST API, which triggers Templater to process the file. The Templater template can read Pour's frontmatter with tp.frontmatter and use it to build the note body.Example coordination:
+Pour's [templates.bean] collects roaster, origin, process, roast_level, bag_weight_g and writes them as YAML frontmatter.
+post_create_command = "templater:run" fires Templater.
+Templater's (TEMPLATE) Bean.md reads tp.frontmatter.roaster and tp.frontmatter.origin to build a wikilinked header, brew log table, and metadata block.
+This means Pour handles data capture and Templater handles presentation — each doing what it's best at. Users who don't use Templater still get a fully functional note with clean frontmatter.
+Template path must contain {{name}}
+Template path must not contain .. segments
+static_select template fields require non-empty options
+Template field names must be unique within a template
+Field names date and name are reserved (auto-generated in frontmatter)
+create_template is only valid on dynamic_select fields with allow_create = true
+post_create_command requires create_template to be set on the same field
+Referenced template names must exist in [templates]
+]]></description><link>02-references/field-types.html</link><guid isPermaLink="false">02 references/field-types.md</guid><pubDate>Sun, 05 Apr 2026 20:36:30 GMT</pubDate></item><item><title><![CDATA[pour-fit-module-brief]]></title><description><![CDATA[A pour fit module for logging workout sessions to the Obsidian vault. Reuses the category-dependent pattern established by the coffee module: a top-level split selector gates conditional fields via show_when, with composite_array for structured set logging.
+split — static_select: Push / Pull / Legs / Upper / Lower / Cardio / Custom Controls conditional fields below via show_when exercises_push, exercises_pull, exercises_legs, etc. — dynamic_select per split Source folders: Health/00 - Fitness/Exercises/Push/, .../Pull/, .../Legs/, etc.
+allow_create = true with an exercise template for adding new exercises inline
+Each folder contains .md note stubs (e.g., Bench Press.md, Deadlift.md) Cardio-specific: distance_km (number), pace (text), heart_rate_avg (number) show_when = { field = "split", equals = "Cardio" } sets — composite_array for set logging Sub-fields: exercise (text), weight_kg (number), reps (number), rpe (number)
+Appears for all strength splits (Push/Pull/Legs/Upper/Lower)
+Could use show_when = { field = "split", one_of = ["Push", "Pull", "Legs", "Upper", "Lower"] } duration_min — number: Total session duration bodyweight_kg — number: Optional daily weigh-in notes — textarea → body: How the session felt, energy level, injuries All fields target frontmatter except notes (body) and sets (frontmatter as array of objects).02 - Areas/202 - Health/00 - Fitness/
+├── Exercises/
+│ ├── Push/
+│ │ ├── Bench Press.md
+│ │ ├── Overhead Press.md
+│ │ └── ...
+│ ├── Pull/
+│ │ ├── Deadlift.md
+│ │ ├── Barbell Row.md
+│ │ └── ...
+│ ├── Legs/
+│ │ ├── Squat.md
+│ │ ├── Romanian Deadlift.md
+│ │ └── ...
+│ └── Cardio/
+│ ├── Running.md
+│ └── Cycling.md
+├── Exercises.md (existing — index note)
+└── Push Pull Legs.md (existing — reference note)
+[templates.exercise]
+path = "02 - Areas/202 - Health/00 - Fitness/Exercises/{{category}}/{{name}}.md" [[templates.exercise.fields]]
+name = "category"
+field_type = "static_select"
+prompt = "Category"
+options = ["Push", "Pull", "Legs", "Cardio"] [[templates.exercise.fields]]
+name = "muscle_group"
+field_type = "text"
+prompt = "Primary muscle group" Per-exercise vs per-session tracking: The sets composite_array logs sets inline. An alternative is a separate pour set append module that adds rows to the session note — more granular but more friction per set. Exercise selection within the form: Currently composite_array sub-fields can't be dynamic_select. The exercise field inside sets would be plain text unless we extend sub-field types. Alternatively, a top-level exercise dynamic_select could pre-fill. Progressive overload tracking: Showing previous session's numbers for the same exercise requires reading from vault history — not currently supported. Could be a future history_hint feature on fields. Rest timer: Out of scope for Pour (a capture tool, not a training timer). Could note rest periods as a composite sub-field if desired. Upper/Lower vs PPL: The split options include both PPL and Upper/Lower to support different program structures. The exercise folders might need to be organized differently (some exercises span categories). Consider whether Custom split should show all exercises. Warm-up sets: Should warm-up sets be distinguished from working sets? Could add a set_type sub-field (Warm-up / Working / Drop). Existing vault: 02 - Areas/202 - Health/00 - Fitness/ has Exercises.md, Push Pull Legs.md
+Coffee module pattern: resources/mads_config.toml [modules.coffee] — category → equipment → method-specific → universal
+show_when spec: pour - docs/02 references/field-types.md
+composite_array spec: same reference doc
+]]></description><link>08-specs/pour-fit-module-brief.html</link><guid isPermaLink="false">08 specs/pour-fit-module-brief.md</guid><pubDate>Sat, 04 Apr 2026 07:29:13 GMT</pubDate></item><item><title><![CDATA[README]]></title><description><![CDATA[00 index - Index files for the vault; Act both as a hub for 'spokes' of knowledge but also enforce knowledge mapping structure. <a data-href="index" href="index.html" class="internal-link" target="_self" rel="noopener nofollow">index</a> captures the documentation structure01 concepts - Persistent atomic notes, permanent broad knowledge acting as an ever expanding wiki of knowledge gathered working on this project02 references - Library API references, external documentation, and OpenAPI specs03 guides - DX guides, developer workflow documentation<br>04 architecture - Design spec, <a data-tooltip-position="top" aria-label="ARCHITECTURE > Architecture Decision Records" data-href="ARCHITECTURE#Architecture Decision Records" href="04-architecture/architecture.html#Architecture Decision Records" class="internal-link" target="_self" rel="noopener nofollow">ADR</a>s and broader architectural decisions05 notes - 'Fleeting' development notes; precursor to atomic notes in persistent vault above07 stories - User stories and vision documents08 specs - Feature and component specifications99 meta -
 00 templates - Obsidian templates
-]]></description><link>readme.html</link><guid isPermaLink="false">README.md</guid><pubDate>Thu, 02 Apr 2026 09:01:16 GMT</pubDate></item><item><title><![CDATA[v1-implementation-plan]]></title><description><![CDATA[
+]]></description><link>readme.html</link><guid isPermaLink="false">README.md</guid><pubDate>Fri, 03 Apr 2026 04:11:48 GMT</pubDate></item><item><title><![CDATA[v1-implementation-plan]]></title><description><![CDATA[
 Config first, transport second, TUI last — each layer is testable independently
 No task depends on unverified prior work — the inspector must sign off before dependents start
 Atomic tasks — each can be implemented and tested in isolation
 Cargo.toml -&gt; Config parsing -&gt; Transport (API + FS) -&gt; Output pipeline -&gt; Data fetching -&gt; TUI (form -&gt; dashboard -&gt; summary) -&gt; CLI routing (main.rs)
-See the Project State maintained by the Governor agent for current status of each task.]]></description><link>04-architecture/v1-implementation-plan.html</link><guid isPermaLink="false">04 architecture/v1-implementation-plan.md</guid><pubDate>Thu, 02 Apr 2026 08:17:10 GMT</pubDate></item><item><title><![CDATA[ADR-001-Hybrid-Transport-Layer]]></title><description><![CDATA[Date: 2026-03-31
+See the Project State maintained by the Governor agent for current status of each task.]]></description><link>04-architecture/v1-implementation-plan.html</link><guid isPermaLink="false">04 architecture/v1-implementation-plan.md</guid><pubDate>Fri, 03 Apr 2026 04:11:48 GMT</pubDate></item><item><title><![CDATA[ADR-001-Hybrid-Transport-Layer]]></title><description><![CDATA[Date: 2026-03-31
 Status: AcceptedContext:
 The core ethos of pour is killing friction. Relying solely on the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> means data entry fails if the Obsidian Electron client is closed. Relying solely on the filesystem means missing out on advanced API features when the vault is open.Decision:
 Implement a dual-pronged Transport dispatcher.
@@ -17,7 +552,7 @@ Implement a dual-pronged Transport dispatcher.
 If the connection is refused, automatically fall back to direct filesystem writes via std::fs.
 Consequences: Positive: Maximum resilience. The user never loses a log entry due to application state.
 <br>Negative: Feature asymmetry. The API backend returns raw filenames (for example, latte.md) while the FS backend returns file stems (latte). This requires normalization in <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
-<br>See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-2-transport-report" href="06-reports/sprints/sprint-2-transport-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-2-transport-report</a>.]]></description><link>04-architecture/adr/adr-001-hybrid-transport-layer.html</link><guid isPermaLink="false">04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md</guid><pubDate>Thu, 02 Apr 2026 08:17:09 GMT</pubDate></item><item><title><![CDATA[ADR-002-Custom-YAML-Serialization]]></title><description><![CDATA[Date: 2026-03-31
+<br>See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-2-transport-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-2-transport-report</a>.]]></description><link>04-architecture/adr/adr-001-hybrid-transport-layer.html</link><guid isPermaLink="false">04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md</guid><pubDate>Fri, 03 Apr 2026 04:11:47 GMT</pubDate></item><item><title><![CDATA[ADR-002-Custom-YAML-Serialization]]></title><description><![CDATA[Date: 2026-03-31
 Status: AcceptedContext:
 Obsidian Properties and Dataview require highly specific YAML frontmatter formatting. Standard serialization crates like serde_yaml introduce a runtime dependency for writing and often format arrays or special characters in ways that Obsidian handles poorly.Decision:
 Write a custom generate_frontmatter pipeline instead of relying on generic serializers.
@@ -25,21 +560,331 @@ Auto-injects and prioritizes the date field.
 Automatically double-quotes values containing YAML-special characters.
 Detects comma-separated string inputs and expands them into YAML lists.
 Consequences:
-Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-3-output-pipeline-report" href="06-reports/sprints/sprint-3-output-pipeline-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-3-output-pipeline-report</a>.]]></description><link>04-architecture/adr/adr-002-custom-yaml-serialization.html</link><guid isPermaLink="false">04 architecture/adr/ADR-002-Custom-YAML-Serialization.md</guid><pubDate>Thu, 02 Apr 2026 08:17:09 GMT</pubDate></item><item><title><![CDATA[ADR-003-Synchronous-TUI-Async-Operations]]></title><description><![CDATA[Date: 2026-03-31
+Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>, and <a data-href="sprint-3-output-pipeline-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-3-output-pipeline-report</a>.]]></description><link>04-architecture/adr/adr-002-custom-yaml-serialization.html</link><guid isPermaLink="false">04 architecture/adr/ADR-002-Custom-YAML-Serialization.md</guid><pubDate>Fri, 03 Apr 2026 04:11:47 GMT</pubDate></item><item><title><![CDATA[ADR-003-Synchronous-TUI-Async-Operations]]></title><description><![CDATA[Date: 2026-03-31
 Status: Accepted (v1 specific)Context:
 The main.rs event loop uses tokio for async data fetching and API submissions. Managing true background async in a TUI requires complex channels and shared state to prevent UI freezing while waiting for network responses.Decision:
 For v1, fetch_dynamic_options and handle_submit calls are awaited inline, effectively blocking the UI thread during network operations.Consequences:
-Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>, and <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/adr/adr-003-synchronous-tui-async-operations.html</link><guid isPermaLink="false">04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md</guid><pubDate>Thu, 02 Apr 2026 08:17:08 GMT</pubDate></item><item><title><![CDATA[The-3-Tier-Data-Fallback]]></title><description><![CDATA[Used for populating dynamic_select UI fields without perceived latency in the <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> form flow.When the TUI initializes a form that requires dynamic data, it executes fetch_options() using a strict three-tier degradation path:
-<br>Tier 1 (Transport): Attempts to read the live directory via the active <a data-tooltip-position="top" aria-label="ADR-001-Hybrid-Transport-Layer" data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">transport layer</a> (API or FS).
-Tier 2 (Cache): If transport fails or is slow, it queries the atomic local JSON cache at ~/.cache/pour/state.json.
-Tier 3 (Empty Fallback): If cache is empty or corrupt, it returns an empty vector, dynamically shifting the UI to accept free-text input rather than a strict select list.
-<br>This fallback behavior is part of the broader <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and is called out in <a data-href="sprint-4-data-fetching-report" href="06-reports/sprints/sprint-4-data-fetching-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-4-data-fetching-report</a>.Note: Results are always normalized to file stems (stripping .md) before being cached.]]></description><link>01-concepts/the-3-tier-data-fallback.html</link><guid isPermaLink="false">01 concepts/The-3-Tier-Data-Fallback.md</guid><pubDate>Thu, 02 Apr 2026 08:17:08 GMT</pubDate></item><item><title><![CDATA[Guide-Adding-New-Field-Types]]></title><description><![CDATA[When extending the configuration schema, touch these layers in order so the new field stays coherent across <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> and the running app:
+Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.See also <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>, <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>, and <a data-href="sprint-6-integration-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/adr/adr-003-synchronous-tui-async-operations.html</link><guid isPermaLink="false">04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md</guid><pubDate>Fri, 03 Apr 2026 04:11:47 GMT</pubDate></item><item><title><![CDATA[Guide-Adding-New-Field-Types]]></title><description><![CDATA[When extending the configuration schema, touch these layers in order so the new field stays coherent across <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> and the running app:
 Config Layer (src/config.rs): Add the new variant to the FieldType enum. Update validate() if the field requires specific properties, like static_select requiring options.
 State Layer (src/app.rs): Update App::init_form() to handle any default state population for the new field, and App::validate_form() if it requires custom validation logic before submission.
 Presentation Layer (src/tui/form.rs): Add the render logic to render(). Determine if it renders inline like text or requires a popup overlay like selects.
 Input Handling (src/tui/form.rs): Update the KeyEvent matcher to handle how the user interacts with this specific field when it is active.
 Output Layer (src/output/mod.rs): Ensure the field's data structure is properly routed to either frontmatter or body targets during submission.
-<br>For the current TUI shape and event routing, see <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and <a data-href="sprint-5-tui-report" href="06-reports/sprints/sprint-5-tui-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-5-tui-report</a>.]]></description><link>03-guides/guide-adding-new-field-types.html</link><guid isPermaLink="false">03 guides/Guide-Adding-New-Field-Types.md</guid><pubDate>Thu, 02 Apr 2026 08:17:08 GMT</pubDate></item><item><title><![CDATA[sprint-5-tui-report]]></title><description><![CDATA[Implement the terminal UI layer: app state management, three screen views (dashboard, form, summary), event handling, and top-level wiring that dispatches rendering and input to the correct view.
+<br>For the current TUI shape and event routing, see <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and <a data-href="sprint-5-tui-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-5-tui-report</a>.]]></description><link>03-guides/guide-adding-new-field-types.html</link><guid isPermaLink="false">03 guides/Guide-Adding-New-Field-Types.md</guid><pubDate>Fri, 03 Apr 2026 04:11:47 GMT</pubDate></item><item><title><![CDATA[the_pour_manifesto]]></title><description><![CDATA[Obsidian is a beautiful, sprawling garden for our minds. It is the perfect place to wander, connect ideas, and synthesize knowledge.But opening the gates takes too long.When you are deep in a flow state, dialing in the perfect espresso shot, or standing in the crowd at a festival, your brain operates in seconds, not minutes. If the process of logging a thought takes longer than the thought itself, the thought dies.Opening a GUI, waiting for the Electron client to render, finding the right folder, opening the daily note, and formatting the YAML frontmatter—that isn't just friction. It is a barrier to entry. It makes the act of remembering feel like administrative work. And because of that friction, we stop writing. We lose the nuances of our days.We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely.Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
+Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
+Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
+Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
+Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion. As a developer and enthusiast, I want a frictionless, instant-booting terminal interface to log highly structured data (like coffee recipes and concert memories) directly into my Obsidian vault, so that I can capture the details of the things I love without breaking my workflow or wrestling with a GUI.
+]]></description><link>07-stories/the_pour_manifesto.html</link><guid isPermaLink="false">07 stories/the_pour_manifesto.md</guid><pubDate>Fri, 03 Apr 2026 04:11:46 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://github.com/coddingtonbear/obsidian-local-rest-api" target="_self">https://github.com/coddingtonbear/obsidian-local-rest-api</a><br>
+Full OpenAPI Spec: <a data-href="obsidian-local-rest-api-openapi.yaml" href="02-references/obsidian-local-rest-api-openapi.html" class="internal-link" target="_self" rel="noopener nofollow">obsidian-local-rest-api-openapi.yaml</a>
+All endpoints (except GET /) require Bearer token authentication:Authorization: Bearer &lt;your-api-key&gt;
+Find the API key in Obsidian Settings &gt; Plugins &gt; Local REST API.
+HTTPS: https://127.0.0.1:27124 (self-signed cert)
+HTTP: http://127.0.0.1:27123
+The plugin generates a self-signed certificate on first run. The cert can be fetched from /obsidian-local-rest-api.crt.GET / response:{ "authenticated": true, "ok": "OK", "service": "Obsidian Local REST API", "versions": { "obsidian": "...", "self": "..." }
+}
+GET (read file):
+Default Accept: returns raw markdown (text/markdown)
+Accept: application/vnd.olrapi.note+json: returns JSON with parsed frontmatter, tags, stats
+Accept: application/vnd.olrapi.document-map+json: returns headings, block refs, frontmatter fields
+NoteJson schema:{ "content": "string (markdown)", "frontmatter": {}, "path": "string", "stat": { "ctime": 0, "mtime": 0, "size": 0 }, "tags": ["string"]
+}
+GET (directory listing):
+Returns {"files": [{"path": "…", "stat": {…}}]}
+PUT (create/overwrite):
+Body: file content
+Content-Type: text/markdown for notes
+If-None-Match: * header: only create if file doesn't exist (returns 412 if it does)
+POST (append):
+Body: content to append
+Content-Type: text/markdown
+Content is appended to end of file
+DELETE:
+Returns 204 on success, 404 if not found
+The PATCH method enables targeted content modifications within a note.Required Headers:Optional Headers:Examples:Append under a heading:PATCH /vault/path/to/note.md
+Operation: append
+Target-Type: heading
+Target: Heading 1::Subheading 1:1:1
+Content-Type: text/markdown Hello
+Replace a frontmatter field:PATCH /vault/path/to/note.md
+Operation: replace
+Target-Type: frontmatter
+Target: status
+Content-Type: application/json "done"
+Append to block reference:PATCH /vault/path/to/note.md
+Operation: append
+Target-Type: block
+Target: 2d9b4a
+Content-Type: text/markdown New content here
+Same methods as vault files (GET, PUT, POST, PATCH, DELETE) but operates on the currently open file in Obsidian. No {filename} parameter needed.{period} values: daily, weekly, monthly, quarterly, yearlySame request/response semantics as vault file operations.Simple Search:POST /search/simple/?query=search+terms
+Returns matching filenames with context snippets.Response:[ { "filename": "path/to/note.md", "score": 0.95, "matches": [{ "match": { "start": 0, "end": 10 }, "context": "..." }] }
+]
+Structured Search:POST /search/
+Content-Type: application/vnd.olrapi.dataview.dql+txt TABLE file.name, file.mtime FROM "folder" WHERE contains(tags, "#coffee")
+Or with JsonLogic:POST /search/
+Content-Type: application/vnd.olrapi.jsonlogic+json {"and": [{"glob": [{"var": "path"}, "daily/*"]}]}
+GET /commands/ response:{ "commands": [ { "id": "global-search:open", "name": "Search: Search in all files" }, { "id": "graph:open", "name": "Graph view: Open graph view" } ]
+}
+POST /open/{filename}?newLeaf=true
+Opens the specified file in Obsidian's interface. Creates the file if it doesn't exist.All errors return:{ "errorCode": 40149, "message": "A brief description of the error."
+}
+Error codes are 5-digit numbers unique to each error type.<br>Based on the <a data-tooltip-position="top" aria-label="pour-design-spec" data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">project spec</a>, these are the most relevant endpoints:
+GET / - Check if API is available (connectivity test)
+PUT /vault/{filename} - Create new notes (coffee logs, music sets)
+PATCH /vault/{filename} - Append under headers (journal entries)
+GET /vault/{dirpath}/ - List files in directory (populate dynamic dropdowns)
+POST /search/ - Dataview queries for dynamic selects by tag
+]]></description><link>02-references/obsidian-local-rest-api.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api.md</guid><pubDate>Fri, 03 Apr 2026 04:11:45 GMT</pubDate></item><item><title><![CDATA[toml-serde]]></title><description><![CDATA[
+Sources: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/toml/latest/toml/" target="_self">https://docs.rs/toml/latest/toml/</a>, <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/serde_yaml/latest/serde_yaml/" target="_self">https://docs.rs/serde_yaml/latest/serde_yaml/</a>
+Crates: toml, serde, serde_json, serde_yaml
+use serde::Deserialize; #[derive(Deserialize)]
+struct Config { vault: VaultConfig, modules: std::collections::HashMap&lt;String, ModuleConfig&gt;,
+} #[derive(Deserialize)]
+struct VaultConfig { base_path: String, api_port: u16,
+} #[derive(Deserialize)]
+struct ModuleConfig { mode: String, // "append" or "create" path: String, // strftime-templated path append_under_header: Option&lt;String&gt;, fields: Vec&lt;FieldConfig&gt;,
+} #[derive(Deserialize)]
+struct FieldConfig { name: String, #[serde(rename = "type")] field_type: String, // "textarea", "dynamic_select", "number", etc. prompt: String, source: Option&lt;String&gt;,
+} // Parse
+let config: Config = toml::from_str(&amp;std::fs::read_to_string(path)?)?;
+use serde::Serialize;
+use serde_yaml; #[derive(Serialize)]
+struct CoffeeFrontmatter { bean: String, yield_g: u32, date: String, tags: Vec&lt;String&gt;,
+} let fm = CoffeeFrontmatter { bean: "Ethiopian Yirgacheffe".into(), yield_g: 36, date: "2026-03-30".into(), tags: vec!["coffee".into(), "v60".into()],
+}; let yaml = serde_yaml::to_string(&amp;fm)?;
+// Output:
+// bean: Ethiopian Yirgacheffe
+// yield_g: 36
+// date: '2026-03-30'
+// tags:
+// - coffee
+// - v60 // Wrap as frontmatter
+let frontmatter = format!("---\n{}---\n", yaml);
+use serde_json; // Parse API response
+let files: serde_json::Value = serde_json::from_str(&amp;response_body)?; // Build request body
+let body = serde_json::to_string(&amp;data)?;
+]]></description><link>02-references/toml-serde.html</link><guid isPermaLink="false">02 references/toml-serde.md</guid><pubDate>Fri, 03 Apr 2026 04:11:45 GMT</pubDate></item><item><title><![CDATA[chrono]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/chrono/latest/chrono/" target="_self">https://docs.rs/chrono/latest/chrono/</a>
+Crate: chrono
+Used for generating timestamps in file names (e.g., 2026-03-30_1205_V60.md) and daily note paths (e.g., 2026-03-30.md).use chrono::Local; let now = Local::now();
+// Daily note path: "2026-03-30.md"
+let date_str = now.format("%Y-%m-%d").to_string(); // Coffee log filename: "2026-03-30_1205_Brew.md"
+let timestamp = now.format("%Y-%m-%d_%H%M").to_string(); // Full timestamp for entries: "14:32"
+let time_str = now.format("%H:%M").to_string();
+Common format specifiers:use chrono::NaiveDate; let date = NaiveDate::parse_from_str("2026-03-30", "%Y-%m-%d")?;
+]]></description><link>02-references/chrono.html</link><guid isPermaLink="false">02 references/chrono.md</guid><pubDate>Fri, 03 Apr 2026 04:11:45 GMT</pubDate></item><item><title><![CDATA[reqwest]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/reqwest/latest/reqwest/" target="_self">https://docs.rs/reqwest/latest/reqwest/</a>
+Crate: reqwest (with json feature)
+<br>Reqwest is used to communicate with the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> over HTTP/HTTPS on localhost.use reqwest::Client; // Basic client
+let client = Client::new(); // With custom config (e.g., accept self-signed certs)
+let client = Client::builder() .danger_accept_invalid_certs(true) // needed for Obsidian's self-signed cert .timeout(std::time::Duration::from_secs(5)) .build()?;
+let resp = client.get("https://127.0.0.1:27124/vault/path/to/file.md") .bearer_auth("your-api-key") .send() .await?; let body = resp.text().await?;
+let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(markdown_content) .send() .await?;
+let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(content_to_append) .send() .await?;
+let resp = client.patch("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Operation", "append") .header("Target-Type", "heading") .header("Target", "Brain Dump") .header("Content-Type", "text/markdown") .body("- New thought here\n") .send() .await?;
+// Send JSON
+let resp = client.post(url) .bearer_auth(api_key) .json(&amp;serde_json::json!({"key": "value"})) .send() .await?; // Parse JSON response
+let data: serde_json::Value = resp.json().await?;
+let resp = client.get(url).bearer_auth(key).send().await?; // Check status
+if resp.status().is_success() { let body = resp.text().await?;
+} else { let status = resp.status(); let error_body = resp.text().await?; // handle error
+}
+/// Check if Obsidian REST API is available
+async fn check_api(client: &amp;Client, port: u16) -&gt; bool { client.get(format!("https://127.0.0.1:{}/", port)) .send() .await .map(|r| r.status().is_success()) .unwrap_or(false)
+}
+let resp = client.get("https://127.0.0.1:27124/vault/02-Logbook/Beans/") .bearer_auth(api_key) .send() .await?; let listing: serde_json::Value = resp.json().await?;
+// listing["files"] is an array of {path, stat} objects
+]]></description><link>02-references/reqwest.html</link><guid isPermaLink="false">02 references/reqwest.md</guid><pubDate>Fri, 03 Apr 2026 04:11:45 GMT</pubDate></item><item><title><![CDATA[crossterm]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/crossterm/latest/crossterm/" target="_self">https://docs.rs/crossterm/latest/crossterm/</a>
+Crate: crossterm
+<br>Crossterm is the backend for <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>. It handles raw terminal I/O, event capture, and screen management.use crossterm::{ execute, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+}; // Setup
+enable_raw_mode()?;
+execute!(std::io::stdout(), EnterAlternateScreen)?; // Teardown
+disable_raw_mode()?;
+execute!(std::io::stdout(), LeaveAlternateScreen)?;
+Note: ratatui::init() and ratatui::restore() handle this automatically.use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers}; // Blocking read
+if let Event::Key(key) = event::read()? { match key.code { KeyCode::Char('q') =&gt; { /* quit */ } KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) =&gt; { /* ctrl+c */ } KeyCode::Enter =&gt; { /* submit */ } KeyCode::Tab =&gt; { /* next field */ } KeyCode::BackTab =&gt; { /* prev field */ } KeyCode::Up =&gt; { /* navigate up */ } KeyCode::Down =&gt; { /* navigate down */ } KeyCode::Backspace =&gt; { /* delete char */ } KeyCode::Char(c) =&gt; { /* type character */ } KeyCode::Esc =&gt; { /* cancel */ } _ =&gt; {} }
+} // Non-blocking poll
+if event::poll(std::time::Duration::from_millis(100))? { if let Event::Key(key) = event::read()? { // handle key }
+}
+// Immediate flush (for single commands)
+execute!(stdout, command1, command2)?; // Queued (for batch rendering -- ratatui uses this internally)
+queue!(stdout, command1, command2)?;
+stdout.flush()?;
+]]></description><link>02-references/crossterm.html</link><guid isPermaLink="false">02 references/crossterm.md</guid><pubDate>Fri, 03 Apr 2026 04:11:45 GMT</pubDate></item><item><title><![CDATA[ratatui]]></title><description><![CDATA[
+Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/ratatui/latest/ratatui/" target="_self">https://docs.rs/ratatui/latest/ratatui/</a><br>
+Crate: ratatui (with <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a> backend)
+Ratatui uses an immediate rendering model -- the entire frame is redrawn each cycle. No widget state is retained between frames.fn main() -&gt; Result&lt;()&gt; { let mut terminal = ratatui::init(); let result = run(&amp;mut terminal); ratatui::restore(); result
+} fn run(terminal: &amp;mut DefaultTerminal) -&gt; Result&lt;()&gt; { loop { terminal.draw(|frame| { // render widgets here frame.render_widget(my_widget, frame.area()); })?; // handle events if let Event::Key(key) = crossterm::event::read()? { match key.code { KeyCode::Char('q') =&gt; break, _ =&gt; {} } } } Ok(())
+}
+use ratatui::layout::{Layout, Constraint, Direction}; // Vertical stack
+let chunks = Layout::vertical([ Constraint::Length(3), // fixed 3 rows Constraint::Min(0), // fill remaining Constraint::Length(1), // fixed 1 row
+]).split(frame.area()); // Horizontal split
+let cols = Layout::horizontal([ Constraint::Percentage(50), Constraint::Percentage(50),
+]).split(chunks[1]);
+Constraint variants: Length(u16), Min(u16), Max(u16), Percentage(u16), Fill(u16), Ratio(u32, u32)let block = Block::default() .title("My Block") .borders(Borders::ALL) .border_style(Style::default().fg(Color::Cyan));
+let text = Paragraph::new("Hello world") .block(Block::default().borders(Borders::ALL)) .style(Style::default().fg(Color::White)) .wrap(Wrap { trim: true });
+let items = vec![ ListItem::new("Item 1"), ListItem::new("Item 2"), ListItem::new("Item 3"),
+];
+let list = List::new(items) .block(Block::default().title("Menu").borders(Borders::ALL)) .highlight_style(Style::default().add_modifier(Modifier::BOLD)) .highlight_symbol("&gt;&gt; "); // Requires StatefulWidget rendering:
+frame.render_stateful_widget(list, area, &amp;mut list_state);
+let rows = vec![ Row::new(vec!["Cell1", "Cell2"]), Row::new(vec!["Cell3", "Cell4"]),
+];
+let table = Table::new(rows, [Constraint::Length(10), Constraint::Length(10)]) .header(Row::new(vec!["Col1", "Col2"]).style(Style::default().bold())) .block(Block::default().borders(Borders::ALL));
+let tabs = Tabs::new(vec!["Tab1", "Tab2", "Tab3"]) .select(current_tab) .highlight_style(Style::default().fg(Color::Yellow));
+Text hierarchy: Text &gt; Line &gt; Spanuse ratatui::text::{Text, Line, Span};
+use ratatui::style::{Style, Color, Modifier, Stylize}; // Fluent API via Stylize trait
+let span = "bold red".red().bold(); // Composed line
+let line = Line::from(vec![ Span::raw("Normal "), Span::styled("highlighted", Style::default().fg(Color::Yellow).bold()),
+]); // Multi-line text
+let text = Text::from(vec![ Line::from("Line 1"), Line::from("Line 2"),
+]);
+Some widgets (List, Table) have associated state types:let mut list_state = ListState::default();
+list_state.select(Some(0)); // select first item // In render:
+frame.render_stateful_widget(list, area, &amp;mut list_state); // Navigation:
+list_state.select_next();
+list_state.select_previous();
+Ratatui doesn't have built-in form widgets. Common patterns:
+App struct holds form state (current field, field values, cursor positions)
+Event handler routes input to the active field
+Render function draws each field with appropriate styling (active vs inactive)
+Third-party crates: tui-textarea, tui-input for text input widgets
+]]></description><link>02-references/ratatui.html</link><guid isPermaLink="false">02 references/ratatui.md</guid><pubDate>Fri, 03 Apr 2026 04:11:44 GMT</pubDate></item><item><title><![CDATA[Design-Language]]></title><description><![CDATA[Primary: ▽
+Fallback: v▽ reads as a funnel, dripper, intake cone. It covers coffee, music, and thought capture without collapsing into one domain. It survives any terminal font. Nerd Font glyphs are acceptable as optional enhancements but never as the primary mark.The TUI should feel sharp, ritualized, command-forward, and quietly technical.It should not feel cozy, corporate, menu-first, or playful. The product is about immediate capture under flow. The interface is a precision tool you trust at 1am, not a friendly dashboard.Text reads like a tool, not an app.▽ pour coffee not Welcome to Pour
+▽ saved not Your entry was successfully written
+transport: api not Transport Mode: API
+Lowercase. Terse. Imperative. Almost command-line dry.▽ pour [local]
+The front door. One branded mark, module list below as a clean launcher, transport badge as system state.Empty state: no modules configured. add modules to config.toml.▽ pour coffee — Brew Log
+The strongest expression of the product. The ▽ anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads [ submit ] — lowercase, tool-voiced.▽ saved (success — green bold)
+! error (failure — red bold)
+The brand mark signals completed flow. Dropping it on error is intentional — the funnel failed, the pattern breaks, the red styling does the rest.Body labels are terse and lowercase: path: 02-Logbook/2026-04-01-brew.md transport: api
+▽ configure coffee [modified]
+Intentionally more utilitarian than the form. Module key only — display name omitted. This is maintenance mode, not the main ritual. Browser overlay title: browse: {path}.No centralized theme file. All styling is inline via ratatui's Style builder.
+One ▽ per screen. It belongs in the header. Not on list items, footers, or popups.
+Angular geometry. Brackets, dividers, compact tags. No rounded emoji-style symbols.
+Contrast is functional. Cyan for active, dark gray for scaffolding, yellow for hints. Never decorative.
+No coffee tropes. No mug icons, steam motifs, beans, or cafe signage.
+No terminal cosplay. No ASCII art banners, heavy box drawing, or CRT gimmicks.
+Headers establish context in one line. Brand, module, state.
+Footers are operational. Key hints only. Not a branding surface.
+If the mark becomes an SVG for web or docs:
+Outline cone
+One centered drop or point of flow
+No mug handle, no steam, no dense detail
+Same geometry as ▽, same restraint.]]></description><link>03-guides/design-language.html</link><guid isPermaLink="false">03 guides/Design-Language.md</guid><pubDate>Fri, 03 Apr 2026 04:11:43 GMT</pubDate></item><item><title><![CDATA[v1.0.0-Release]]></title><description><![CDATA[The core capture loop is complete.Features:
+Ambient Dashboard: The homepage displays capture rhythm stats (last pour, today/week counts, streak), per-module activity counts, recent capture history, and gap indicators for neglected modules. Launch via pour or bypass directly to a workflow via pour &lt;module_key&gt;.
+Resilient Transport: Seamlessly shifts between the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian REST API</a> and direct filesystem writes if the vault is closed. See <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
+Dynamic Form Rendering: Parses ~/.config/pour/config.toml to dynamically construct UI forms.
+<br>Smart Data Fetching: dynamic_select fields automatically query vault directories for options, backed by an atomic local JSON cache (~/.cache/pour/state.json). See <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
+Capture History: Every successful write is logged to ~/.cache/pour/history.json, powering the dashboard's ambient stats and enabling behavioral feedback loops.
+<br>Obsidian-Native Output: Custom YAML generation ensures compatibility with Obsidian Properties. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
+In-App Configuration: Module settings (Ctrl+E) and vault settings (Ctrl+V) editable from the dashboard without leaving the TUI. Uses toml_edit for comment-preserving atomic writes.
+Known Limitations (v1):
+<br>Network operations block the UI thread momentarily. See <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
+<br>Release context: <a data-href="sprint-6-integration-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a> and <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>.]]></description><link>09-milestones/v1.0.0-release.html</link><guid isPermaLink="false">09 milestones/v1.0.0-Release.md</guid><pubDate>Fri, 03 Apr 2026 04:11:43 GMT</pubDate></item><item><title><![CDATA[index]]></title><description><![CDATA[
+For LLMs: Start here. Navigate to a directory index for scoped exploration, or jump directly to a core document below. For Humans: See above… but use the graph to guide your exploration!
+We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely..obsidian/ is vault configuration and snippet state, not part of the documentation corpus.
+<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (source of truth)
+<br><a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour
+<br><a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> — Concise subsystem map
+<br><a data-href="v1.0.0-Release" href="09-milestones/v1.0.0-release.html" class="internal-link" target="_self" rel="noopener nofollow">v1.0.0-Release</a> — Current release milestone
+Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
+Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
+Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
+Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
+Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion.
+cargo build # compile
+cargo run # run dashboard
+cargo run -- coffee # run a specific module
+cargo test # run all tests
+cargo clippy # lint
+cargo fmt # format
+Pour writes to Obsidian via a hybrid transport layer:
+<br>API — HTTPS via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs)
+File System — Direct std::fs fallback if API unavailable
+API query -&gt; disk scan -&gt; ~/.cache/pour/state.json cache -&gt; freetext inputLast Updated: 2026-03-31
+Documentation Version: v0.1.0]]></description><link>index.html</link><guid isPermaLink="false">index.md</guid><pubDate>Fri, 03 Apr 2026 04:11:43 GMT</pubDate></item><item><title><![CDATA[The-3-Tier-Data-Fallback]]></title><description><![CDATA[Used for populating dynamic_select UI fields without perceived latency in the <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> form flow.When the TUI initializes a form that requires dynamic data, it executes fetch_options() using a strict three-tier degradation path:
+<br>Tier 1 (Transport): Attempts to read the live directory via the active <a data-tooltip-position="top" aria-label="ADR-001-Hybrid-Transport-Layer" data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">transport layer</a> (API or FS).
+Tier 2 (Cache): If transport fails or is slow, it queries the atomic local JSON cache at ~/.cache/pour/state.json.
+Tier 3 (Empty Fallback): If cache is empty or corrupt, it returns an empty vector, dynamically shifting the UI to accept free-text input rather than a strict select list.
+<br>This fallback behavior is part of the broader <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> and is called out in <a data-href="sprint-4-data-fetching-report" href=".html" class="internal-link" target="_self" rel="noopener nofollow">sprint-4-data-fetching-report</a>.Note: Results are always normalized to file stems (stripping .md) before being cached.<br>When allow_create = true on a dynamic_select field, the fallback pipeline gains a write path. Novel values entered via freetext (at any tier) trigger auto-creation of bare notes on form submit, seeding the cache for future sessions. See <a data-href="Inline-Note-Creation" href="01-concepts/inline-note-creation.html" class="internal-link" target="_self" rel="noopener nofollow">Inline-Note-Creation</a> for details.]]></description><link>01-concepts/the-3-tier-data-fallback.html</link><guid isPermaLink="false">01 concepts/The-3-Tier-Data-Fallback.md</guid><pubDate>Fri, 03 Apr 2026 04:11:42 GMT</pubDate></item><item><title><![CDATA[ADR-004-API-Append-Read-Modify-Write]]></title><description><![CDATA[Date: 2026-04-02
+Status: AcceptedContext:
+The Obsidian Local REST API's heading-targeted PATCH append (Operation: append, Target-Type: heading) inserts a *** thematic break between the existing section content and the appended content. This is a server-side behavior that cannot be suppressed via headers or body formatting. The result is visible clutter in daily notes that accumulates with every pour me entry.The previous implementation used two requests: a GET for the document map (to resolve the full :: delimited heading path) followed by the PATCH append.Decision:
+Replace the heading-targeted PATCH with a read-modify-write cycle: GET the file as text/markdown, splice the new content under the target heading in-memory (using the same insertion logic as the filesystem transport), then PUT the full file back.Consequences:
+Positive: Eliminates the unwanted *** separator. Append output is now identical regardless of whether the API or filesystem transport is used. Also removes the document-map resolution step, simplifying the code.
+Negative: Introduces a read-modify-write race — if another process writes to the same file between the GET and PUT, that write is lost. This is acceptable because pour is a single-user CLI tool and concurrent writes to the same heading are not a realistic scenario.
+Neutral: Request count stays at two (was GET map + PATCH, now GET file + PUT file). No measurable performance difference.
+]]></description><link>04-architecture/adr/adr-004-api-append-read-modify-write.html</link><guid isPermaLink="false">04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md</guid><pubDate>Fri, 03 Apr 2026 04:11:42 GMT</pubDate></item><item><title><![CDATA[Inline-Note-Creation]]></title><description><![CDATA[When a dynamic_select field has allow_create = true, Pour extends the capture flow to include vault-side note creation. This closes the loop between data entry and data management — the user never leaves the TUI to scaffold a new option.
+The user types a value that doesn't match any existing option in the dropdown.
+The dropdown shows + Create "{value}" as a visual affordance.
+On form submit, Pour detects the novel value and auto-creates a bare note at {source}/{value}.md with minimal frontmatter (date only).
+The note is created before the main module output is written, so any wikilink = true references resolve immediately in Obsidian.
+The local cache is updated so subsequent form loads include the new option without a transport round-trip.
+This feature extends <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a> with an output side. The fallback pipeline handles reading options into the TUI; inline creation handles writing new options back to the vault. Together they form a closed loop:Vault ──[fetch]──&gt; Cache ──&gt; Dropdown ──[novel value]──&gt; Auto-create ──&gt; Vault
+When all three tiers fail and the dropdown is empty, allow_create fields accept freetext input (Tier 3 behavior). The submitted value triggers note creation, seeding the cache for future sessions.User-typed values are sanitized before becoming filenames:
+Characters invalid in cross-platform filenames (: ? * &lt; &gt; | " \ /) are replaced with -
+Consecutive dashes are collapsed
+Leading/trailing dashes and whitespace are trimmed
+Windows reserved device names (CON, NUL, COM1-COM9, LPT1-LPT9) are rejected
+Empty results after sanitization are skipped
+Duplicate detection is case-insensitive and checks both the raw typed value and its sanitized form against existing options.Note creation is best-effort. If the transport layer fails (network error, permission issue), the main form write still proceeds. The failure is logged to stderr but does not block the user's capture flow.By default, inline creation produces a bare stub — a note with only a date field. For richer notes, add a create_template reference to the field:[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+wikilink = true
+create_template = "bean"
+post_create_command = "templater:run" # optional — fires an Obsidian command after creation
+When the user types a novel value, a sub-form overlay appears with the template's fields. The user fills them in without leaving Pour, and the created note gets full structured frontmatter.The overlay is a centered modal that appears over the main form:
+Shows the template's fields (text, number, static_select)
+Tab/Shift+Tab navigates fields
+Enter on the submit button creates the note
+Esc cancels without creating anything
+Falls back to bare stub creation if the terminal is too small
+post_create_command fires an Obsidian command via the REST API after note creation. This bridges Pour's data capture with Obsidian plugins:
+Pour writes frontmatter (structured data it collected)
+Templater (or any plugin) adds body content, formatting, and dynamic expressions
+Only fires when connected via API; silently skipped on filesystem transport
+Templates are defined at the top level of config.toml:[templates.bean]
+path = "Coffee/Beans/{{name}}.md" [[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster" [[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia", "Kenya"]
+<br>{{name}} is replaced with the user's typed value. The path also supports strftime tokens (%Y, %m, %d). See <a data-href="field-types#Templates" href="02-references/field-types.html#Templates" class="internal-link" target="_self" rel="noopener nofollow">field-types &gt; Templates</a> for the full schema reference.# Basic — bare stub creation
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+wikilink = true # Advanced — template-driven creation with Templater hook
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+wikilink = true
+create_template = "bean"
+post_create_command = "templater:run"
+<br>See <a data-href="field-types" href="02-references/field-types.html" class="internal-link" target="_self" rel="noopener nofollow">field-types</a> for the full allow_create, wikilink, create_template, and post_create_command reference.]]></description><link>01-concepts/inline-note-creation.html</link><guid isPermaLink="false">01 concepts/Inline-Note-Creation.md</guid><pubDate>Fri, 03 Apr 2026 04:11:41 GMT</pubDate></item><item><title><![CDATA[inline-creation-future-phases]]></title><description><![CDATA[[templates.&lt;name&gt;] config sections define reusable note templates with path (supporting {{name}} and strftime), and fields (restricted to text, number, static_select). Referenced by create_template on dynamic_select fields. Validation enforces template existence, {{name}} in path, no .. traversal, unique field names, and reserved name (date, name) rejection.Files: src/config.rs, src/autocreate.rs, tests/config.rs, tests/autocreate.rsWhen allow_create + create_template is set and the user enters a novel value, a centered modal sub-form overlay appears with the template's fields. Supports text input with char-index cursor, number validation, static_select dropdowns. Submit creates the note with full frontmatter, Esc cancels. Graceful degradation to bare stub if terminal too small.Files: src/tui/form.rs, src/app.rspost_create_command fires an Obsidian command via REST API /commands/{commandId}/ after template-driven note creation. Enables coordination with Templater and other plugins. Silently skipped on filesystem transport.Files: src/transport/api.rs, src/transport/mod.rs, src/main.rs
+Nested templates / recursive sub-forms
+Dynamic data sources in template fields (only static_select supported, not dynamic_select)
+Template inheritance or composition
+TUI configure screen support for editing create_template / post_create_command fields
+Dataview DQL query sources for template field options
+]]></description><link>05-notes/inline-creation-future-phases.html</link><guid isPermaLink="false">05 notes/inline-creation-future-phases.md</guid><pubDate>Fri, 03 Apr 2026 04:11:40 GMT</pubDate></item><item><title><![CDATA[ARCHITECTURE]]></title><description><![CDATA[
+<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (v0.2) <br><a data-href="v1-implementation-plan" href="04-architecture/v1-implementation-plan.html" class="internal-link" target="_self" rel="noopener nofollow">v1-implementation-plan</a> — V1 task backlog and sprint sequencing <br><a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a> — Why Pour uses a dual API/filesystem transport
+<br><a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a> — Why frontmatter uses custom serialization instead of serde_yaml
+<br><a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a> — How sync TUI coexists with async network calls
+]]></description><link>00-index/architecture.html</link><guid isPermaLink="false">00 index/ARCHITECTURE.md</guid><pubDate>Thu, 02 Apr 2026 09:18:40 GMT</pubDate></item><item><title><![CDATA[sprint-5-tui-report]]></title><description><![CDATA[Implement the terminal UI layer: app state management, three screen views (dashboard, form, summary), event handling, and top-level wiring that dispatches rendering and input to the correct view.
 App struct: config, transport, screen enum (Dashboard/Form/Summary), selected_module, form_state, summary_state, sorted module_keys
 FormState: field_values HashMap, field_options HashMap, active_field index, validation_errors, cursor_position
 SummaryState: message, file_path (Option), transport_mode
@@ -161,190 +1006,9 @@ transport::dispatcher: 6 passed test result: ok. 59 passed; 0 failed Hand-built 
 write_create and write_append accept a Transport, a ModuleConfig, and field values -- all of which the TUI will have after form completion
 The functions return the vault-relative path of the written file, which the TUI can display as confirmation
 Error handling uses anyhow::Result consistently, ready for TUI error display
-Next sprint candidates: TUI form screens, dynamic data fetching, or the dashboard view.]]></description><link>06-reports/sprints/sprint-3-output-pipeline-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-3-output-pipeline-report.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[the_pour_manifesto]]></title><description><![CDATA[Obsidian is a beautiful, sprawling garden for our minds. It is the perfect place to wander, connect ideas, and synthesize knowledge.But opening the gates takes too long.When you are deep in a flow state, dialing in the perfect espresso shot, or standing in the crowd at a festival, your brain operates in seconds, not minutes. If the process of logging a thought takes longer than the thought itself, the thought dies.Opening a GUI, waiting for the Electron client to render, finding the right folder, opening the daily note, and formatting the YAML frontmatter—that isn't just friction. It is a barrier to entry. It makes the act of remembering feel like administrative work. And because of that friction, we stop writing. We lose the nuances of our days.We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely.Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
-Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
-Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
-Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
-Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion. As a developer and enthusiast, I want a frictionless, instant-booting terminal interface to log highly structured data (like coffee recipes and concert memories) directly into my Obsidian vault, so that I can capture the details of the things I love without breaking my workflow or wrestling with a GUI.
-]]></description><link>07-stories/the_pour_manifesto.html</link><guid isPermaLink="false">07 stories/the_pour_manifesto.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[STORIES]]></title><description><![CDATA[Vision documents and narratives behind Pour.
+Next sprint candidates: TUI form screens, dynamic data fetching, or the dashboard view.]]></description><link>06-reports/sprints/sprint-3-output-pipeline-report.html</link><guid isPermaLink="false">06 reports/sprints/sprint-3-output-pipeline-report.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[STORIES]]></title><description><![CDATA[Vision documents and narratives behind Pour.
 <a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour: the problem, the vision, and the ethos
-]]></description><link>00-index/stories.html</link><guid isPermaLink="false">00 index/STORIES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[obsidian-local-rest-api]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://github.com/coddingtonbear/obsidian-local-rest-api" target="_self">https://github.com/coddingtonbear/obsidian-local-rest-api</a><br>
-Full OpenAPI Spec: <a data-href="obsidian-local-rest-api-openapi.yaml" href="02-references/obsidian-local-rest-api-openapi.html" class="internal-link" target="_self" rel="noopener nofollow">obsidian-local-rest-api-openapi.yaml</a>
-All endpoints (except GET /) require Bearer token authentication:Authorization: Bearer &lt;your-api-key&gt;
-Find the API key in Obsidian Settings &gt; Plugins &gt; Local REST API.
-HTTPS: https://127.0.0.1:27124 (self-signed cert)
-HTTP: http://127.0.0.1:27123
-The plugin generates a self-signed certificate on first run. The cert can be fetched from /obsidian-local-rest-api.crt.GET / response:{ "authenticated": true, "ok": "OK", "service": "Obsidian Local REST API", "versions": { "obsidian": "...", "self": "..." }
-}
-GET (read file):
-Default Accept: returns raw markdown (text/markdown)
-Accept: application/vnd.olrapi.note+json: returns JSON with parsed frontmatter, tags, stats
-Accept: application/vnd.olrapi.document-map+json: returns headings, block refs, frontmatter fields
-NoteJson schema:{ "content": "string (markdown)", "frontmatter": {}, "path": "string", "stat": { "ctime": 0, "mtime": 0, "size": 0 }, "tags": ["string"]
-}
-GET (directory listing):
-Returns {"files": [{"path": "…", "stat": {…}}]}
-PUT (create/overwrite):
-Body: file content
-Content-Type: text/markdown for notes
-If-None-Match: * header: only create if file doesn't exist (returns 412 if it does)
-POST (append):
-Body: content to append
-Content-Type: text/markdown
-Content is appended to end of file
-DELETE:
-Returns 204 on success, 404 if not found
-The PATCH method enables targeted content modifications within a note.Required Headers:Optional Headers:Examples:Append under a heading:PATCH /vault/path/to/note.md
-Operation: append
-Target-Type: heading
-Target: Heading 1::Subheading 1:1:1
-Content-Type: text/markdown Hello
-Replace a frontmatter field:PATCH /vault/path/to/note.md
-Operation: replace
-Target-Type: frontmatter
-Target: status
-Content-Type: application/json "done"
-Append to block reference:PATCH /vault/path/to/note.md
-Operation: append
-Target-Type: block
-Target: 2d9b4a
-Content-Type: text/markdown New content here
-Same methods as vault files (GET, PUT, POST, PATCH, DELETE) but operates on the currently open file in Obsidian. No {filename} parameter needed.{period} values: daily, weekly, monthly, quarterly, yearlySame request/response semantics as vault file operations.Simple Search:POST /search/simple/?query=search+terms
-Returns matching filenames with context snippets.Response:[ { "filename": "path/to/note.md", "score": 0.95, "matches": [{ "match": { "start": 0, "end": 10 }, "context": "..." }] }
-]
-Structured Search:POST /search/
-Content-Type: application/vnd.olrapi.dataview.dql+txt TABLE file.name, file.mtime FROM "folder" WHERE contains(tags, "#coffee")
-Or with JsonLogic:POST /search/
-Content-Type: application/vnd.olrapi.jsonlogic+json {"and": [{"glob": [{"var": "path"}, "daily/*"]}]}
-GET /commands/ response:{ "commands": [ { "id": "global-search:open", "name": "Search: Search in all files" }, { "id": "graph:open", "name": "Graph view: Open graph view" } ]
-}
-POST /open/{filename}?newLeaf=true
-Opens the specified file in Obsidian's interface. Creates the file if it doesn't exist.All errors return:{ "errorCode": 40149, "message": "A brief description of the error."
-}
-Error codes are 5-digit numbers unique to each error type.<br>Based on the <a data-tooltip-position="top" aria-label="pour-design-spec" data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">project spec</a>, these are the most relevant endpoints:
-GET / - Check if API is available (connectivity test)
-PUT /vault/{filename} - Create new notes (coffee logs, music sets)
-PATCH /vault/{filename} - Append under headers (journal entries)
-GET /vault/{dirpath}/ - List files in directory (populate dynamic dropdowns)
-POST /search/ - Dataview queries for dynamic selects by tag
-]]></description><link>02-references/obsidian-local-rest-api.html</link><guid isPermaLink="false">02 references/obsidian-local-rest-api.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[toml-serde]]></title><description><![CDATA[
-Sources: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/toml/latest/toml/" target="_self">https://docs.rs/toml/latest/toml/</a>, <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/serde_yaml/latest/serde_yaml/" target="_self">https://docs.rs/serde_yaml/latest/serde_yaml/</a>
-Crates: toml, serde, serde_json, serde_yaml
-use serde::Deserialize; #[derive(Deserialize)]
-struct Config { vault: VaultConfig, modules: std::collections::HashMap&lt;String, ModuleConfig&gt;,
-} #[derive(Deserialize)]
-struct VaultConfig { base_path: String, api_port: u16,
-} #[derive(Deserialize)]
-struct ModuleConfig { mode: String, // "append" or "create" path: String, // strftime-templated path append_under_header: Option&lt;String&gt;, fields: Vec&lt;FieldConfig&gt;,
-} #[derive(Deserialize)]
-struct FieldConfig { name: String, #[serde(rename = "type")] field_type: String, // "textarea", "dynamic_select", "number", etc. prompt: String, source: Option&lt;String&gt;,
-} // Parse
-let config: Config = toml::from_str(&amp;std::fs::read_to_string(path)?)?;
-use serde::Serialize;
-use serde_yaml; #[derive(Serialize)]
-struct CoffeeFrontmatter { bean: String, yield_g: u32, date: String, tags: Vec&lt;String&gt;,
-} let fm = CoffeeFrontmatter { bean: "Ethiopian Yirgacheffe".into(), yield_g: 36, date: "2026-03-30".into(), tags: vec!["coffee".into(), "v60".into()],
-}; let yaml = serde_yaml::to_string(&amp;fm)?;
-// Output:
-// bean: Ethiopian Yirgacheffe
-// yield_g: 36
-// date: '2026-03-30'
-// tags:
-// - coffee
-// - v60 // Wrap as frontmatter
-let frontmatter = format!("---\n{}---\n", yaml);
-use serde_json; // Parse API response
-let files: serde_json::Value = serde_json::from_str(&amp;response_body)?; // Build request body
-let body = serde_json::to_string(&amp;data)?;
-]]></description><link>02-references/toml-serde.html</link><guid isPermaLink="false">02 references/toml-serde.md</guid><pubDate>Thu, 02 Apr 2026 08:17:06 GMT</pubDate></item><item><title><![CDATA[chrono]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/chrono/latest/chrono/" target="_self">https://docs.rs/chrono/latest/chrono/</a>
-Crate: chrono
-Used for generating timestamps in file names (e.g., 2026-03-30_1205_V60.md) and daily note paths (e.g., 2026-03-30.md).use chrono::Local; let now = Local::now();
-// Daily note path: "2026-03-30.md"
-let date_str = now.format("%Y-%m-%d").to_string(); // Coffee log filename: "2026-03-30_1205_Brew.md"
-let timestamp = now.format("%Y-%m-%d_%H%M").to_string(); // Full timestamp for entries: "14:32"
-let time_str = now.format("%H:%M").to_string();
-Common format specifiers:use chrono::NaiveDate; let date = NaiveDate::parse_from_str("2026-03-30", "%Y-%m-%d")?;
-]]></description><link>02-references/chrono.html</link><guid isPermaLink="false">02 references/chrono.md</guid><pubDate>Thu, 02 Apr 2026 08:17:06 GMT</pubDate></item><item><title><![CDATA[reqwest]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/reqwest/latest/reqwest/" target="_self">https://docs.rs/reqwest/latest/reqwest/</a>
-Crate: reqwest (with json feature)
-<br>Reqwest is used to communicate with the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> over HTTP/HTTPS on localhost.use reqwest::Client; // Basic client
-let client = Client::new(); // With custom config (e.g., accept self-signed certs)
-let client = Client::builder() .danger_accept_invalid_certs(true) // needed for Obsidian's self-signed cert .timeout(std::time::Duration::from_secs(5)) .build()?;
-let resp = client.get("https://127.0.0.1:27124/vault/path/to/file.md") .bearer_auth("your-api-key") .send() .await?; let body = resp.text().await?;
-let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(markdown_content) .send() .await?;
-let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Content-Type", "text/markdown") .body(content_to_append) .send() .await?;
-let resp = client.patch("https://127.0.0.1:27124/vault/path/to/note.md") .bearer_auth("your-api-key") .header("Operation", "append") .header("Target-Type", "heading") .header("Target", "Brain Dump") .header("Content-Type", "text/markdown") .body("- New thought here\n") .send() .await?;
-// Send JSON
-let resp = client.post(url) .bearer_auth(api_key) .json(&amp;serde_json::json!({"key": "value"})) .send() .await?; // Parse JSON response
-let data: serde_json::Value = resp.json().await?;
-let resp = client.get(url).bearer_auth(key).send().await?; // Check status
-if resp.status().is_success() { let body = resp.text().await?;
-} else { let status = resp.status(); let error_body = resp.text().await?; // handle error
-}
-/// Check if Obsidian REST API is available
-async fn check_api(client: &amp;Client, port: u16) -&gt; bool { client.get(format!("https://127.0.0.1:{}/", port)) .send() .await .map(|r| r.status().is_success()) .unwrap_or(false)
-}
-let resp = client.get("https://127.0.0.1:27124/vault/02-Logbook/Beans/") .bearer_auth(api_key) .send() .await?; let listing: serde_json::Value = resp.json().await?;
-// listing["files"] is an array of {path, stat} objects
-]]></description><link>02-references/reqwest.html</link><guid isPermaLink="false">02 references/reqwest.md</guid><pubDate>Thu, 02 Apr 2026 08:17:06 GMT</pubDate></item><item><title><![CDATA[crossterm]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/crossterm/latest/crossterm/" target="_self">https://docs.rs/crossterm/latest/crossterm/</a>
-Crate: crossterm
-<br>Crossterm is the backend for <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>. It handles raw terminal I/O, event capture, and screen management.use crossterm::{ execute, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-}; // Setup
-enable_raw_mode()?;
-execute!(std::io::stdout(), EnterAlternateScreen)?; // Teardown
-disable_raw_mode()?;
-execute!(std::io::stdout(), LeaveAlternateScreen)?;
-Note: ratatui::init() and ratatui::restore() handle this automatically.use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers}; // Blocking read
-if let Event::Key(key) = event::read()? { match key.code { KeyCode::Char('q') =&gt; { /* quit */ } KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) =&gt; { /* ctrl+c */ } KeyCode::Enter =&gt; { /* submit */ } KeyCode::Tab =&gt; { /* next field */ } KeyCode::BackTab =&gt; { /* prev field */ } KeyCode::Up =&gt; { /* navigate up */ } KeyCode::Down =&gt; { /* navigate down */ } KeyCode::Backspace =&gt; { /* delete char */ } KeyCode::Char(c) =&gt; { /* type character */ } KeyCode::Esc =&gt; { /* cancel */ } _ =&gt; {} }
-} // Non-blocking poll
-if event::poll(std::time::Duration::from_millis(100))? { if let Event::Key(key) = event::read()? { // handle key }
-}
-// Immediate flush (for single commands)
-execute!(stdout, command1, command2)?; // Queued (for batch rendering -- ratatui uses this internally)
-queue!(stdout, command1, command2)?;
-stdout.flush()?;
-]]></description><link>02-references/crossterm.html</link><guid isPermaLink="false">02 references/crossterm.md</guid><pubDate>Thu, 02 Apr 2026 08:17:06 GMT</pubDate></item><item><title><![CDATA[ratatui]]></title><description><![CDATA[
-Source: <a rel="noopener nofollow" class="external-link is-unresolved" href="https://docs.rs/ratatui/latest/ratatui/" target="_self">https://docs.rs/ratatui/latest/ratatui/</a><br>
-Crate: ratatui (with <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a> backend)
-Ratatui uses an immediate rendering model -- the entire frame is redrawn each cycle. No widget state is retained between frames.fn main() -&gt; Result&lt;()&gt; { let mut terminal = ratatui::init(); let result = run(&amp;mut terminal); ratatui::restore(); result
-} fn run(terminal: &amp;mut DefaultTerminal) -&gt; Result&lt;()&gt; { loop { terminal.draw(|frame| { // render widgets here frame.render_widget(my_widget, frame.area()); })?; // handle events if let Event::Key(key) = crossterm::event::read()? { match key.code { KeyCode::Char('q') =&gt; break, _ =&gt; {} } } } Ok(())
-}
-use ratatui::layout::{Layout, Constraint, Direction}; // Vertical stack
-let chunks = Layout::vertical([ Constraint::Length(3), // fixed 3 rows Constraint::Min(0), // fill remaining Constraint::Length(1), // fixed 1 row
-]).split(frame.area()); // Horizontal split
-let cols = Layout::horizontal([ Constraint::Percentage(50), Constraint::Percentage(50),
-]).split(chunks[1]);
-Constraint variants: Length(u16), Min(u16), Max(u16), Percentage(u16), Fill(u16), Ratio(u32, u32)let block = Block::default() .title("My Block") .borders(Borders::ALL) .border_style(Style::default().fg(Color::Cyan));
-let text = Paragraph::new("Hello world") .block(Block::default().borders(Borders::ALL)) .style(Style::default().fg(Color::White)) .wrap(Wrap { trim: true });
-let items = vec![ ListItem::new("Item 1"), ListItem::new("Item 2"), ListItem::new("Item 3"),
-];
-let list = List::new(items) .block(Block::default().title("Menu").borders(Borders::ALL)) .highlight_style(Style::default().add_modifier(Modifier::BOLD)) .highlight_symbol("&gt;&gt; "); // Requires StatefulWidget rendering:
-frame.render_stateful_widget(list, area, &amp;mut list_state);
-let rows = vec![ Row::new(vec!["Cell1", "Cell2"]), Row::new(vec!["Cell3", "Cell4"]),
-];
-let table = Table::new(rows, [Constraint::Length(10), Constraint::Length(10)]) .header(Row::new(vec!["Col1", "Col2"]).style(Style::default().bold())) .block(Block::default().borders(Borders::ALL));
-let tabs = Tabs::new(vec!["Tab1", "Tab2", "Tab3"]) .select(current_tab) .highlight_style(Style::default().fg(Color::Yellow));
-Text hierarchy: Text &gt; Line &gt; Spanuse ratatui::text::{Text, Line, Span};
-use ratatui::style::{Style, Color, Modifier, Stylize}; // Fluent API via Stylize trait
-let span = "bold red".red().bold(); // Composed line
-let line = Line::from(vec![ Span::raw("Normal "), Span::styled("highlighted", Style::default().fg(Color::Yellow).bold()),
-]); // Multi-line text
-let text = Text::from(vec![ Line::from("Line 1"), Line::from("Line 2"),
-]);
-Some widgets (List, Table) have associated state types:let mut list_state = ListState::default();
-list_state.select(Some(0)); // select first item // In render:
-frame.render_stateful_widget(list, area, &amp;mut list_state); // Navigation:
-list_state.select_next();
-list_state.select_previous();
-Ratatui doesn't have built-in form widgets. Common patterns:
-App struct holds form state (current field, field values, cursor positions)
-Event handler routes input to the active field
-Render function draws each field with appropriate styling (active vs inactive)
-Third-party crates: tui-textarea, tui-input for text input widgets
-]]></description><link>02-references/ratatui.html</link><guid isPermaLink="false">02 references/ratatui.md</guid><pubDate>Thu, 02 Apr 2026 08:17:06 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Hot storage for development notes. Notes here are fleeting — consolidate into concepts, guides, or ADRs before version releases.No active notes yet.]]></description><link>00-index/notes.html</link><guid isPermaLink="false">00 index/NOTES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:05 GMT</pubDate></item><item><title><![CDATA[sprint-1-foundation-report]]></title><description><![CDATA[Sprint 1 established the project foundation: a buildable Rust project with a fully typed, validated configuration layer. All three tasks passed inspection with cargo check, cargo test (13 tests), cargo clippy, and cargo fmt -- --check all clean.Created the project manifest with Rust 2024 edition and all required dependencies:
+]]></description><link>00-index/stories.html</link><guid isPermaLink="false">00 index/STORIES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:07 GMT</pubDate></item><item><title><![CDATA[NOTES]]></title><description><![CDATA[Hot storage for development notes. Notes here are fleeting — consolidate into concepts, guides, or ADRs before version releases.No active notes yet.]]></description><link>00-index/notes.html</link><guid isPermaLink="false">00 index/NOTES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:05 GMT</pubDate></item><item><title><![CDATA[sprint-1-foundation-report]]></title><description><![CDATA[Sprint 1 established the project foundation: a buildable Rust project with a fully typed, validated configuration layer. All three tasks passed inspection with cargo check, cargo test (13 tests), cargo clippy, and cargo fmt -- --check all clean.Created the project manifest with Rust 2024 edition and all required dependencies:
 TUI: ratatui, crossterm
 Serialization: serde (with derive), toml, serde_yaml, serde_json
 Networking: reqwest (with json + rustls-tls, no OpenSSL dependency on Windows)
@@ -552,29 +1216,7 @@ isolate AI output
 strengthen wiki linking
 tab through suggestions quickly
 apply synthesis without surrendering authorship
-That is the correct complement to the manifesto: capture first, synthesize later, and keep both acts native to plaintext and the terminal.]]></description><link>08-specs/distill-first-pass-spec.html</link><guid isPermaLink="false">08 specs/distill-first-pass-spec.md</guid><pubDate>Thu, 02 Apr 2026 08:17:05 GMT</pubDate></item><item><title><![CDATA[Design-Language]]></title><description><![CDATA[Primary: ▽
-Fallback: v▽ reads as a funnel, dripper, intake cone. It covers coffee, music, and thought capture without collapsing into one domain. It survives any terminal font. Nerd Font glyphs are acceptable as optional enhancements but never as the primary mark.The TUI should feel sharp, ritualized, command-forward, and quietly technical.It should not feel cozy, corporate, menu-first, or playful. The product is about immediate capture under flow. The interface is a precision tool you trust at 1am, not a friendly dashboard.Text reads like a tool, not an app.▽ pour coffee not Welcome to Pour
-▽ saved not Your entry was successfully written
-transport: api not Transport Mode: API
-Lowercase. Terse. Imperative. Almost command-line dry.▽ pour [local]
-The front door. One branded mark, module list below as a clean launcher, transport badge as system state.Empty state: no modules configured. add modules to config.toml.▽ pour coffee — Brew Log
-The strongest expression of the product. The ▽ anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads [ submit ] — lowercase, tool-voiced.▽ saved (success — green bold)
-! error (failure — red bold)
-The brand mark signals completed flow. Dropping it on error is intentional — the funnel failed, the pattern breaks, the red styling does the rest.Body labels are terse and lowercase: path: 02-Logbook/2026-04-01-brew.md transport: api
-▽ configure coffee [modified]
-Intentionally more utilitarian than the form. Module key only — display name omitted. This is maintenance mode, not the main ritual. Browser overlay title: browse: {path}.No centralized theme file. All styling is inline via ratatui's Style builder.
-One ▽ per screen. It belongs in the header. Not on list items, footers, or popups.
-Angular geometry. Brackets, dividers, compact tags. No rounded emoji-style symbols.
-Contrast is functional. Cyan for active, dark gray for scaffolding, yellow for hints. Never decorative.
-No coffee tropes. No mug icons, steam motifs, beans, or cafe signage.
-No terminal cosplay. No ASCII art banners, heavy box drawing, or CRT gimmicks.
-Headers establish context in one line. Brand, module, state.
-Footers are operational. Key hints only. Not a branding surface.
-If the mark becomes an SVG for web or docs:
-Outline cone
-One centered drop or point of flow
-No mug handle, no steam, no dense detail
-Same geometry as ▽, same restraint.]]></description><link>03-guides/design-language.html</link><guid isPermaLink="false">03 guides/Design-Language.md</guid><pubDate>Thu, 02 Apr 2026 08:17:04 GMT</pubDate></item><item><title><![CDATA[implementation-debt-and-dependency-audit]]></title><description><![CDATA[
+That is the correct complement to the manifesto: capture first, synthesize later, and keep both acts native to plaintext and the terminal.]]></description><link>08-specs/distill-first-pass-spec.html</link><guid isPermaLink="false">08 specs/distill-first-pass-spec.md</guid><pubDate>Thu, 02 Apr 2026 08:17:05 GMT</pubDate></item><item><title><![CDATA[implementation-debt-and-dependency-audit]]></title><description><![CDATA[
 Validate all module write targets as vault-relative before they reach transport
 Make config persistence atomic (write-then-rename)
 Remove serde_yaml
@@ -704,141 +1346,9 @@ The dependency review was backed by:
 cargo tree
 cargo metadata --format-version 1 --no-deps
 repo-wide symbol usage search
-cargo test could not be completed in the current Windows environment because Cargo could not write to the target directory due to Access is denied errors. That constraint should be resolved before treating this branch as release-ready.]]></description><link>06-reports/implementation-debt-and-dependency-audit.html</link><guid isPermaLink="false">06 reports/implementation-debt-and-dependency-audit.md</guid><pubDate>Thu, 02 Apr 2026 08:17:04 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
-Offline-First Resilience: Works with the Obsidian Local REST API, but falls back seamlessly to direct file-system operations if the vault is closed.
-Snappy &amp; Rhythmic: Designed around the pour command. Fast muscle memory.
-Data Integrity: Generates strict YAML frontmatter and standard Markdown to ensure 100% compatibility with Obsidian Properties (Bases) and Dataview.
-The application has two primary execution paths:Running the base command opens the main interactive hub.
-Header: Displays vault connection status (🟢 API Connected | 🟡 Direct File Mode).
-Body: Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). [Deviation: not implemented in v1 — dashboard shows module list with connection status only.]
-Menu: Navigable list to launch specific modules (me, coffee).
-Bypasses the dashboard and launches directly into a specific data-entry view.
-pour me — Opens the journal appending view.
-pour coffee — Opens the coffee logging form.
-Upon submitting a form, the app does not immediately exit. It transitions to a Summary View displaying:
-A success message with the destination file path.
-Options: [Enter] Main Menu, [A] Pour Another → .., [Q] Quit, [O] Open file in $EDITOR. [Deviation: [O] not implemented in v1 — summary supports Enter, A, and Q only.]
-Pour uses a dual-pronged approach to writing data:
-<br>Primary (API): Attempts a fast local HTTPS request via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs). [Deviation: originally spec'd as HTTP; implementation uses HTTPS with danger_accept_invalid_certs.]
-Fallback (File System): If the connection is refused, it gracefully falls back to std::fs to write directly to the absolute vault path defined in the configuration.
-API Authentication: The REST API plugin requires a Bearer token. Pour supports two sources:
-api_key field under [vault] in config.toml.
-POUR_API_KEY environment variable (takes precedence over config if set).
-3-tier fallback (API → disk scan → cache → freetext) with async background refresh.Append vs. create modes, and how fields map to frontmatter/body.Full TOML schema, field type reference, and validation rules — see config schema section.
-Language: Rust (2024 Edition)
-<br>TUI Framework: <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> + <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>
-<br>Serialization: serde, serde_json, <a data-tooltip-position="top" aria-label="toml-serde" data-href="toml-serde" href="02-references/toml-serde.html" class="internal-link" target="_self" rel="noopener nofollow">toml</a>, toml_edit [Deviation: serde_yaml was originally included but removed — YAML frontmatter uses custom serialization instead. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.]
-<br>Network: <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> (with tokio for async fetching)
-<br>Time: <a data-href="chrono" href="02-references/chrono.html" class="internal-link" target="_self" rel="noopener nofollow">chrono</a> (for file formatting and timestamps)
-The following are explicitly in scope for v0.1:
-Dashboard with connection status and module menu
-pour me (append mode with Templater integration + atomic note fallback)
-pour coffee (create mode with frontmatter generation)
-Hybrid transport layer (API → filesystem fallback)
-Dynamic data fetching (API → disk scan → cache → freetext)
-Configurable append templates (callout default)
-Configurable theme (accent color, border style) [Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]
-Post-execution summary view
-required field validation
-The following are explicitly deferred:
-pour music module (generic config supports it when ready)
-Rich validation (min/max, regex)
-Tag-based dynamic_select sources
-Plugin/extension system
-]]></description><link>08-specs/pour-design-spec.html</link><guid isPermaLink="false">08 specs/pour-design-spec.md</guid><pubDate>Thu, 02 Apr 2026 08:17:04 GMT</pubDate></item><item><title><![CDATA[field-types]]></title><description><![CDATA[This document covers all field types available in Pour's config.toml schema, their config keys, validation rules, default output targets, and TUI rendering behavior.Every field in a module's [[modules.&lt;name&gt;.fields]] array supports these keys:Any field can override its default via target = "frontmatter" or target = "body".Single-line free text input.[[modules.coffee.fields]]
-name = "origin"
-field_type = "text"
-prompt = "Bean origin"
-TUI: Inline text input with cursor. Accepts any characters.
-Output: Value written as-is to frontmatter (or body if overridden).Multi-line text input with an editor overlay.[[modules.me.fields]]
-name = "body"
-field_type = "textarea"
-prompt = "What's on your mind?"
-target = "body"
-TUI: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
-Output: Defaults to Markdown body. Can be overridden to frontmatter.Numeric input. Restricts keyboard input to digits, ., and -.[[modules.coffee.fields]]
-name = "rating"
-field_type = "number"
-prompt = "Rating (1-5)"
-default = "3"
-TUI: Inline text input, filtered to numeric characters only.
-Output: Written to frontmatter as an unquoted YAML number (if parseable as integer or float). Falls back to quoted string if the value contains non-numeric content.
-Validation: Non-numeric characters are rejected at input time, not at submit time.Dropdown with hardcoded options defined in config.[[modules.coffee.fields]]
-name = "brew_method"
-field_type = "static_select"
-prompt = "Brew method"
-options = ["V60", "AeroPress", "Espresso", "French Press"]
-TUI: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
-Output: Selected string written to frontmatter.
-Validation: options must be present and non-empty. Config load fails otherwise.Dropdown populated from vault directory contents at runtime.[[modules.coffee.fields]]
-name = "bean"
-field_type = "dynamic_select"
-prompt = "Bean"
-source = "Coffee/Beans"
-TUI: Same dropdown interaction as static_select. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (~/.cache/pour/state.json), then freetext input if all fail.
-Output: Selected string written to frontmatter.
-Validation: source must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or .. traversal paths). Config load fails otherwise.
-Source path: Relative to the vault root. Example: "Coffee/Beans" resolves to &lt;vault_base_path&gt;/Coffee/Beans/.Tabular data entry with multiple columns (sub-fields). Renders as a YAML array of objects in frontmatter or a Markdown table in body.[[modules.recipe.fields]]
-name = "ingredients"
-field_type = "composite_array"
-prompt = "Ingredients" [[modules.recipe.fields.sub_fields]]
-name = "item"
-field_type = "text"
-prompt = "Item" [[modules.recipe.fields.sub_fields]]
-name = "amount"
-field_type = "number"
-prompt = "Amount" [[modules.recipe.fields.sub_fields]]
-name = "unit"
-field_type = "static_select"
-prompt = "Unit"
-options = ["g", "ml", "oz", "cups", "tbsp", "tsp"]
-TUI: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output.
-Output (frontmatter): Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers.ingredients: - item: "flour" amount: 200 unit: "g" - item: "milk" amount: 250 unit: "ml"
-Output (body): Rendered as a Markdown table.
-Validation: sub_fields must be present and non-empty. Sub-field names must be unique. static_select sub-fields must have non-empty options.Sub-fields support a restricted set of types — no nesting or dynamic data:These keys are set on the module itself, not on individual fields:]]></description><link>02-references/field-types.html</link><guid isPermaLink="false">02 references/field-types.md</guid><pubDate>Thu, 02 Apr 2026 08:17:03 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[Feature and component specifications.
+cargo test could not be completed in the current Windows environment because Cargo could not write to the target directory due to Access is denied errors. That constraint should be resolved before treating this branch as release-ready.]]></description><link>06-reports/implementation-debt-and-dependency-audit.html</link><guid isPermaLink="false">06 reports/implementation-debt-and-dependency-audit.md</guid><pubDate>Thu, 02 Apr 2026 08:17:04 GMT</pubDate></item><item><title><![CDATA[SPECS]]></title><description><![CDATA[Feature and component specifications.
 <a data-href="distill-first-pass-spec" href="08-specs/distill-first-pass-spec.html" class="internal-link" target="_self" rel="noopener nofollow">distill-first-pass-spec</a> — First-pass specification for the distill concept; standalone AI local companion TUI
-]]></description><link>00-index/specs.html</link><guid isPermaLink="false">00 index/SPECS.md</guid><pubDate>Thu, 02 Apr 2026 08:17:03 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[Library API references and external documentation for Pour's tech stack.]]></description><link>00-index/references.html</link><guid isPermaLink="false">00 index/REFERENCES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:03 GMT</pubDate></item><item><title><![CDATA[v1.0.0-Release]]></title><description><![CDATA[The core capture loop is complete.Features:
-Ambient Dashboard: The homepage displays capture rhythm stats (last pour, today/week counts, streak), per-module activity counts, recent capture history, and gap indicators for neglected modules. Launch via pour or bypass directly to a workflow via pour &lt;module_key&gt;.
-Resilient Transport: Seamlessly shifts between the <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian REST API</a> and direct filesystem writes if the vault is closed. See <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
-Dynamic Form Rendering: Parses ~/.config/pour/config.toml to dynamically construct UI forms.
-<br>Smart Data Fetching: dynamic_select fields automatically query vault directories for options, backed by an atomic local JSON cache (~/.cache/pour/state.json). See <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
-Capture History: Every successful write is logged to ~/.cache/pour/history.json, powering the dashboard's ambient stats and enabling behavioral feedback loops.
-<br>Obsidian-Native Output: Custom YAML generation ensures compatibility with Obsidian Properties. See <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
-In-App Configuration: Module settings (Ctrl+E) and vault settings (Ctrl+V) editable from the dashboard without leaving the TUI. Uses toml_edit for comment-preserving atomic writes.
-Known Limitations (v1):
-<br>Network operations block the UI thread momentarily. See <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
-<br>Release context: <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a> and <a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a>.]]></description><link>09-milestones/v1.0.0-release.html</link><guid isPermaLink="false">09 milestones/v1.0.0-Release.md</guid><pubDate>Thu, 02 Apr 2026 08:17:02 GMT</pubDate></item><item><title><![CDATA[index]]></title><description><![CDATA[
-For LLMs: Start here. Navigate to a directory index for scoped exploration, or jump directly to a core document below. For Humans: See above… but use the graph to guide your exploration!
-We don't log data just to have data.We log coffee (pour coffee) because we are chasing the perfect extraction, and we want to remember how that Ethiopian light roast tasted at a 1:15 ratio.We log music (pour music) because the energy of a live set and the people we shared it with are memories worth keeping.We log ourselves (pour me) because our passing thoughts, midnight epiphanies, and daily anxieties deserve a place to rest outside our own heads.We want to write more about the things that bring us joy. To do that, the tool must get out of the way entirely..obsidian/ is vault configuration and snippet state, not part of the documentation corpus.
-<a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a> — Complete design specification (source of truth)
-<br><a data-href="the_pour_manifesto" href="07-stories/the_pour_manifesto.html" class="internal-link" target="_self" rel="noopener nofollow">the_pour_manifesto</a> — Why we build Pour
-<br><a data-href="System-Architecture-Overview" href="04-architecture/system-architecture-overview.html" class="internal-link" target="_self" rel="noopener nofollow">System-Architecture-Overview</a> — Concise subsystem map
-<br><a data-href="v1.0.0-Release" href="09-milestones/v1.0.0-release.html" class="internal-link" target="_self" rel="noopener nofollow">v1.0.0-Release</a> — Current release milestone
-Pour is not a workspace. It is a reflex.It is a terminal-native capture tool designed to be as fluid and instantaneous as the command itself.
-Velocity is a Feature: The time between having a thought and executing the capture must be near zero. pour lives where we already live: the terminal. No context switching, no mouse clicks.
-Capture First, Synthesize Later: pour separates the act of recording from the act of organizing. You pour the raw data into the vault flawlessly formatted. You can open Obsidian on Sunday to make sense of it all.
-Plaintext is Forever: We reject proprietary databases. A memory should not be locked behind a subscription or a specific app version. Everything pour generates is strict, portable Markdown and YAML. It belongs to you.
-Fluidity: The name is the instruction. You don't "execute a script" or "insert a database row." You pour a V60. You pour your thoughts. It is a continuous, natural motion.
-cargo build # compile
-cargo run # run dashboard
-cargo run -- coffee # run a specific module
-cargo test # run all tests
-cargo clippy # lint
-cargo fmt # format
-Pour writes to Obsidian via a hybrid transport layer:
-<br>API — HTTPS via <a data-href="reqwest" href="02-references/reqwest.html" class="internal-link" target="_self" rel="noopener nofollow">reqwest</a> to <a data-tooltip-position="top" aria-label="obsidian-local-rest-api" data-href="obsidian-local-rest-api" href="02-references/obsidian-local-rest-api.html" class="internal-link" target="_self" rel="noopener nofollow">Obsidian Local REST API</a> (https://127.0.0.1:27124, accepts self-signed certs)
-File System — Direct std::fs fallback if API unavailable
-API query -&gt; disk scan -&gt; ~/.cache/pour/state.json cache -&gt; freetext inputLast Updated: 2026-03-31
-Documentation Version: v0.1.0]]></description><link>index.html</link><guid isPermaLink="false">index.md</guid><pubDate>Thu, 02 Apr 2026 08:17:02 GMT</pubDate></item><item><title><![CDATA[System-Architecture-Overview]]></title><description><![CDATA[The codebase strictly separates concerns to isolate terminal drawing from data logic. This note is the short-form companion to <a data-href="pour-design-spec" href="08-specs/pour-design-spec.html" class="internal-link" target="_self" rel="noopener nofollow">pour-design-spec</a>.
-<br>src/main.rs: Entry point. Owns CLI parsing, config load, terminal lifecycle, event loop polling, and orchestrates submit/cache persistence. See also <a data-href="ADR-003-Synchronous-TUI-Async-Operations" href="04-architecture/adr/adr-003-synchronous-tui-async-operations.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-003-Synchronous-TUI-Async-Operations</a>.
-src/init.rs: First-run setup. Implements the pour init flow — generates a starter config.toml with interactive vault path selection and example modules.
-<br>src/tui/: Presentation layer. Routes events to screen handlers (dashboard.rs, form.rs, summary.rs, configure.rs) and dispatches Action enums. The dashboard acts as an ambient capture surface — showing recent activity, capture rhythm stats, and module gaps rather than a simple launcher. Built with <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a> and <a data-href="crossterm" href="02-references/crossterm.html" class="internal-link" target="_self" rel="noopener nofollow">crossterm</a>.
-src/tui/configure.rs: In-app configurator. Provides a TUI form for editing module scalar fields (path, mode, display_name, append_under_header) with a vault directory browser for path selection. Also hosts vault-level settings (ConfigureLevel::VaultSettings) accessible via Ctrl+V from the dashboard.
-src/app.rs: State management. Owns FormState, ConfigureState, BrowserState, active field indices, and input validation.
-<br>src/output/: Write execution. Orchestrates frontmatter.rs generation and template.rs path rendering. Related: <a data-href="ADR-002-Custom-YAML-Serialization" href="04-architecture/adr/adr-002-custom-yaml-serialization.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-002-Custom-YAML-Serialization</a>.
-<br>src/data/: Fetch, cache, and history tier. cache.rs backs dynamic select dropdowns; history.rs tracks capture events (timestamp, module, vault path) persisted at ~/.cache/pour/history.json and surfaces ambient stats on the dashboard (last pour, today/week counts, streak, per-module activity, gaps). Related: <a data-href="The-3-Tier-Data-Fallback" href="01-concepts/the-3-tier-data-fallback.html" class="internal-link" target="_self" rel="noopener nofollow">The-3-Tier-Data-Fallback</a>.
-<br>src/transport/: Network/disk boundary. Hides the complexity of API vs filesystem from the rest of the application. Related: <a data-href="ADR-001-Hybrid-Transport-Layer" href="04-architecture/adr/adr-001-hybrid-transport-layer.html" class="internal-link" target="_self" rel="noopener nofollow">ADR-001-Hybrid-Transport-Layer</a>.
-<br>For the integrated event loop and subsystem wiring, see <a data-href="sprint-6-integration-report" href="06-reports/sprints/sprint-6-integration-report.html" class="internal-link" target="_self" rel="noopener nofollow">sprint-6-integration-report</a>.]]></description><link>04-architecture/system-architecture-overview.html</link><guid isPermaLink="false">04 architecture/System-Architecture-Overview.md</guid><pubDate>Thu, 02 Apr 2026 08:17:02 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
+]]></description><link>00-index/specs.html</link><guid isPermaLink="false">00 index/SPECS.md</guid><pubDate>Thu, 02 Apr 2026 08:17:03 GMT</pubDate></item><item><title><![CDATA[REFERENCES]]></title><description><![CDATA[Library API references and external documentation for Pour's tech stack.]]></description><link>00-index/references.html</link><guid isPermaLink="false">00 index/REFERENCES.md</guid><pubDate>Thu, 02 Apr 2026 08:17:03 GMT</pubDate></item><item><title><![CDATA[pour-design-spec]]></title><description><![CDATA[Pour is a blazing-fast, terminal-native (TUI) capture tool designed to eliminate the friction of logging structured data into Obsidian. Built in Rust (using <a data-href="ratatui" href="02-references/ratatui.html" class="internal-link" target="_self" rel="noopener nofollow">ratatui</a>), it acts as a headless data-entry client, allowing users to rapidly "pour" thoughts and coffee logs directly into their vault without breaking their CLI workflow.Core Philosophy:
 Offline-First Resilience: Works with the Obsidian Local REST API, but falls back seamlessly to direct file-system operations if the vault is closed.
 Snappy &amp; Rhythmic: Designed around the pour command. Fast muscle memory.
 Data Integrity: Generates strict YAML frontmatter and standard Markdown to ensure 100% compatibility with Obsidian Properties (Bases) and Dataview.

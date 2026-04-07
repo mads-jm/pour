@@ -4,7 +4,7 @@ tags:
   - adr
   - transport
 date created: Tuesday, March 31st 2026, 10:02:51 pm
-date modified: Friday, April 3rd 2026, 4:11:47 am
+date modified: Tuesday, April 7th 2026, 3:30:35 am
 ---
 
 # ADR 001: Hybrid Transport Layer (API with FS Fallback)

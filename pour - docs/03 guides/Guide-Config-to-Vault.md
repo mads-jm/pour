@@ -4,12 +4,13 @@ tags:
   - config
   - vault
   - onboarding
-date created: Friday, April 4th 2026
+date created: Sunday, April 5th 2026, 9:34:22 pm
+date modified: Tuesday, April 7th 2026, 3:30:33 am
 ---
 
 # Guide: Adapting Pour to Your Vault
 
-Pour is config-driven — every module, field, path, and template is defined in `~/.config/pour/config.toml`. This guide walks through mapping that config to **your** Obsidian vault structure, starting from the default config and building up to fully customized modules.
+Pour is config-driven — every module, field, path, and template is defined in `~/.config/pour/config.toml`. This guide walks through mapping that config to __your__ Obsidian vault structure, starting from the default config and building up to fully customized modules.
 
 For the complete field reference, see [[field-types]]. For module patterns, see [[pour-design-spec]].
 
@@ -24,14 +25,14 @@ base_path = "/absolute/path/to/your/vault"
 
 This is the root — every `path`, `source`, and template path is relative to this. Find it by looking at where your `.obsidian/` folder lives.
 
-**Windows**: Use escaped backslashes or forward slashes.
+__Windows__: Use escaped backslashes or forward slashes.
 
 ```toml
 base_path = "C:\\Users\\You\\Documents\\MyVault"
 base_path = "C:/Users/You/Documents/MyVault"
 ```
 
-**API (optional)**: If you run the [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin, Pour can write via API and fall back to filesystem when Obsidian is closed.
+__API (optional)__: If you run the [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin, Pour can write via API and fall back to filesystem when Obsidian is closed.
 
 ```toml
 api_port = 27124
@@ -42,7 +43,7 @@ api_key = "your-key"   # or set POUR_API_KEY env var
 
 ## 2. Understand Write Modes
 
-Every module is either **append** or **create**. This is the most important design decision per module.
+Every module is either __append__ or __create__. This is the most important design decision per module.
 
 ### Append Mode
 
@@ -59,9 +60,9 @@ append_under_header = "## Log"             # must match an existing heading
 append_template = "#### {{time}}\n{{body}}" # {{time}}, {{field_name}} placeholders
 ```
 
-**Key constraint**: The note must already exist with the target heading. Pour doesn't create the file in append mode — it finds the heading and inserts below it. Daily note plugins (Templater, Periodic Notes) typically handle file creation.
+__Key constraint__: The note must already exist with the target heading. Pour doesn't create the file in append mode — it finds the heading and inserts below it. Daily note plugins (Templater, Periodic Notes) typically handle file creation.
 
-**Mapping to your vault**: Open your daily note template. Find the heading you want to append under. Copy it exactly (including any wikilinks or formatting).
+__Mapping to your vault__: Open your daily note template. Find the heading you want to append under. Copy it exactly (including any wikilinks or formatting).
 
 ### Create Mode
 
@@ -76,7 +77,7 @@ mode = "create"
 path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"   # {{field_name}} interpolation
 ```
 
-**Mapping to your vault**: Decide where these notes should live. Use existing folder structures. The path supports both strftime tokens (`%Y`, `%m`, `%d`) and field value interpolation (`{{field_name}}`).
+__Mapping to your vault__: Decide where these notes should live. Use existing folder structures. The path supports both strftime tokens (`%Y`, `%m`, `%d`) and field value interpolation (`{{field_name}}`).
 
 ---
 
@@ -84,7 +85,7 @@ path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"   # {{field_name}} interpolation
 
 The most common mistake is getting paths wrong. Here's how to audit your vault structure and map it to config.
 
-### Step 1: Identify your folder scheme
+### Step 1: Identify Your Folder Scheme
 
 Common Obsidian patterns:
 
@@ -95,7 +96,7 @@ Common Obsidian patterns:
 | Date-nested | `Journal/2026/2026-04-04.md` | Use `%Y/%Y-%m-%d.md` |
 | Periodic | `Periodic/Daily/20260404.md` | Use `%Y%m%d.md` |
 
-### Step 2: Map module paths
+### Step 2: Map Module Paths
 
 For each module, trace the path from vault root to where notes should land:
 
@@ -120,7 +121,7 @@ name = "bean"
 source = "02 - Areas/204 - Cooking/Coffee/Beans"
 ```
 
-### Step 3: Verify source folders exist
+### Step 3: Verify Source Folders Exist
 
 Every `dynamic_select` field's `source` path must point to an existing folder in the vault. Pour lists `.md` files in that folder to populate the dropdown. If the folder doesn't exist, Pour falls back to the cache, then to freetext input.
 
@@ -132,10 +133,10 @@ Create the folders first, then add at least one `.md` file so the dropdown has c
 
 Fields flow top-to-bottom in the TUI form. Group them by workflow:
 
-1. **Category/selector fields first** — these control conditional visibility via `show_when`
-2. **Conditional fields next** — equipment, method-specific params
-3. **Universal fields** — fields that appear regardless of selection
-4. **Wrap-up last** — rating, notes, tasting notes
+1. __Category/selector fields first__ — these control conditional visibility via `show_when`
+2. __Conditional fields next__ — equipment, method-specific params
+3. __Universal fields__ — fields that appear regardless of selection
+4. __Wrap-up last__ — rating, notes, tasting notes
 
 ### Field Type Decision Tree
 
@@ -289,7 +290,7 @@ prompt = "Origin"
 options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil"]
 ```
 
-**Path routing with fields**: Template paths can interpolate template field values. This is useful for sorting new notes into subfolders:
+__Path routing with fields__: Template paths can interpolate template field values. This is useful for sorting new notes into subfolders:
 
 ```toml
 [templates.brewer]
@@ -328,7 +329,7 @@ Available placeholders:
 - `{{callout}}` — value of `callout_type` on the module
 - `{{field_name}}` — any field's value by name
 
-**Matching your daily note structure**: Your template's output should be consistent with the note's existing format. If your daily note uses callout blocks under headings, design the append template to match.
+__Matching your daily note structure__: Your template's output should be consistent with the note's existing format. If your daily note uses callout blocks under headings, design the append template to match.
 
 ---
 
@@ -384,7 +385,7 @@ Icons are free-form strings. Use Unicode emoji (`"☕"`) for widest compatibilit
 
 Presets let you save a snapshot of a module's current field values and restore them on future entries. They're designed for workflows where most fields stay the same across entries (same bean, same grinder, same dose) but a few fields vary (tasting notes, entry title).
 
-### How presets work
+### How Presets Work
 
 Each module maintains its own preset list, stored in `~/.cache/pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form.
 
@@ -394,9 +395,9 @@ At the top of every module form, Pour shows a preset row:
 [ No preset ]   ◂ ▸ to cycle
 ```
 
-When you apply a preset, Pour resets **all non-excluded fields** to the preset's saved values. Fields absent from the preset receive their configured `default`. This is deterministic: applying the same preset always produces the same starting state.
+When you apply a preset, Pour resets __all non-excluded fields__ to the preset's saved values. Fields absent from the preset receive their configured `default`. This is deterministic: applying the same preset always produces the same starting state.
 
-### TUI keybindings
+### TUI Keybindings
 
 | Key | Action |
 |-----|--------|
@@ -407,13 +408,13 @@ When you apply a preset, Pour resets **all non-excluded fields** to the preset's
 
 The preset row is always at the top of the form. Navigate to it with `Up` from the first field, or `Down` from the preset row to enter the form.
 
-### When to use presets
+### When to Use Presets
 
 Presets pay off most for create-mode modules with many fields that rarely change. A coffee log is the canonical case: bean, grinder, dose, yield, and time are consistent for a given setup, while tasting notes differ every brew. Save one preset per common setup (e.g., "V60 light roast", "Espresso morning shot") and cycle between them at the top of the form.
 
 Append-mode modules with short forms (journal, task) typically don't need presets.
 
-### Configuring preset exclusion
+### Configuring Preset Exclusion
 
 See the `preset_exclude` key under [section 4](#4-design-your-fields). Mark fields like `textarea` body content and unique entry titles with `preset_exclude = true` so they aren't overwritten when a preset is applied.
 
@@ -538,11 +539,11 @@ cargo run -- <module_name>       # test a specific module form
 ```
 
 Common errors:
-- **"field requires source"** — `dynamic_select` is missing `source` path
-- **"options must not be empty"** — `static_select` is missing `options`
-- **"path is not vault-relative"** — path starts with `/`, `C:\`, `\\`, or contains `..`
-- **"circular show_when dependency"** — field A depends on B which depends on A
-- **"unknown template reference"** — `create_template` names a template that doesn't exist in `[templates]`
+- __"field requires source"__ — `dynamic_select` is missing `source` path
+- __"options must not be empty"__ — `static_select` is missing `options`
+- __"path is not vault-relative"__ — path starts with `/`, `C:\`, `\\`, or contains `..`
+- __"circular show_when dependency"__ — field A depends on B which depends on A
+- __"unknown template reference"__ — `create_template` names a template that doesn't exist in `[templates]`
 
 ---
 

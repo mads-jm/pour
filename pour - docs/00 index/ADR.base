@@ -1,0 +1,22 @@
+filters:
+  and:
+    - file.inFolder("04 architecture/adr")
+views:
+  - type: table
+    name: All ADRs
+    order:
+      - file.name
+  - type: table
+    name: By Status
+    filters:
+      and:
+        - note.status:*
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - date created
+  - type: table
+    name: Chronological
+    order:
+      - date created

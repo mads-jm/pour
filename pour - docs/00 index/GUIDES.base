@@ -1,0 +1,22 @@
+filters:
+  and:
+    - file.inFolder("03 guides")
+views:
+  - type: table
+    name: All Guides
+    order:
+      - file.name
+  - type: table
+    name: By Tag
+    filters:
+      and:
+        - note.tags:*
+    groupBy:
+      property: tags
+      direction: ASC
+    order:
+      - file.name
+  - type: table
+    name: Recently Modified
+    order:
+      - date modified
