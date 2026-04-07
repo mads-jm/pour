@@ -454,7 +454,10 @@ fn add_field_with_show_when_persisted() {
     let config = Config::load().expect("reload should succeed");
     let field = &config.modules["coffee"].fields[2];
     assert_eq!(field.name, "ratio");
-    let sw = field.show_when.as_ref().expect("show_when should be present");
+    let sw = field
+        .show_when
+        .as_ref()
+        .expect("show_when should be present");
     assert_eq!(sw.field, "method");
     assert_eq!(sw.equals.as_deref(), Some("V60"));
     assert!(sw.one_of.is_none());
@@ -491,7 +494,10 @@ fn update_field_add_show_when() {
 
     let config = Config::load().expect("reload should succeed");
     let field = &config.modules["coffee"].fields[1];
-    let sw = field.show_when.as_ref().expect("show_when should be present");
+    let sw = field
+        .show_when
+        .as_ref()
+        .expect("show_when should be present");
     assert_eq!(sw.field, "method");
     assert_eq!(sw.equals.as_deref(), Some("Espresso"));
 }
@@ -1300,7 +1306,10 @@ fn icon_round_trips_through_update_field() {
     Config::update_field_on_disk("coffee", 0, &updates).expect("update should succeed");
 
     let config = Config::load().expect("reload should succeed");
-    assert_eq!(config.modules["coffee"].fields[0].icon.as_deref(), Some("🫘"));
+    assert_eq!(
+        config.modules["coffee"].fields[0].icon.as_deref(),
+        Some("🫘")
+    );
 }
 
 #[test]
@@ -1341,7 +1350,10 @@ prompt = "Note?"
     Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
 
     let written = std::fs::read_to_string(std::env::var("POUR_CONFIG").unwrap()).unwrap();
-    assert!(!written.contains("icon"), "icon key should have been removed from TOML");
+    assert!(
+        !written.contains("icon"),
+        "icon key should have been removed from TOML"
+    );
 
     let config = Config::load().expect("reload should succeed");
     assert!(config.modules["coffee"].icon.is_none());
@@ -1438,8 +1450,7 @@ preset_exclude = true
 
     let config = Config::load().expect("reload should succeed");
     assert_eq!(
-        config.modules["coffee"].fields[1].preset_exclude,
-        None,
+        config.modules["coffee"].fields[1].preset_exclude, None,
         "preset_exclude should be None after removal"
     );
 }

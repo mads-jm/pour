@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -261,7 +261,11 @@ impl ApiClient {
 
     /// Shared helper: fetch and deserialise a directory listing from the API.
     async fn fetch_directory_listing(&self, vault_dir_path: &str) -> Result<DirectoryListing> {
-        let url = format!("{}/vault/{}/", self.base_url, encode_vault_path(vault_dir_path));
+        let url = format!(
+            "{}/vault/{}/",
+            self.base_url,
+            encode_vault_path(vault_dir_path)
+        );
 
         let resp = self
             .client
@@ -345,9 +349,7 @@ fn splice_under_heading(raw: &str, heading: &str, content: &str, shallow: bool) 
         .iter()
         .position(|l| {
             let hashes = l.chars().take_while(|&c| c == '#').count();
-            hashes > 0
-                && l.chars().nth(hashes) == Some(' ')
-                && (shallow || hashes <= heading_level)
+            hashes > 0 && l.chars().nth(hashes) == Some(' ') && (shallow || hashes <= heading_level)
         })
         .map(|rel| heading_idx + 1 + rel);
 

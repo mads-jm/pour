@@ -314,7 +314,11 @@ async fn run_loop(
 }
 
 /// Upsert a preset for the current module and refresh form state.
-fn handle_save_preset(app: &mut App, name: &str, values: std::collections::HashMap<String, String>) {
+fn handle_save_preset(
+    app: &mut App,
+    name: &str,
+    values: std::collections::HashMap<String, String>,
+) {
     let module_key = match app.module_keys.get(app.selected_module) {
         Some(k) => k.clone(),
         None => return,
@@ -331,9 +335,18 @@ fn handle_save_preset(app: &mut App, name: &str, values: std::collections::HashM
     }
 
     // Refresh preset_names and select the newly saved preset
-    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names.iter().position(|n| n == name).map(|i| i + 1).unwrap_or(0);
+        let new_idx = names
+            .iter()
+            .position(|n| n == name)
+            .map(|i| i + 1)
+            .unwrap_or(0);
         fs.preset_names = names;
         fs.selected_preset = new_idx;
     }
@@ -355,7 +368,12 @@ fn handle_delete_preset(app: &mut App, name: &str) {
         let _ = e;
     }
 
-    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     if let Some(ref mut fs) = app.form_state {
         fs.preset_names = names;
         fs.selected_preset = 0; // Back to <none>, but keep current field values.
@@ -375,9 +393,18 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
     }
 
     // Refresh preset_names and find the moved preset's new position
-    let names: Vec<String> = app.presets.get(&module_key).into_iter().map(|p| p.name).collect();
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names.iter().position(|n| n == name).map(|i| i + 1).unwrap_or(fs.selected_preset);
+        let new_idx = names
+            .iter()
+            .position(|n| n == name)
+            .map(|i| i + 1)
+            .unwrap_or(fs.selected_preset);
         fs.preset_names = names;
         fs.selected_preset = new_idx;
     }
@@ -413,8 +440,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
 
         // Collect visible field names so stale hidden values are not written to the vault
         let visible_names: std::collections::HashSet<String> = {
-            let visible_indices =
-                visible_field_indices(&module.fields, &form_state.field_values);
+            let visible_indices = visible_field_indices(&module.fields, &form_state.field_values);
             visible_indices
                 .into_iter()
                 .map(|i| module.fields[i].name.clone())
@@ -540,8 +566,7 @@ async fn handle_create_from_template(
         None => {
             if let Some(ref mut fs) = app.form_state {
                 if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message =
-                        Some(format!("template '{template_name}' not found"));
+                    sf.error_message = Some(format!("template '{template_name}' not found"));
                 }
             }
             return;
@@ -556,8 +581,7 @@ async fn handle_create_from_template(
         None => {
             if let Some(ref mut fs) = app.form_state {
                 if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message =
-                        Some(format!("failed to resolve path for '{note_name}'"));
+                    sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
                 }
             }
             return;
@@ -565,8 +589,12 @@ async fn handle_create_from_template(
     };
 
     // Build note content from template + sub-form values
-    let content =
-        pour::autocreate::build_templated_note_content(template, note_name, sub_form_values, &today);
+    let content = pour::autocreate::build_templated_note_content(
+        template,
+        note_name,
+        sub_form_values,
+        &today,
+    );
 
     // Look up post_create_command before the mutable borrow dance
     let post_command = {
@@ -602,10 +630,8 @@ async fn handle_create_from_template(
                             }
                             // Also add to live field_options so it appears in the dropdown
                             if let Some(ref mut fs) = app.form_state {
-                                let opts = fs
-                                    .field_options
-                                    .entry(field_name.to_string())
-                                    .or_default();
+                                let opts =
+                                    fs.field_options.entry(field_name.to_string()).or_default();
                                 if !pour::autocreate::is_existing_option(&stem, opts) {
                                     opts.push(stem);
                                 }

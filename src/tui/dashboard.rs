@@ -93,10 +93,7 @@ pub fn render(app: &App, frame: &mut Frame) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("  ›  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            vault_name.to_string(),
-            Style::default().fg(Color::White),
-        ),
+        Span::styled(vault_name.to_string(), Style::default().fg(Color::White)),
     ]))
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, chunks[0]);
@@ -191,7 +188,10 @@ pub fn render(app: &App, frame: &mut Frame) {
                 };
 
                 let indicator = if is_selected { "▸ " } else { "  " };
-                let icon_str = app.config.modules.get(key)
+                let icon_str = app
+                    .config
+                    .modules
+                    .get(key)
                     .and_then(|m| m.icon.as_deref())
                     .map(|i| format!("{i} "))
                     .unwrap_or_default();

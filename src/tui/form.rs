@@ -167,157 +167,156 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     let mut items: Vec<ListItem> = vec![preset_item];
 
     // --- Real fields (offset: visible index vi maps to active_field vi+1) ---
-    items.extend(visible_indices
-        .iter()
-        .enumerate()
-        .map(|(vi, &ci)| {
-            let field = &fields[ci];
-            // active_field == vi+1 because preset row occupies slot 0
-            let is_active = (vi + 1) == form_state.active_field;
-            let value = form_state
-                .field_values
+    items.extend(visible_indices.iter().enumerate().map(|(vi, &ci)| {
+        let field = &fields[ci];
+        // active_field == vi+1 because preset row occupies slot 0
+        let is_active = (vi + 1) == form_state.active_field;
+        let value = form_state
+            .field_values
+            .get(&field.name)
+            .map(|s| s.as_str())
+            .unwrap_or("");
+
+        let prompt_style = if is_active {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        // Track whether this field is in active search/filter mode.
+        let field_search_active = is_active
+            && field.field_type == FieldType::DynamicSelect
+            && field.allow_create.unwrap_or(false)
+            && form_state
+                .search_buffers
                 .get(&field.name)
-                .map(|s| s.as_str())
-                .unwrap_or("");
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
 
-            let prompt_style = if is_active {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            };
-
-            // Track whether this field is in active search/filter mode.
-            let field_search_active = is_active
-                && field.field_type == FieldType::DynamicSelect
-                && field.allow_create.unwrap_or(false)
-                && form_state
-                    .search_buffers
+        let value_display = match &field.field_type {
+            FieldType::StaticSelect | FieldType::DynamicSelect => {
+                let display_text = if field_search_active {
+                    form_state
+                        .search_buffers
+                        .get(&field.name)
+                        .cloned()
+                        .unwrap_or_default()
+                } else if value.is_empty() {
+                    "<select>".to_string()
+                } else {
+                    value.to_string()
+                };
+                // Show open/closed chevron when the field is active
+                if is_active {
+                    if form_state.dropdown_open {
+                        format!("{display_text} [^]")
+                    } else {
+                        format!("◂ {display_text} ▸ [v]")
+                    }
+                } else {
+                    display_text
+                }
+            }
+            FieldType::Textarea => {
+                let callout_prefix = form_state
+                    .callout_overrides
                     .get(&field.name)
-                    .map(|s| !s.is_empty())
-                    .unwrap_or(false);
-
-            let value_display = match &field.field_type {
-                FieldType::StaticSelect | FieldType::DynamicSelect => {
-                    let display_text = if field_search_active {
-                        form_state
-                            .search_buffers
-                            .get(&field.name)
-                            .cloned()
-                            .unwrap_or_default()
-                    } else if value.is_empty() {
-                        "<select>".to_string()
+                    .or_else(|| form_state.callout_overrides.get("_callout_type"))
+                    .map(|c| format!("[!{c}] "))
+                    .unwrap_or_default();
+                let label = if value.is_empty() {
+                    format!("{callout_prefix}<enter text>")
+                } else {
+                    let line_count = value.lines().count();
+                    let first_line = value.lines().next().unwrap_or("");
+                    if line_count > 1 {
+                        format!("{callout_prefix}{first_line} [{line_count} lines]")
                     } else {
-                        value.to_string()
-                    };
-                    // Show open/closed chevron when the field is active
+                        format!("{callout_prefix}{first_line}")
+                    }
+                };
+                if is_active {
+                    if form_state.textarea_open {
+                        format!("{label} [^]")
+                    } else {
+                        format!("{label} [v]")
+                    }
+                } else {
+                    label
+                }
+            }
+            FieldType::CompositeArray => {
+                let rows = form_state
+                    .composite_values
+                    .get(&field.name)
+                    .map(|r| r.len())
+                    .unwrap_or(0);
+                let label = if rows == 0 {
+                    "add rows".to_string()
+                } else {
+                    format!("{rows} row{}", if rows == 1 { "" } else { "s" })
+                };
+                if is_active {
+                    if form_state.composite_open {
+                        format!("{label} [^]")
+                    } else {
+                        format!("{label} [v]")
+                    }
+                } else {
+                    label
+                }
+            }
+            _ => {
+                if value.is_empty() {
                     if is_active {
-                        if form_state.dropdown_open {
-                            format!("{display_text} [^]")
-                        } else {
-                            format!("◂ {display_text} ▸ [v]")
-                        }
+                        " ".to_string() // space so the cursor has something to land on
                     } else {
-                        display_text
+                        "<empty>".to_string()
                     }
+                } else {
+                    value.to_string()
                 }
-                FieldType::Textarea => {
-                    let callout_prefix = form_state
-                        .callout_overrides
-                        .get(&field.name)
-                        .or_else(|| form_state.callout_overrides.get("_callout_type"))
-                        .map(|c| format!("[!{c}] "))
-                        .unwrap_or_default();
-                    let label = if value.is_empty() {
-                        format!("{callout_prefix}<enter text>")
-                    } else {
-                        let line_count = value.lines().count();
-                        let first_line = value.lines().next().unwrap_or("");
-                        if line_count > 1 {
-                            format!("{callout_prefix}{first_line} [{line_count} lines]")
-                        } else {
-                            format!("{callout_prefix}{first_line}")
-                        }
-                    };
-                    if is_active {
-                        if form_state.textarea_open {
-                            format!("{label} [^]")
-                        } else {
-                            format!("{label} [v]")
-                        }
-                    } else {
-                        label
-                    }
-                }
-                FieldType::CompositeArray => {
-                    let rows = form_state
-                        .composite_values
-                        .get(&field.name)
-                        .map(|r| r.len())
-                        .unwrap_or(0);
-                    let label = if rows == 0 {
-                        "add rows".to_string()
-                    } else {
-                        format!("{rows} row{}", if rows == 1 { "" } else { "s" })
-                    };
-                    if is_active {
-                        if form_state.composite_open {
-                            format!("{label} [^]")
-                        } else {
-                            format!("{label} [v]")
-                        }
-                    } else {
-                        label
-                    }
-                }
-                _ => {
-                    if value.is_empty() {
-                        if is_active {
-                            " ".to_string() // space so the cursor has something to land on
-                        } else {
-                            "<empty>".to_string()
-                        }
-                    } else {
-                        value.to_string()
-                    }
-                }
-            };
+            }
+        };
 
-            let required_marker = if field.required.unwrap_or(false) {
-                "*"
-            } else {
-                " "
-            };
+        let required_marker = if field.required.unwrap_or(false) {
+            "*"
+        } else {
+            " "
+        };
 
-            let indicator = if is_active { "▸" } else { " " };
+        let indicator = if is_active { "▸" } else { " " };
 
-            // Search-mode gets a distinct style so the user knows they're filtering.
-            let value_style = if field_search_active {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::ITALIC)
-            } else if is_active {
-                Style::default().fg(Color::White)
-            } else {
-                Style::default().fg(Color::Gray)
-            };
+        // Search-mode gets a distinct style so the user knows they're filtering.
+        let value_style = if field_search_active {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::ITALIC)
+        } else if is_active {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
 
-            let icon_prefix = field.icon.as_deref()
-                .map(|i| format!("{i} "))
-                .unwrap_or_default();
+        let icon_prefix = field
+            .icon
+            .as_deref()
+            .map(|i| format!("{i} "))
+            .unwrap_or_default();
 
-            let line = Line::from(vec![
-                Span::styled(format!("{indicator} "), prompt_style),
-                Span::styled(
-                    format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
-                    prompt_style,
-                ),
-                Span::styled(value_display, value_style),
-            ]);
+        let line = Line::from(vec![
+            Span::styled(format!("{indicator} "), prompt_style),
+            Span::styled(
+                format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
+                prompt_style,
+            ),
+            Span::styled(value_display, value_style),
+        ]);
 
-            ListItem::new(line)
-        }));
+        ListItem::new(line)
+    }));
 
     // Submit button row (now at visual index visible_count + 1, because preset row is at 0)
     let submit_style = if submit_active {
@@ -351,7 +350,8 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     };
 
     // Place the terminal block cursor for text/textarea/number fields
-    if !submit_active && !on_preset_row
+    if !submit_active
+        && !on_preset_row
         && let Some(field) = active_config_field
     {
         let is_text_input = matches!(field.field_type, FieldType::Text | FieldType::Number);
@@ -412,7 +412,9 @@ fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSav
         return;
     }
 
-    let modal_width = (area.width * 3 / 5).max(40).min(area.width.saturating_sub(4));
+    let modal_width = (area.width * 3 / 5)
+        .max(40)
+        .min(area.width.saturating_sub(4));
     let modal_height = 5u16;
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
@@ -918,9 +920,15 @@ fn render_sub_form(
 
     // Centered modal: 60% width, height to fit fields + chrome
     let field_count = template.fields.len();
-    let error_row: u16 = if sub_form.error_message.is_some() { 1 } else { 0 };
+    let error_row: u16 = if sub_form.error_message.is_some() {
+        1
+    } else {
+        0
+    };
     let modal_height = (field_count as u16 + 5 + error_row).min(area.height.saturating_sub(4)); // fields + title + button + hints + borders + optional error
-    let modal_width = (area.width * 3 / 5).max(30).min(area.width.saturating_sub(4));
+    let modal_width = (area.width * 3 / 5)
+        .max(30)
+        .min(area.width.saturating_sub(4));
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -972,10 +980,7 @@ fn render_sub_form(
         let label_text = format!("{indicator}{}", tfield.prompt);
         let label = Paragraph::new(Line::from(Span::styled(
             if label_text.chars().count() > label_width as usize {
-                let truncated: String = label_text
-                    .chars()
-                    .take(label_width as usize - 1)
-                    .collect();
+                let truncated: String = label_text.chars().take(label_width as usize - 1).collect();
                 format!("{truncated}…")
             } else {
                 // Pad with spaces to fill label_width (char-aware)
@@ -992,37 +997,36 @@ fn render_sub_form(
         let value_width = inner.width.saturating_sub(label_width);
         let value_area = Rect::new(value_x, row_y, value_width, 1);
 
-        let (display_val, value_style) =
-            if tfield.field_type == TemplateFieldType::StaticSelect {
-                let inner_val = if value.is_empty() { "select" } else { value };
-                let text = if is_active {
-                    format!("◂ {inner_val} ▸")
-                } else {
-                    inner_val.to_string()
-                };
-                let style = if is_active {
-                    Style::default().fg(Color::White)
-                } else if value.is_empty() {
-                    Style::default().fg(Color::DarkGray)
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-                (text, style)
+        let (display_val, value_style) = if tfield.field_type == TemplateFieldType::StaticSelect {
+            let inner_val = if value.is_empty() { "select" } else { value };
+            let text = if is_active {
+                format!("◂ {inner_val} ▸")
             } else {
-                let text = if value.is_empty() {
-                    "…".to_string()
-                } else {
-                    value.to_string()
-                };
-                let style = if is_active {
-                    Style::default().fg(Color::White)
-                } else if value.is_empty() {
-                    Style::default().fg(Color::DarkGray)
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-                (text, style)
+                inner_val.to_string()
             };
+            let style = if is_active {
+                Style::default().fg(Color::White)
+            } else if value.is_empty() {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            (text, style)
+        } else {
+            let text = if value.is_empty() {
+                "…".to_string()
+            } else {
+                value.to_string()
+            };
+            let style = if is_active {
+                Style::default().fg(Color::White)
+            } else if value.is_empty() {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            (text, style)
+        };
         let val_widget = Paragraph::new(Line::from(Span::styled(display_val, value_style)));
         frame.render_widget(val_widget, value_area);
 
@@ -1080,7 +1084,6 @@ fn render_sub_form(
         ]));
         frame.render_widget(hint, hint_area);
     }
-
 }
 
 /// Recompute which field `active_field` should point at after a potential
@@ -1104,10 +1107,7 @@ fn render_sub_form(
 ///   its new visible position.
 /// - If `ci` is no longer visible, prefer next visible field (higher config
 ///   index), then previous, then submit.
-fn clamp_active_to_visible(
-    form_state: &mut FormState,
-    fields: &[crate::config::FieldConfig],
-) {
+fn clamp_active_to_visible(form_state: &mut FormState, fields: &[crate::config::FieldConfig]) {
     let visible = visible_field_indices(fields, &form_state.field_values);
     let visible_count = visible.len();
     // active_field layout: 0=preset, 1..=visible_count=fields, visible_count+1=submit
@@ -1168,9 +1168,7 @@ fn active_field_config<'a>(
     }
     let visible = visible_field_indices(&module.fields, &form_state.field_values);
     let vi = form_state.active_field - 1; // convert from visual index to 0-based visible index
-    visible
-        .get(vi)
-        .and_then(|&ci| module.fields.get(ci))
+    visible.get(vi).and_then(|&ci| module.fields.get(ci))
 }
 
 /// Handle a key event while in Form view.
@@ -1276,7 +1274,9 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         && !form_state.textarea_open
         && !form_state.composite_open
         && ((on_preset_row || on_submit_button)
-            || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+            || key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL))
     {
         let prefill = if form_state.selected_preset > 0 {
             form_state
@@ -1296,10 +1296,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     }
 
     // Delete preset: bare 'd' or Ctrl+D on preset row with a real preset selected.
-    if key.code == KeyCode::Char('d')
-        && on_preset_row
-        && form_state.selected_preset > 0
-    {
+    if key.code == KeyCode::Char('d') && on_preset_row && form_state.selected_preset > 0 {
         form_state.confirm_delete_preset = true;
         return FormAction::None;
     }
@@ -1311,7 +1308,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
         match key.code {
             KeyCode::Left => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                {
                     // Ctrl+Left: reorder backward
                     if form_state.selected_preset > 0 {
                         let name = form_state
@@ -1319,16 +1319,26 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                             .get(form_state.selected_preset - 1)
                             .cloned()
                             .unwrap_or_default();
-                        return FormAction::ReorderPreset { name, direction: -1 };
+                        return FormAction::ReorderPreset {
+                            name,
+                            direction: -1,
+                        };
                     }
                 } else {
                     // Left: cycle backward
                     if total > 0 {
-                        form_state.selected_preset = (form_state.selected_preset + total - 1) % total;
+                        form_state.selected_preset =
+                            (form_state.selected_preset + total - 1) % total;
                         let preset_entry = if form_state.selected_preset > 0 {
-                            let pname = form_state.preset_names.get(form_state.selected_preset - 1).cloned();
+                            let pname = form_state
+                                .preset_names
+                                .get(form_state.selected_preset - 1)
+                                .cloned();
                             pname.and_then(|name| {
-                                app.presets.get(&module_key).into_iter().find(|p| p.name == name)
+                                app.presets
+                                    .get(&module_key)
+                                    .into_iter()
+                                    .find(|p| p.name == name)
                             })
                         } else {
                             None
@@ -1343,7 +1353,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 return FormAction::None;
             }
             KeyCode::Right => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                {
                     // Ctrl+Right: reorder forward
                     if form_state.selected_preset > 0 {
                         let name = form_state
@@ -1358,9 +1371,15 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     if total > 0 {
                         form_state.selected_preset = (form_state.selected_preset + 1) % total;
                         let preset_entry = if form_state.selected_preset > 0 {
-                            let pname = form_state.preset_names.get(form_state.selected_preset - 1).cloned();
+                            let pname = form_state
+                                .preset_names
+                                .get(form_state.selected_preset - 1)
+                                .cloned();
                             pname.and_then(|name| {
-                                app.presets.get(&module_key).into_iter().find(|p| p.name == name)
+                                app.presets
+                                    .get(&module_key)
+                                    .into_iter()
+                                    .find(|p| p.name == name)
                             })
                         } else {
                             None
@@ -1382,7 +1401,11 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             }
             KeyCode::Down | KeyCode::Tab => {
                 // Navigate to first real field
-                form_state.active_field = if visible_count > 0 { 1 } else { visible_count + 1 };
+                form_state.active_field = if visible_count > 0 {
+                    1
+                } else {
+                    visible_count + 1
+                };
                 form_state.active_config_idx = visible_indices.first().copied();
                 form_state.cursor_position = current_value_len(form_state, module);
                 return FormAction::None;
@@ -1632,13 +1655,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                                     if let Some(template) = template {
                                         let fname = field.name.clone();
                                         form_state.dropdown_open = false;
-                                        form_state.sub_form =
-                                            Some(crate::app::SubFormState::new(
-                                                tpl_name.clone(),
-                                                search,
-                                                fname.clone(),
-                                                template,
-                                            ));
+                                        form_state.sub_form = Some(crate::app::SubFormState::new(
+                                            tpl_name.clone(),
+                                            search,
+                                            fname.clone(),
+                                            template,
+                                        ));
                                         form_state.search_buffers.remove(&fname);
                                         return FormAction::None;
                                     }
@@ -1984,9 +2006,14 @@ pub enum FormAction {
         values: std::collections::HashMap<String, String>,
     },
     /// Delete the preset with the given name for the current module.
-    DeletePreset { name: String },
+    DeletePreset {
+        name: String,
+    },
     /// Reorder the preset with the given name by `direction` (+1 or -1).
-    ReorderPreset { name: String, direction: i32 },
+    ReorderPreset {
+        name: String,
+        direction: i32,
+    },
 }
 
 /// Cycle the selected value within the subset of options matching `search`

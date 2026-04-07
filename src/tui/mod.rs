@@ -177,9 +177,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 note_name,
                 field_values,
             },
-            form::FormAction::SavePreset { name, values } => {
-                Action::SavePreset { name, values }
-            }
+            form::FormAction::SavePreset { name, values } => Action::SavePreset { name, values },
             form::FormAction::DeletePreset { name } => Action::DeletePreset { name },
             form::FormAction::ReorderPreset { name, direction } => {
                 Action::ReorderPreset { name, direction }
@@ -204,10 +202,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 Action::Navigate(Screen::Form)
             }
             summary::SummaryAction::OpenInObsidian => {
-                let file_path = app
-                    .summary_state
-                    .as_ref()
-                    .and_then(|s| s.file_path.clone());
+                let file_path = app.summary_state.as_ref().and_then(|s| s.file_path.clone());
                 Action::OpenInObsidian(file_path)
             }
             summary::SummaryAction::None => Action::None,

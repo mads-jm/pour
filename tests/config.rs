@@ -1092,8 +1092,7 @@ create_template = "bean_template"
 
 #[test]
 fn create_template_without_allow_create_fails() {
-    let toml =
-        config_with_create_template(r#"create_template = "bean_template""#, VALID_TEMPLATE);
+    let toml = config_with_create_template(r#"create_template = "bean_template""#, VALID_TEMPLATE);
     let err = Config::from_toml(&toml).unwrap_err().to_string();
     assert!(
         err.contains("create_template requires allow_create = true"),
@@ -1220,7 +1219,8 @@ prompt = "Pressure (bar)"
 
 #[test]
 fn show_when_equals_deserializes_correctly() {
-    let toml = config_with_show_when(r#"show_when = { field = "brew_method", equals = "Espresso" }"#);
+    let toml =
+        config_with_show_when(r#"show_when = { field = "brew_method", equals = "Espresso" }"#);
     let config = Config::from_toml(&toml).expect("show_when equals should parse");
     let field = &config.modules["test"].fields[1];
     let sw = field.show_when.as_ref().expect("show_when should be Some");
@@ -1264,7 +1264,9 @@ fn show_when_both_equals_and_one_of_fails_validation() {
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("show_when on field 'pressure': specify either 'equals' or 'one_of', not both"),
+        msg.contains(
+            "show_when on field 'pressure': specify either 'equals' or 'one_of', not both"
+        ),
         "expected conflicting condition error, got: {msg}"
     );
 }
@@ -1318,7 +1320,10 @@ show_when = { field = "brew_method", equals = "Espresso" }
 "#,
     );
     let result = Config::from_toml(&toml);
-    assert!(result.is_ok(), "backward reference should be valid: {result:?}");
+    assert!(
+        result.is_ok(),
+        "backward reference should be valid: {result:?}"
+    );
 }
 
 #[test]
@@ -1340,7 +1345,10 @@ options = ["Espresso", "V60"]
 "#,
     );
     let result = Config::from_toml(&toml);
-    assert!(result.is_ok(), "forward reference should be allowed: {result:?}");
+    assert!(
+        result.is_ok(),
+        "forward reference should be allowed: {result:?}"
+    );
 }
 
 #[test]

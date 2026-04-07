@@ -69,7 +69,10 @@ fn set_then_get_returns_entry() {
     let list = presets.get("coffee");
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].name, "Morning");
-    assert_eq!(list[0].values.get("bean").map(String::as_str), Some("Ethiopia"));
+    assert_eq!(
+        list[0].values.get("bean").map(String::as_str),
+        Some("Ethiopia")
+    );
     assert_eq!(list[0].values.get("dose").map(String::as_str), Some("18"));
 }
 
@@ -82,7 +85,10 @@ fn set_same_name_overwrites_not_duplicates() {
 
     let list = presets.get("coffee");
     assert_eq!(list.len(), 1, "should not duplicate on same name");
-    assert_eq!(list[0].values.get("bean").map(String::as_str), Some("Kenya"));
+    assert_eq!(
+        list[0].values.get("bean").map(String::as_str),
+        Some("Kenya")
+    );
 }
 
 #[test]
@@ -108,8 +114,14 @@ fn round_trip_save_and_load() {
     let path = file.path().to_path_buf();
 
     let mut presets = Presets::load_from(path.clone());
-    presets.set("coffee", make_entry("Morning", &[("bean", "Ethiopia"), ("dose", "18")]));
-    presets.set("coffee", make_entry("Afternoon", &[("bean", "Kenya"), ("dose", "16")]));
+    presets.set(
+        "coffee",
+        make_entry("Morning", &[("bean", "Ethiopia"), ("dose", "18")]),
+    );
+    presets.set(
+        "coffee",
+        make_entry("Afternoon", &[("bean", "Kenya"), ("dose", "16")]),
+    );
     presets.set("me", make_entry("Baseline", &[("mood", "good")]));
     presets.save().expect("save");
 
@@ -166,7 +178,10 @@ fn second_delete_returns_false() {
     presets.set("coffee", make_entry("Morning", &[]));
 
     assert!(presets.delete("coffee", "Morning"));
-    assert!(!presets.delete("coffee", "Morning"), "second delete should return false");
+    assert!(
+        !presets.delete("coffee", "Morning"),
+        "second delete should return false"
+    );
 }
 
 // ---------------------------------------------------------------------------

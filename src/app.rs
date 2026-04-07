@@ -407,7 +407,8 @@ impl App {
         }
 
         // Determine the config index for active_field=0 given initial (default) values.
-        let initial_visible = crate::visibility::visible_field_indices(&module.fields, &field_values);
+        let initial_visible =
+            crate::visibility::visible_field_indices(&module.fields, &field_values);
         let initial_config_idx = initial_visible.first().copied();
 
         // Populate preset names from saved presets for this module.
@@ -943,9 +944,9 @@ impl App {
         let visible = crate::visibility::visible_field_indices(fields, &form_state.field_values);
 
         // Map the current active_config_idx back to a visible position.
-        let current_visible_pos = form_state.active_config_idx.and_then(|cfg_idx| {
-            visible.iter().position(|&v| v == cfg_idx)
-        });
+        let current_visible_pos = form_state
+            .active_config_idx
+            .and_then(|cfg_idx| visible.iter().position(|&v| v == cfg_idx));
 
         if let Some(pos) = current_visible_pos {
             // Field is still visible — keep focus where it is.

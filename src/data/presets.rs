@@ -93,11 +93,7 @@ impl Presets {
     /// If a preset with `entry.name` already exists it is overwritten in place.
     /// Otherwise the entry is appended to the end of the list.
     pub fn set(&mut self, module_key: &str, entry: PresetEntry) {
-        let list = self
-            .data
-            .modules
-            .entry(module_key.to_owned())
-            .or_default();
+        let list = self.data.modules.entry(module_key.to_owned()).or_default();
 
         if let Some(existing) = list.iter_mut().find(|p| p.name == entry.name) {
             *existing = entry;

@@ -137,9 +137,16 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
     fields.insert("rating".to_string(), "4".to_string());
     fields.insert("notes".to_string(), "Fruity and bright.".to_string());
 
-    let path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    let path = write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     assert_eq!(path, "Coffee/note.md");
 
@@ -190,7 +197,15 @@ async fn write_create_rejects_append_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new()).await;
+    let result = write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await;
     assert!(result.is_err(), "write_create on append module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-create"),
@@ -215,9 +230,16 @@ async fn write_append_inserts_rendered_template() {
     let mut fields = HashMap::new();
     fields.insert("body".to_string(), "Had a great morning.".to_string());
 
-    let path = write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_append should succeed");
+    let path = write_append(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_append should succeed");
 
     assert_eq!(path, "Journal/daily.md");
 
@@ -238,7 +260,15 @@ async fn write_append_rejects_create_module() {
     let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
     let fields = HashMap::new();
 
-    let result = write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new()).await;
+    let result = write_append(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await;
     assert!(result.is_err(), "write_append on create module should fail");
     assert!(
         result.unwrap_err().to_string().contains("non-append"),
@@ -261,9 +291,16 @@ async fn wikilink_true_wraps_frontmatter_value() {
     fields.insert("roaster".to_string(), "Onyx".to_string());
     fields.insert("origin".to_string(), "Ethiopia".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
 
@@ -292,9 +329,16 @@ async fn wikilink_true_wraps_body_value() {
     fields.insert("roaster".to_string(), "Onyx".to_string());
     fields.insert("notes".to_string(), "Very bright.".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
 
@@ -321,9 +365,16 @@ async fn wikilink_no_double_wrap() {
     // Value is already wrapped
     fields.insert("roaster".to_string(), "[[Onyx]]".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
 
@@ -354,9 +405,16 @@ async fn wikilink_default_false_no_behavior_change() {
     fields.insert("brew_method".to_string(), "V60".to_string());
     fields.insert("rating".to_string(), "4".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Coffee/note.md")).unwrap();
 
@@ -384,9 +442,16 @@ async fn wikilink_wraps_each_comma_separated_item() {
     let mut fields = HashMap::new();
     fields.insert("roaster".to_string(), "Onyx, Stumptown".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Brew/note.md")).unwrap();
 
@@ -417,9 +482,16 @@ async fn write_create_skips_empty_body_section() {
     fields.insert("brew_method".to_string(), "AeroPress".to_string());
     fields.insert("rating".to_string(), "3".to_string());
 
-    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    let _path = write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Coffee/note.md")).unwrap();
 
@@ -472,9 +544,16 @@ async fn write_create_wraps_body_in_callout() {
     fields.insert("title".to_string(), "My Title".to_string());
     fields.insert("notes".to_string(), "Line one\nLine two".to_string());
 
-    let _path = write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    let _path = write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
 
@@ -548,9 +627,16 @@ async fn hidden_field_excluded_from_frontmatter() {
     fields.insert("kind".to_string(), "normal".to_string());
     fields.insert("extra".to_string(), "should-not-appear".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
     let parts: Vec<&str> = content.splitn(3, "---\n").collect();
@@ -582,9 +668,16 @@ async fn visible_conditional_field_included_in_frontmatter() {
     fields.insert("kind".to_string(), "special".to_string());
     fields.insert("extra".to_string(), "rare-value".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
     let parts: Vec<&str> = content.splitn(3, "---\n").collect();
@@ -612,9 +705,16 @@ async fn hidden_field_excluded_from_body() {
     fields.insert("kind".to_string(), "normal".to_string());
     fields.insert("notes".to_string(), "ghost-body-text".to_string());
 
-    write_create(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_create should succeed");
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_create should succeed");
 
     let content = std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap();
     let parts: Vec<&str> = content.splitn(3, "---\n").collect();
@@ -667,9 +767,16 @@ async fn write_append_wraps_body_in_field_callout() {
     let mut fields = HashMap::new();
     fields.insert("notes".to_string(), "Line one\nLine two".to_string());
 
-    write_append(&transport, module, &fields, &CompositeData::new(), None, &HashMap::new())
-        .await
-        .expect("write_append should succeed");
+    write_append(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+    )
+    .await
+    .expect("write_append should succeed");
 
     let content = std::fs::read_to_string(journal_dir.join("daily.md")).unwrap();
 
@@ -706,9 +813,16 @@ async fn write_append_callout_override_in_template() {
     let mut overrides = HashMap::new();
     overrides.insert("notes".to_string(), "warning".to_string());
 
-    write_append(&transport, module, &fields, &CompositeData::new(), None, &overrides)
-        .await
-        .expect("write_append should succeed");
+    write_append(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &overrides,
+    )
+    .await
+    .expect("write_append should succeed");
 
     let content = std::fs::read_to_string(journal_dir.join("daily.md")).unwrap();
 

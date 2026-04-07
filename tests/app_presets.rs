@@ -98,7 +98,9 @@ fn make_app_from_toml(toml: &str) -> App {
     App::new(
         config,
         transport,
-        History::load_from(std::path::PathBuf::from("/tmp/test-preset-apply-history.json")),
+        History::load_from(std::path::PathBuf::from(
+            "/tmp/test-preset-apply-history.json",
+        )),
         Presets::empty(),
     )
 }
@@ -222,11 +224,12 @@ fn apply_preset_skips_composite_array_fields() {
     App::apply_preset(&mut form, fields, Some(&preset));
 
     // composite_values should still be empty (not modified).
-    assert!(form
-        .composite_values
-        .get("recipe")
-        .map(|v| v.is_empty())
-        .unwrap_or(true));
+    assert!(
+        form.composite_values
+            .get("recipe")
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
+    );
     // recipe must not have slipped into field_values.
     assert!(!form.field_values.contains_key("recipe"));
 }
@@ -314,8 +317,7 @@ fn apply_preset_updates_visibility_correctly() {
 
     // Both fields are now visible: method(idx 0) and grind(idx 1).
     assert_eq!(form.field_values.get("method").unwrap(), "V60");
-    let visible =
-        pour::visibility::visible_field_indices(fields, &form.field_values);
+    let visible = pour::visibility::visible_field_indices(fields, &form.field_values);
     assert_eq!(visible.len(), 2, "both fields should be visible");
 }
 
@@ -369,7 +371,8 @@ fn apply_preset_resets_ui_state() {
     form.cursor_position = 10;
     form.dropdown_open = true;
     form.textarea_open = true;
-    form.search_buffers.insert("bean".to_string(), "eth".to_string());
+    form.search_buffers
+        .insert("bean".to_string(), "eth".to_string());
 
     let preset = make_entry(&[("bean", "Kenya")]);
     App::apply_preset(&mut form, fields, Some(&preset));

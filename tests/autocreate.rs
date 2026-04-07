@@ -504,7 +504,10 @@ fn templated_content_missing_value_uses_default() {
 
     let content = build_templated_note_content(&template, "Kenya AA", &values, "2026-04-02");
     assert!(content.contains("roast: Medium"), "should use default");
-    assert!(!content.contains("rating:"), "no-default field should be omitted");
+    assert!(
+        !content.contains("rating:"),
+        "no-default field should be omitted"
+    );
 }
 
 #[test]
@@ -527,7 +530,10 @@ fn templated_content_empty_value_treated_as_missing() {
     values.insert("origin".to_string(), "".to_string()); // empty = missing
 
     let content = build_templated_note_content(&template, "Test", &values, "2026-04-02");
-    assert!(!content.contains("origin:"), "empty value should be omitted");
+    assert!(
+        !content.contains("origin:"),
+        "empty value should be omitted"
+    );
 }
 
 #[test]

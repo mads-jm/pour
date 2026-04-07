@@ -2039,7 +2039,8 @@ impl Config {
         // `visited` = nodes fully processed (no need to re-walk).
         // `path` = nodes on the current walk's stack (used for cycle extraction).
         let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        let mut reported_cycles: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut reported_cycles: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for start in deps.keys().copied() {
             if visited.contains(start) {
@@ -2161,9 +2162,7 @@ impl Config {
         // Reject leading zeros in any segment (e.g. "00.01.00")
         for part in &parts {
             if part.len() > 1 && part.starts_with('0') {
-                errors.push(format!(
-                    "config_version segment '{part}' has leading zeros"
-                ));
+                errors.push(format!("config_version segment '{part}' has leading zeros"));
                 return;
             }
         }

@@ -146,30 +146,29 @@ pub fn render_append_template(
     for (key, value) in fields {
         let placeholder = format!("{{{{{key}}}}}");
         let field_cfg = module.fields.iter().find(|f| f.name == *key);
-        let resolved = if declared_names.contains(key.as_str())
-            && !visible_names.contains(key.as_str())
-        {
-            // Declared field that is currently hidden — clear its placeholder.
-            String::new()
-        } else if field_cfg.is_some_and(|f| f.wikilink == Some(true)) {
-            super::apply_wikilink(value.clone())
-        } else if let Some(callout) = callout_overrides
-            .get(key)
-            .or_else(|| field_cfg.and_then(|f| f.callout.as_ref()))
-        {
-            if value.is_empty() {
+        let resolved =
+            if declared_names.contains(key.as_str()) && !visible_names.contains(key.as_str()) {
+                // Declared field that is currently hidden — clear its placeholder.
                 String::new()
-            } else {
-                let mut block = format!("> [!{callout}]");
-                for line in value.lines() {
-                    block.push_str("\n> ");
-                    block.push_str(line);
+            } else if field_cfg.is_some_and(|f| f.wikilink == Some(true)) {
+                super::apply_wikilink(value.clone())
+            } else if let Some(callout) = callout_overrides
+                .get(key)
+                .or_else(|| field_cfg.and_then(|f| f.callout.as_ref()))
+            {
+                if value.is_empty() {
+                    String::new()
+                } else {
+                    let mut block = format!("> [!{callout}]");
+                    for line in value.lines() {
+                        block.push_str("\n> ");
+                        block.push_str(line);
+                    }
+                    block
                 }
-                block
-            }
-        } else {
-            value.clone()
-        };
+            } else {
+                value.clone()
+            };
         result = result.replace(&placeholder, &resolved);
     }
 

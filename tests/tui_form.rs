@@ -110,7 +110,10 @@ fn shift_tab_wraps_around() {
     app.form_state.as_mut().unwrap().active_field = 0;
     handle_key(&mut app, key(KeyCode::BackTab));
     // Should wrap to submit button
-    assert_eq!(app.form_state.as_ref().unwrap().active_field, field_count + 1);
+    assert_eq!(
+        app.form_state.as_ref().unwrap().active_field,
+        field_count + 1
+    );
 }
 
 #[test]
@@ -887,7 +890,10 @@ fn navigable_count_reflects_visible_fields_only() {
     app.form_state.as_mut().unwrap().active_field = 2; // notes
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.active_field, 3, "should land on submit, not total_fields(4)");
+    assert_eq!(
+        fs.active_field, 3,
+        "should land on submit, not total_fields(4)"
+    );
     assert_eq!(fs.active_config_idx, None, "submit has no config idx");
 }
 
@@ -913,7 +919,10 @@ fn tab_wraps_using_visible_count() {
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
     assert_eq!(fs.active_field, 3, "should land on submit (active_field=3)");
-    assert_eq!(fs.active_config_idx, None, "submit button has no config idx");
+    assert_eq!(
+        fs.active_config_idx, None,
+        "submit button has no config idx"
+    );
 }
 
 /// When active field becomes hidden, focus moves to the next visible field.
@@ -966,7 +975,11 @@ fn active_field_hidden_falls_back_to_previous_visible() {
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
     // pressure is hidden, next after ci=2 is notes (ci=3), so we land on notes.
-    assert_eq!(fs.active_config_idx, Some(3), "should land on notes (next after hidden pressure)");
+    assert_eq!(
+        fs.active_config_idx,
+        Some(3),
+        "should land on notes (next after hidden pressure)"
+    );
 }
 
 /// Downstream fields appearing when a select changes do NOT steal focus.
@@ -1078,7 +1091,10 @@ fn make_app_callout() -> App {
 fn callout_override_seeded_from_config() {
     let app = make_app_callout();
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.callout_overrides.get("notes").map(|s| s.as_str()), Some("note"));
+    assert_eq!(
+        fs.callout_overrides.get("notes").map(|s| s.as_str()),
+        Some("note")
+    );
 }
 
 #[test]
@@ -1107,10 +1123,14 @@ fn right_wraps_around_callout_list() {
     let fs = app.form_state.as_mut().unwrap();
     fs.active_field = 2; // notes at visual index 2
     // Set to last option "danger" (index 11)
-    fs.callout_overrides.insert("notes".to_string(), "danger".to_string());
+    fs.callout_overrides
+        .insert("notes".to_string(), "danger".to_string());
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
-    assert_eq!(fs.callout_overrides["notes"], "note", "should wrap to first");
+    assert_eq!(
+        fs.callout_overrides["notes"], "note",
+        "should wrap to first"
+    );
 }
 
 #[test]
@@ -1119,7 +1139,8 @@ fn custom_callout_value_cycles_to_known_option() {
     let fs = app.form_state.as_mut().unwrap();
     fs.active_field = 2; // notes at visual index 2
     // Set a custom value not in CALLOUT_OPTIONS
-    fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
+    fs.callout_overrides
+        .insert("notes".to_string(), "abstract".to_string());
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
     // Custom value not found → Right starts at 0 = "note"
@@ -1131,7 +1152,8 @@ fn custom_callout_left_cycles_to_last_option() {
     let mut app = make_app_callout();
     let fs = app.form_state.as_mut().unwrap();
     fs.active_field = 2; // notes at visual index 2
-    fs.callout_overrides.insert("notes".to_string(), "abstract".to_string());
+    fs.callout_overrides
+        .insert("notes".to_string(), "abstract".to_string());
     handle_key(&mut app, key(KeyCode::Left));
     let fs = app.form_state.as_ref().unwrap();
     // Custom value not found → Left goes to last = "danger"
@@ -1143,11 +1165,17 @@ fn no_cycling_on_textarea_without_callout() {
     let mut app = make_app(); // standard config, notes textarea has no callout
     app.form_state.as_mut().unwrap().active_field = 4; // notes (textarea, no callout) at visual index 4
     let fs = app.form_state.as_ref().unwrap();
-    assert!(!fs.callout_overrides.contains_key("notes"), "no callout in config → no override");
+    assert!(
+        !fs.callout_overrides.contains_key("notes"),
+        "no callout in config → no override"
+    );
     // Right should NOT cycle callout — it should just move cursor (no-op at pos 0)
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
-    assert!(!fs.callout_overrides.contains_key("notes"), "should remain absent");
+    assert!(
+        !fs.callout_overrides.contains_key("notes"),
+        "should remain absent"
+    );
 }
 
 #[test]
@@ -1156,9 +1184,13 @@ fn no_cycling_when_textarea_editor_open() {
     let fs = app.form_state.as_mut().unwrap();
     fs.active_field = 2; // notes at visual index 2
     fs.textarea_open = true;
-    fs.callout_overrides.insert("notes".to_string(), "note".to_string());
+    fs.callout_overrides
+        .insert("notes".to_string(), "note".to_string());
     handle_key(&mut app, key(KeyCode::Right));
     let fs = app.form_state.as_ref().unwrap();
     // Should NOT cycle — cursor movement instead
-    assert_eq!(fs.callout_overrides["notes"], "note", "callout unchanged when editor open");
+    assert_eq!(
+        fs.callout_overrides["notes"], "note",
+        "callout unchanged when editor open"
+    );
 }

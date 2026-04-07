@@ -96,15 +96,13 @@ pub async fn write_append(
     let heading = module.append_under_header.as_deref().unwrap_or("## Log");
 
     let content = match &module.append_template {
-        Some(tmpl) => {
-            template::render_append_template(
-                tmpl,
-                field_values,
-                module,
-                composite_data,
-                callout_overrides,
-            )
-        }
+        Some(tmpl) => template::render_append_template(
+            tmpl,
+            field_values,
+            module,
+            composite_data,
+            callout_overrides,
+        ),
         None => {
             // Fallback: join all body-target fields with newlines.
             let (_, _, body_parts) =

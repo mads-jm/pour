@@ -63,13 +63,16 @@ fn today_count_only_counts_today() {
 
 #[test]
 fn week_count_includes_this_week() {
+    // week_count uses Mon–Sun calendar weeks, so entries from previous days
+    // may fall in the prior week depending on what day the test runs.
+    // Use only today's entries to guarantee they're in the current week.
     let (h, _dir) = history_with_entries(vec![
         entry("coffee", 1),
-        entry_days_ago("me", 1),
-        entry_days_ago("music", 2),
+        entry("me", 2),
+        entry("music", 3),
         entry_days_ago("coffee", 10), // >1 week ago
     ]);
-    // At least 3 should be this week (the 10-day-ago one might not be)
+    // The three entries from today should all be in this week
     assert!(h.week_count() >= 3);
 }
 

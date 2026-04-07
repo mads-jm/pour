@@ -208,10 +208,7 @@ fn visible_field_indices_all_visible() {
 
 #[test]
 fn visible_field_indices_none_visible() {
-    let fields = vec![
-        with_equals("a", "x", "yes"),
-        with_equals("b", "x", "yes"),
-    ];
+    let fields = vec![with_equals("a", "x", "yes"), with_equals("b", "x", "yes")];
     let fv = values(&[("x", "no")]);
     assert_eq!(visible_field_indices(&fields, &fv), Vec::<usize>::new());
 }
@@ -232,7 +229,10 @@ fn visible_field_indices_empty_fields_slice() {
 // ---------------------------------------------------------------------------
 
 /// Helper: apply the submit-time strip to a mutable field_values map.
-fn strip_hidden(fields: &[FieldConfig], mut field_values: HashMap<String, String>) -> HashMap<String, String> {
+fn strip_hidden(
+    fields: &[FieldConfig],
+    mut field_values: HashMap<String, String>,
+) -> HashMap<String, String> {
     let visible_names: HashSet<String> = visible_field_indices(fields, &field_values)
         .into_iter()
         .map(|i| fields[i].name.clone())
@@ -252,11 +252,17 @@ fn submit_strip_removes_hidden_equals_field() {
     // brew_method = "Espresso" → grind is hidden
     let fv = values(&[
         ("brew_method", "Espresso"),
-        ("grind", "coarse"),          // stale value from a previous selection
+        ("grind", "coarse"), // stale value from a previous selection
     ]);
     let result = strip_hidden(&fields, fv);
-    assert!(result.contains_key("brew_method"), "unconditional field should survive");
-    assert!(!result.contains_key("grind"), "hidden field should be stripped");
+    assert!(
+        result.contains_key("brew_method"),
+        "unconditional field should survive"
+    );
+    assert!(
+        !result.contains_key("grind"),
+        "hidden field should be stripped"
+    );
 }
 
 /// Visible conditional field is retained when condition is met.
@@ -267,10 +273,7 @@ fn submit_strip_keeps_visible_conditional_field() {
         with_equals("grind", "brew_method", "V60"),
     ];
     // brew_method = "V60" → grind is visible
-    let fv = values(&[
-        ("brew_method", "V60"),
-        ("grind", "medium-fine"),
-    ]);
+    let fv = values(&[("brew_method", "V60"), ("grind", "medium-fine")]);
     let result = strip_hidden(&fields, fv);
     assert_eq!(result["brew_method"], "V60");
     assert_eq!(result["grind"], "medium-fine");
@@ -281,14 +284,14 @@ fn submit_strip_keeps_visible_conditional_field() {
 fn submit_strip_preserves_empty_optional_field() {
     let fields = vec![
         unconditional("brew_method"),
-        unconditional("notes"),       // optional — user left it blank
+        unconditional("notes"), // optional — user left it blank
     ];
-    let fv = values(&[
-        ("brew_method", "V60"),
-        ("notes", ""),
-    ]);
+    let fv = values(&[("brew_method", "V60"), ("notes", "")]);
     let result = strip_hidden(&fields, fv);
-    assert!(result.contains_key("notes"), "empty optional field must not be stripped");
+    assert!(
+        result.contains_key("notes"),
+        "empty optional field must not be stripped"
+    );
     assert_eq!(result["notes"], "");
 }
 
@@ -300,29 +303,25 @@ fn submit_strip_removes_hidden_one_of_field() {
         with_one_of("pressure", "brew_method", &["Espresso", "Moka"]),
     ];
     // brew_method = "V60" → pressure is hidden
-    let fv = values(&[
-        ("brew_method", "V60"),
-        ("pressure", "9 bar"),
-    ]);
+    let fv = values(&[("brew_method", "V60"), ("pressure", "9 bar")]);
     let result = strip_hidden(&fields, fv);
-    assert!(!result.contains_key("pressure"), "hidden one_of field should be stripped");
+    assert!(
+        !result.contains_key("pressure"),
+        "hidden one_of field should be stripped"
+    );
 }
 
 /// All fields hidden → result is empty.
 #[test]
 fn submit_strip_all_hidden_yields_empty_map() {
-    let fields = vec![
-        with_equals("a", "x", "yes"),
-        with_equals("b", "x", "yes"),
-    ];
-    let fv = values(&[
-        ("x", "no"),
-        ("a", "stale-a"),
-        ("b", "stale-b"),
-    ]);
+    let fields = vec![with_equals("a", "x", "yes"), with_equals("b", "x", "yes")];
+    let fv = values(&[("x", "no"), ("a", "stale-a"), ("b", "stale-b")]);
     let result = strip_hidden(&fields, fv);
     // "x" is not in fields so it was never visible_field_indices; also stripped
-    assert!(result.is_empty(), "all fields hidden (or not in module) should yield empty map, got: {result:?}");
+    assert!(
+        result.is_empty(),
+        "all fields hidden (or not in module) should yield empty map, got: {result:?}"
+    );
 }
 
 /// Controlling field itself (unconditional) is preserved even when it makes others hidden.
@@ -332,10 +331,7 @@ fn submit_strip_controlling_field_always_kept() {
         unconditional("kind"),
         with_equals("detail", "kind", "special"),
     ];
-    let fv = values(&[
-        ("kind", "normal"),
-        ("detail", "secret"),
-    ]);
+    let fv = values(&[("kind", "normal"), ("detail", "secret")]);
     let result = strip_hidden(&fields, fv);
     assert_eq!(result.get("kind"), Some(&"normal".to_string()));
     assert!(!result.contains_key("detail"));
