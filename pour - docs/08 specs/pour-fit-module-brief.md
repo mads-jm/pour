@@ -3,8 +3,9 @@ tags:
   - spec
   - brief
   - module
-date created: Friday, April 4th 2026
+date created: Saturday, April 4th 2026, 7:29:13 am
 status: draft
+date modified: Tuesday, April 7th 2026, 3:30:34 am
 ---
 
 # `pour fit` — Workout Module Design Brief
@@ -26,29 +27,29 @@ A `pour fit` module for logging workout sessions to the Obsidian vault. Reuses t
 
 ### Category
 
-- **`split`** — `static_select`: Push / Pull / Legs / Upper / Lower / Cardio / Custom
+- __`split`__ — `static_select`: Push / Pull / Legs / Upper / Lower / Cardio / Custom
   - Controls conditional fields below via `show_when`
 
 ### Conditional per Split
 
-- **`exercises_push`**, **`exercises_pull`**, **`exercises_legs`**, etc. — `dynamic_select` per split
-  - Source folders: `Health/00 - Fitness/Exercises/Push/`, `.../Pull/`, `.../Legs/`, etc.
+- __`exercises_push`__, __`exercises_pull`__, __`exercises_legs`__, etc. — `dynamic_select` per split
+  - Source folders: `Health/00 - Fitness/Exercises/Push/`, `…/Pull/`, `…/Legs/`, etc.
   - `allow_create = true` with an exercise template for adding new exercises inline
   - Each folder contains `.md` note stubs (e.g., `Bench Press.md`, `Deadlift.md`)
 
-- **Cardio-specific**: `distance_km` (number), `pace` (text), `heart_rate_avg` (number)
+- __Cardio-specific__: `distance_km` (number), `pace` (text), `heart_rate_avg` (number)
   - `show_when = { field = "split", equals = "Cardio" }`
 
 ### Universal
 
-- **`sets`** — `composite_array` for set logging
+- __`sets`__ — `composite_array` for set logging
   - Sub-fields: `exercise` (text), `weight_kg` (number), `reps` (number), `rpe` (number)
   - Appears for all strength splits (Push/Pull/Legs/Upper/Lower)
   - Could use `show_when = { field = "split", one_of = ["Push", "Pull", "Legs", "Upper", "Lower"] }`
 
-- **`duration_min`** — `number`: Total session duration
-- **`bodyweight_kg`** — `number`: Optional daily weigh-in
-- **`notes`** — `textarea` → body: How the session felt, energy level, injuries
+- __`duration_min`__ — `number`: Total session duration
+- __`bodyweight_kg`__ — `number`: Optional daily weigh-in
+- __`notes`__ — `textarea` → body: How the session felt, energy level, injuries
 
 ### Frontmatter Targets
 
@@ -98,17 +99,17 @@ prompt = "Primary muscle group"
 
 ## Open Questions
 
-1. **Per-exercise vs per-session tracking**: The `sets` composite_array logs sets inline. An alternative is a separate `pour set` append module that adds rows to the session note — more granular but more friction per set.
+1. __Per-exercise vs per-session tracking__: The `sets` composite_array logs sets inline. An alternative is a separate `pour set` append module that adds rows to the session note — more granular but more friction per set.
 
-2. **Exercise selection within the form**: Currently `composite_array` sub-fields can't be `dynamic_select`. The exercise field inside `sets` would be plain text unless we extend sub-field types. Alternatively, a top-level `exercise` dynamic_select could pre-fill.
+2. __Exercise selection within the form__: Currently `composite_array` sub-fields can't be `dynamic_select`. The exercise field inside `sets` would be plain text unless we extend sub-field types. Alternatively, a top-level `exercise` dynamic_select could pre-fill.
 
-3. **Progressive overload tracking**: Showing previous session's numbers for the same exercise requires reading from vault history — not currently supported. Could be a future `history_hint` feature on fields.
+3. __Progressive overload tracking__: Showing previous session's numbers for the same exercise requires reading from vault history — not currently supported. Could be a future `history_hint` feature on fields.
 
-4. **Rest timer**: Out of scope for Pour (a capture tool, not a training timer). Could note rest periods as a composite sub-field if desired.
+4. __Rest timer__: Out of scope for Pour (a capture tool, not a training timer). Could note rest periods as a composite sub-field if desired.
 
-5. **Upper/Lower vs PPL**: The split options include both PPL and Upper/Lower to support different program structures. The exercise folders might need to be organized differently (some exercises span categories). Consider whether `Custom` split should show all exercises.
+5. __Upper/Lower vs PPL__: The split options include both PPL and Upper/Lower to support different program structures. The exercise folders might need to be organized differently (some exercises span categories). Consider whether `Custom` split should show all exercises.
 
-6. **Warm-up sets**: Should warm-up sets be distinguished from working sets? Could add a `set_type` sub-field (`Warm-up` / `Working` / `Drop`).
+6. __Warm-up sets__: Should warm-up sets be distinguished from working sets? Could add a `set_type` sub-field (`Warm-up` / `Working` / `Drop`).
 
 ## References
 

@@ -5,13 +5,7 @@
     "fontSize": 16,
     "emojiStyle": "native",
     "iconColor": null,
-    "recentlyUsedIcons": [
-      "LiFileText",
-      "LiMapPinned",
-      "LiExternalLink",
-      "LiGitMerge",
-      "LiClipboardList"
-    ],
+    "recentlyUsedIcons": [],
     "recentlyUsedIconsSize": 5,
     "rules": [
       {
@@ -43,14 +37,14 @@
   },
   "00 index": "LiGlobe",
   "01 concepts": "LiLayoutList",
-  "02 milestones": "LiMilestone",
+  "02 references": "LiExternalLink",
   "03 guides": "LiBookOpen",
   "04 architecture": "LiNetwork",
+  "05 notes": "LiStickyNote",
   "06 reports": "LiFileText",
-  "99 meta": "LiSparkles",
   "07 stories": "LiUsersRound",
   "08 specs": "LiClipboardList",
-  "09 PRs": "LiGitMerge",
-  "02 references": "LiExternalLink",
-  "09 milestones": "LiMapPinned"
+  "09 milestones": "LiMapPinned",
+  "10 PRs": "LiGitMerge",
+  "99 meta": "LiSparkles"
 }

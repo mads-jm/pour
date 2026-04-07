@@ -1,6 +1,7 @@
 use pour::app::{App, Screen};
 use pour::config::Config;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::transport::Transport;
 use pour::transport::fs::FsWriter;
 
@@ -53,6 +54,7 @@ fn make_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+        Presets::empty(),
     )
 }
 
@@ -110,6 +112,7 @@ required = true
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+        Presets::empty(),
     );
     assert_eq!(app.module_keys, vec!["me", "coffee"]);
 }
@@ -123,8 +126,8 @@ fn init_form_sets_default_values() {
     assert_eq!(form.field_values.get("rating").unwrap(), "3");
     // notes has no default, should be empty string
     assert_eq!(form.field_values.get("notes").unwrap(), "");
-    // active_field starts at 0
-    assert_eq!(form.active_field, 0);
+    // active_field starts at 1 (preset row is at 0; first real field is at 1)
+    assert_eq!(form.active_field, 1);
 }
 
 #[test]
@@ -259,6 +262,7 @@ fn make_composite_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+        Presets::empty(),
     )
 }
 
@@ -398,6 +402,7 @@ fn make_visibility_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
+        Presets::empty(),
     )
 }
 

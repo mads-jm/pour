@@ -1,6 +1,7 @@
 use pour::app::{App, ConfigureLevel, SettingKind};
 use pour::config::Config;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::transport::Transport;
 use pour::transport::fs::FsWriter;
 use std::collections::HashMap;
@@ -84,6 +85,7 @@ fn make_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-cfg-history.json")),
+        Presets::empty(),
     )
 }
 
@@ -309,12 +311,17 @@ fn make_form_state(
         dropdown_open: false,
         textarea_open: false,
         textarea_scroll_offset: 0,
+        callout_overrides: HashMap::new(),
         composite_values,
         composite_open: false,
         composite_row: 0,
         composite_col: 0,
         search_buffers: HashMap::new(),
         sub_form: None,
+        preset_names: Vec::new(),
+        selected_preset: 0,
+        preset_overlay: None,
+        confirm_delete_preset: false,
     }
 }
 

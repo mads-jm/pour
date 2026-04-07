@@ -108,6 +108,9 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         fields: vec![field],
         display_name: None,
         callout_type: None,
+        icon: None,
+        daily_link: None,
+        append_shallow: None,
     }
 }
 
@@ -128,6 +131,8 @@ fn dynamic_field(name: &str, source: &str, allow_create: bool) -> FieldConfig {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
+        preset_exclude: None,
     }
 }
 
@@ -322,6 +327,8 @@ async fn transport_error_does_not_block_and_returns_empty() {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
+        preset_exclude: None,
     };
     let module = make_module_with_field(field);
 
@@ -497,7 +504,10 @@ fn templated_content_missing_value_uses_default() {
 
     let content = build_templated_note_content(&template, "Kenya AA", &values, "2026-04-02");
     assert!(content.contains("roast: Medium"), "should use default");
-    assert!(!content.contains("rating:"), "no-default field should be omitted");
+    assert!(
+        !content.contains("rating:"),
+        "no-default field should be omitted"
+    );
 }
 
 #[test]
@@ -520,7 +530,10 @@ fn templated_content_empty_value_treated_as_missing() {
     values.insert("origin".to_string(), "".to_string()); // empty = missing
 
     let content = build_templated_note_content(&template, "Test", &values, "2026-04-02");
-    assert!(!content.contains("origin:"), "empty value should be omitted");
+    assert!(
+        !content.contains("origin:"),
+        "empty value should be omitted"
+    );
 }
 
 #[test]

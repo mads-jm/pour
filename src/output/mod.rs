@@ -20,13 +20,29 @@ pub async fn write_create(
     field_values: &HashMap<String, String>,
     composite_data: &CompositeData,
     date_format: Option<&str>,
+    callout_overrides: &HashMap<String, String>,
 ) -> Result<String> {
     if module.mode != WriteMode::Create {
         bail!("write_create called on a non-create module");
     }
 
-    let (fm_fields, fm_composites, body_parts) =
-        partition_fields(module, field_values, composite_data);
+    let (mut fm_fields, fm_composites, body_parts) =
+        partition_fields(module, field_values, composite_data, callout_overrides);
+
+    if let Some(ref icon) = module.icon {
+        // Only inject if no user field is already named "icon" (avoid duplicate YAML keys).
+        if !fm_fields.iter().any(|(k, _)| k == "icon") {
+            fm_fields.insert(0, ("icon".to_string(), icon.clone()));
+        }
+    }
+
+    if module.daily_link == Some(true) {
+        if !fm_fields.iter().any(|(k, _)| k == "daily") {
+            let date_fmt = date_format.unwrap_or("%Y%m%d");
+            let daily = format!("[[{}]]", chrono::Local::now().format(date_fmt));
+            fm_fields.push(("daily".to_string(), daily));
+        }
+    }
 
     let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
 
@@ -71,6 +87,7 @@ pub async fn write_append(
     field_values: &HashMap<String, String>,
     composite_data: &CompositeData,
     date_format: Option<&str>,
+    callout_overrides: &HashMap<String, String>,
 ) -> Result<String> {
     if module.mode != WriteMode::Append {
         bail!("write_append called on a non-append module");
@@ -79,17 +96,29 @@ pub async fn write_append(
     let heading = module.append_under_header.as_deref().unwrap_or("## Log");
 
     let content = match &module.append_template {
-        Some(tmpl) => template::render_append_template(tmpl, field_values, module, composite_data),
+        Some(tmpl) => template::render_append_template(
+            tmpl,
+            field_values,
+            module,
+            composite_data,
+            callout_overrides,
+        ),
         None => {
             // Fallback: join all body-target fields with newlines.
-            let (_, _, body_parts) = partition_fields(module, field_values, composite_data);
+            let (_, _, body_parts) =
+                partition_fields(module, field_values, composite_data, callout_overrides);
             body_parts.join("\n")
         }
     };
 
     let vault_path = template::render_path(&module.path, field_values, date_format);
     transport
-        .append_under_heading(&vault_path, heading, &content)
+        .append_under_heading(
+            &vault_path,
+            heading,
+            &content,
+            module.append_shallow == Some(true),
+        )
         .await?;
 
     Ok(vault_path)
@@ -109,6 +138,7 @@ fn partition_fields<'a>(
     module: &'a ModuleConfig,
     field_values: &HashMap<String, String>,
     composite_data: &CompositeData,
+    callout_overrides: &HashMap<String, String>,
 ) -> (
     Vec<(String, String)>,
     Vec<FrontmatterComposite<'a>>,
@@ -195,7 +225,10 @@ fn partition_fields<'a>(
             }
             FieldTarget::Body => {
                 if !value.is_empty() {
-                    if let Some(ref callout) = field_cfg.callout {
+                    let callout = callout_overrides
+                        .get(&field_cfg.name)
+                        .or(field_cfg.callout.as_ref());
+                    if let Some(callout) = callout {
                         // Wrap in Obsidian callout: prefix each line with "> "
                         let mut block = format!("> [!{callout}]");
                         for line in value.lines() {

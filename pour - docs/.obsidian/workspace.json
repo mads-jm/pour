@@ -4,21 +4,23 @@
     "type": "split",
     "children": [
       {
-        "id": "6a905dd429bbf90a",
+        "id": "b52dacafa0aa8581",
         "type": "tabs",
         "children": [
           {
-            "id": "ee68a755b79db48a",
+            "id": "6c2879caa85fe5ed",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "kanban",
               "state": {
-                "file": "00 index/ARCHITECTURE.md",
-                "mode": "source",
-                "source": false
+                "file": "00 index/BACKLOG.kanban.md",
+                "kanbanViewState": {
+                  "kanban-plugin": "board",
+                  "list-collapse": []
+                }
               },
-              "icon": "lucide-file",
-              "title": "ARCHITECTURE"
+              "icon": "lucide-trello",
+              "title": "BACKLOG.kanban"
             }
           }
         ]
@@ -215,14 +217,14 @@
               },
               "pinned": true,
               "icon": "terminal",
-              "title": "Terminal: cmd"
+              "title": "Terminal: C:\\Windows\\System32\\conhost.exe"
             }
           }
         ]
       }
     ],
     "direction": "horizontal",
-    "width": 913.5
+    "width": 272.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -236,46 +238,47 @@
       "command-palette:Open command palette": false,
       "bases:Create new base": false,
       "terminal:Open terminal": false,
-      "workspaces:Manage workspace layouts": false
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-kanban:Create new board": false
     }
   },
-  "active": "ee68a755b79db48a",
+  "active": "6c2879caa85fe5ed",
   "lastOpenFiles": [
-    "README.md",
-    "04 architecture/v1-implementation-plan.md",
-    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
-    "04 architecture/adr/ADR-002-Custom-YAML-Serialization.md",
-    "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
-    "03 guides/Guide-Adding-New-Field-Types.md",
-    "06 reports/sprints/sprint-5-tui-report.md",
-    "06 reports/sprints/sprint-6-integration-report.md",
-    "06 reports/sprints/sprint-4-data-fetching-report.md",
-    "06 reports/sprints/sprint-3-output-pipeline-report.md",
-    "07 stories/the_pour_manifesto.md",
-    "00 index/STORIES.md",
-    "02 references/obsidian-local-rest-api.md",
-    "02 references/toml-serde.md",
-    "02 references/chrono.md",
-    "02 references/reqwest.md",
-    "02 references/crossterm.md",
-    "02 references/ratatui.md",
-    "06 reports/sprints/sprint-1-foundation-report.md",
-    "06 reports/sprints/sprint-2-transport-report.md",
-    "08 specs/distill-first-pass-spec.md",
-    "03 guides/Design-Language.md",
-    "00 index/SPECS.md",
-    "00 index/REFERENCES.md",
-    "09 milestones/v1.0.0-Release.md",
+    "05 notes/inline-creation-future-phases.md",
+    "01 concepts/Inline-Note-Creation.md",
+    "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
+    "01 concepts/The-3-Tier-Data-Fallback.md",
     "index.md",
+    "09 milestones/v1.0.0-Release.md",
+    "03 guides/Design-Language.md",
+    "02 references/ratatui.md",
+    "02 references/crossterm.md",
+    "02 references/reqwest.md",
+    "02 references/chrono.md",
+    "02 references/toml-serde.md",
+    "02 references/obsidian-local-rest-api.md",
+    "07 stories/the_pour_manifesto.md",
+    "03 guides/Guide-Adding-New-Field-Types.md",
+    "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
+    "04 architecture/adr/ADR-002-Custom-YAML-Serialization.md",
+    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
+    "04 architecture/v1-implementation-plan.md",
+    "README.md",
+    "08 specs/pour-fit-module-brief.md",
+    "02 references/field-types.md",
+    "04 architecture/System-Architecture-Overview.md",
+    "08 specs/pour-design-spec.md",
+    "03 guides/Guide-Config-to-Vault.md",
+    "06 reports/v0.1.0-report.md",
+    "00 index/REFERENCES.base",
+    "00 index/ADR.base",
+    "00 index/CONCEPTS.base",
+    "00 index/GUIDES.base",
+    "00 index/SPECS.base",
+    "00 index/PRS.base",
+    "00 index/NOTES.base",
+    "10 PRs",
     "09 milestones/v1.0.0-Release.md.tmp.12080.1775098712344",
-    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098691668",
-    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098685888",
-    "09 milestones/v1.0.0-Release.md.tmp.36836.1775092296910",
-    "04 architecture/System-Architecture-Overview.md.tmp.36836.1775092279516",
-    "06 reports/sprints",
-    "06 reports",
-    "09 milestones",
-    "09 - milestones",
-    "04 architecture/adr"
+    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098691668"
   ]
 }

@@ -84,6 +84,7 @@ pub fn render_append_template(
     fields: &HashMap<String, String>,
     module: &ModuleConfig,
     composite_data: &CompositeData,
+    callout_overrides: &HashMap<String, String>,
 ) -> String {
     let now = Local::now();
 
@@ -103,8 +104,10 @@ pub fn render_append_template(
     result = result.replace("{{time}}", &now.format("%H:%M").to_string());
     result = result.replace("{{date}}", &now.format("%Y-%m-%d").to_string());
 
-    // Replace {{callout}} with the module's configured callout type.
-    if let Some(ref callout) = module.callout_type {
+    let callout_resolved = callout_overrides
+        .get("_callout_type")
+        .or(module.callout_type.as_ref());
+    if let Some(callout) = callout_resolved {
         result = result.replace("{{callout}}", callout);
     }
 
@@ -142,20 +145,30 @@ pub fn render_append_template(
     // Undeclared fields (not in module.fields) are substituted normally.
     for (key, value) in fields {
         let placeholder = format!("{{{{{key}}}}}");
-        let resolved = if declared_names.contains(key.as_str())
-            && !visible_names.contains(key.as_str())
-        {
-            // Declared field that is currently hidden — clear its placeholder.
-            String::new()
-        } else if module
-            .fields
-            .iter()
-            .any(|f| f.name == *key && f.wikilink == Some(true))
-        {
-            super::apply_wikilink(value.clone())
-        } else {
-            value.clone()
-        };
+        let field_cfg = module.fields.iter().find(|f| f.name == *key);
+        let resolved =
+            if declared_names.contains(key.as_str()) && !visible_names.contains(key.as_str()) {
+                // Declared field that is currently hidden — clear its placeholder.
+                String::new()
+            } else if field_cfg.is_some_and(|f| f.wikilink == Some(true)) {
+                super::apply_wikilink(value.clone())
+            } else if let Some(callout) = callout_overrides
+                .get(key)
+                .or_else(|| field_cfg.and_then(|f| f.callout.as_ref()))
+            {
+                if value.is_empty() {
+                    String::new()
+                } else {
+                    let mut block = format!("> [!{callout}]");
+                    for line in value.lines() {
+                        block.push_str("\n> ");
+                        block.push_str(line);
+                    }
+                    block
+                }
+            } else {
+                value.clone()
+            };
         result = result.replace(&placeholder, &resolved);
     }
 

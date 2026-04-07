@@ -1,6 +1,45 @@
 use pour::config::{Config, WriteMode};
 use pour::init::generate_config;
 
+fn minimal_template(vault_path: &str) -> String {
+    format!(
+        r#"
+config_version = "0.2.0"
+[vault]
+base_path = "{vault_path}"
+[modules.custom]
+mode = "create"
+path = "Notes/{{{{title}}}}.md"
+[[modules.custom.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter"
+"#
+    )
+}
+
+#[test]
+fn custom_template_without_placeholder_parses() {
+    let content = minimal_template("/my/real/vault");
+    let config = Config::from_toml(&content).expect("custom template should parse");
+    assert_eq!(config.vault.base_path, "/my/real/vault");
+    assert!(config.modules.contains_key("custom"));
+    assert!(!config.modules.contains_key("me"));
+}
+
+#[test]
+fn template_with_placeholder_substitutes_vault() {
+    let template = minimal_template("VAULT_PATH_PLACEHOLDER");
+    assert!(template.contains("VAULT_PATH_PLACEHOLDER"));
+
+    // Simulate the substitution logic from load_template
+    let content = template.replace("VAULT_PATH_PLACEHOLDER", r"C:\\Users\\Test\\vault");
+    let config = Config::from_toml(&content).expect("substituted template should parse");
+    assert_eq!(config.vault.base_path, r"C:\Users\Test\vault");
+}
+
 #[test]
 fn generated_config_is_valid_toml() {
     let content = generate_config("/tmp/test-vault");

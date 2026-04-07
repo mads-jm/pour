@@ -101,6 +101,15 @@ pub enum Action {
         note_name: String,
         field_values: std::collections::HashMap<String, String>,
     },
+    /// Save (upsert) a preset for the current module.
+    SavePreset {
+        name: String,
+        values: std::collections::HashMap<String, String>,
+    },
+    /// Delete a preset by name for the current module.
+    DeletePreset { name: String },
+    /// Reorder a preset by name in the given direction (+1 or -1).
+    ReorderPreset { name: String, direction: i32 },
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -168,6 +177,11 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 note_name,
                 field_values,
             },
+            form::FormAction::SavePreset { name, values } => Action::SavePreset { name, values },
+            form::FormAction::DeletePreset { name } => Action::DeletePreset { name },
+            form::FormAction::ReorderPreset { name, direction } => {
+                Action::ReorderPreset { name, direction }
+            }
             form::FormAction::None => Action::None,
         },
 
@@ -188,10 +202,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 Action::Navigate(Screen::Form)
             }
             summary::SummaryAction::OpenInObsidian => {
-                let file_path = app
-                    .summary_state
-                    .as_ref()
-                    .and_then(|s| s.file_path.clone());
+                let file_path = app.summary_state.as_ref().and_then(|s| s.file_path.clone());
                 Action::OpenInObsidian(file_path)
             }
             summary::SummaryAction::None => Action::None,

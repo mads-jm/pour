@@ -78,6 +78,20 @@
       }
     },
     {
+      "query": "path:\"10 PRs\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 11184810
+      }
+    },
+    {
+      "query": "path:\"99 meta\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 8947848
+      }
+    },
+    {
       "query": "file:\"index\"",
       "color": {
         "a": 1,

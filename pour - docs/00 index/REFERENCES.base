@@ -1,0 +1,18 @@
+filters:
+  and:
+    - file.inFolder("02 references")
+views:
+  - type: table
+    name: All References
+    order:
+      - file.name
+  - type: table
+    name: By Tag
+    filters:
+      and:
+        - note.tags:*
+    groupBy:
+      property: tags
+      direction: ASC
+    order:
+      - file.name

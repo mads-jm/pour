@@ -4,7 +4,7 @@ tags:
   - data
   - fallback
 date created: Tuesday, March 31st 2026, 10:03:56 pm
-date modified: Friday, April 3rd 2026, 4:11:42 am
+date modified: Tuesday, April 7th 2026, 3:30:37 am
 ---
 
 # The 3-Tier Data Fallback Pipeline

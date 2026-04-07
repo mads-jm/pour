@@ -91,7 +91,9 @@ impl FsWriter {
     /// Finds `heading` (e.g. `"## Log"`) in the file at `relative_path` and
     /// inserts `content` after all existing content in that section, but before
     /// the next heading of equal or higher level (i.e. same or fewer `#` symbols).
-    /// If the heading is the last section in the file, content is appended at EOF.
+    /// If `shallow` is `true`, *any* subsequent heading is treated as the section
+    /// boundary regardless of level. If the heading is the last section in the
+    /// file, content is appended at EOF.
     ///
     /// A blank line is inserted before `content` to preserve clean markdown spacing.
     ///
@@ -104,6 +106,7 @@ impl FsWriter {
         relative_path: &str,
         heading: &str,
         content: &str,
+        shallow: bool,
     ) -> Result<()> {
         let full_path = self.resolve_path(relative_path);
 
@@ -136,13 +139,16 @@ impl FsWriter {
             })?;
 
         // Find insertion point: first line after `heading_idx` that is a heading
-        // of equal or higher level (level <= heading_level).
+        // of equal or higher level (level <= heading_level), or any heading when
+        // `shallow` is true.
         let insert_before = lines[heading_idx + 1..]
             .iter()
             .position(|l| {
                 let hashes = l.chars().take_while(|&c| c == '#').count();
                 // Must be a real heading: starts with at least one `#` followed by a space.
-                hashes > 0 && l.chars().nth(hashes) == Some(' ') && hashes <= heading_level
+                hashes > 0
+                    && l.chars().nth(hashes) == Some(' ')
+                    && (shallow || hashes <= heading_level)
             })
             .map(|rel| heading_idx + 1 + rel); // absolute index
 

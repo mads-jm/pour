@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::App;
 use pour::config::Config;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::transport::Transport;
 use pour::transport::fs::FsWriter;
 use pour::tui::dashboard::{DashboardAction, MoveDirection, handle_key};
@@ -45,6 +46,7 @@ fn make_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dash-history.json")),
+        Presets::empty(),
     )
 }
 
@@ -55,6 +57,7 @@ fn make_empty_app() -> App {
         config,
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dash-history.json")),
+        Presets::empty(),
     )
 }
 

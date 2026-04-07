@@ -109,7 +109,7 @@ prompt = "Title"
     let transport = Transport::connect(&config).await;
 
     transport
-        .append_under_heading("note.md", "## Log", "appended text")
+        .append_under_heading("note.md", "## Log", "appended text", false)
         .await
         .expect("append should succeed");
 

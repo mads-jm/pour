@@ -48,7 +48,12 @@ impl History {
     }
 
     /// Record a successful capture and persist to disk.
-    pub fn record(&mut self, module_key: &str, vault_path: &str, first_field: Option<&str>) -> Result<()> {
+    pub fn record(
+        &mut self,
+        module_key: &str,
+        vault_path: &str,
+        first_field: Option<&str>,
+    ) -> Result<()> {
         self.data.entries.push(HistoryEntry {
             module_key: module_key.to_owned(),
             timestamp: Utc::now(),

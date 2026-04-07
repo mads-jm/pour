@@ -1,0 +1,31 @@
+filters:
+  and:
+    - file.inFolder("05 notes")
+views:
+  - type: table
+    name: Recent First
+    order:
+      - date modified
+    sort:
+      - property: date modified
+        direction: ASC
+  - type: table
+    name: By Status
+    filters:
+      and:
+        - note.status:*
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - date modified
+  - type: table
+    name: By Tag
+    filters:
+      and:
+        - note.tags:*
+    groupBy:
+      property: tags
+      direction: ASC
+    order:
+      - file.name

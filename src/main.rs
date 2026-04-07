@@ -11,6 +11,7 @@ use pour::config::{
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
 use pour::data::history::History;
+use pour::data::presets::Presets;
 use pour::output;
 use pour::tui;
 use pour::visibility::visible_field_indices;
@@ -23,7 +24,20 @@ async fn main() {
     // Handle `pour init` before config loading
     if args.get(1).map(|s| s.as_str()) == Some("init") {
         let force = args.iter().any(|a| a == "--force");
-        match pour::init::run(pour::init::InitOptions { force }) {
+        let template = args
+            .iter()
+            .position(|a| a == "--template")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+
+        if let Some(ref t) = template {
+            if !t.exists() {
+                eprintln!("pour init: template not found: {}", t.display());
+                process::exit(1);
+            }
+        }
+
+        match pour::init::run(pour::init::InitOptions { force, template }) {
             Ok(_) => process::exit(0),
             Err(e) => {
                 eprintln!("pour init: {e}");
@@ -49,8 +63,11 @@ async fn main() {
     // Load capture history for dashboard stats
     let history = History::load();
 
+    // Load saved presets
+    let presets = Presets::load();
+
     // Build app state
-    let mut app = App::new(config, transport, history);
+    let mut app = App::new(config, transport, history, presets);
 
     // Check for path issues at startup; shown as a dismissable overlay on the dashboard
     app.startup_warnings = app
@@ -276,12 +293,121 @@ async fn run_loop(
                     }
                 }
 
+                tui::Action::SavePreset { name, values } => {
+                    handle_save_preset(app, &name, values);
+                }
+
+                tui::Action::DeletePreset { name } => {
+                    handle_delete_preset(app, &name);
+                }
+
+                tui::Action::ReorderPreset { name, direction } => {
+                    handle_reorder_preset(app, &name, direction);
+                }
+
                 tui::Action::None => {}
             }
         }
     }
 
     Ok(())
+}
+
+/// Upsert a preset for the current module and refresh form state.
+fn handle_save_preset(
+    app: &mut App,
+    name: &str,
+    values: std::collections::HashMap<String, String>,
+) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    let entry = pour::data::presets::PresetEntry {
+        name: name.to_string(),
+        values,
+    };
+    app.presets.set(&module_key, entry);
+    if let Err(e) = app.presets.save() {
+        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
+        let _ = e;
+    }
+
+    // Refresh preset_names and select the newly saved preset
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
+    if let Some(ref mut fs) = app.form_state {
+        let new_idx = names
+            .iter()
+            .position(|n| n == name)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        fs.preset_names = names;
+        fs.selected_preset = new_idx;
+    }
+}
+
+/// Delete a preset for the current module and reset preset selection.
+///
+/// Only removes the preset from the saved list — does NOT reset form field
+/// values, since the user may have manually edited fields they want to keep.
+fn handle_delete_preset(app: &mut App, name: &str) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    app.presets.delete(&module_key, name);
+    if let Err(e) = app.presets.save() {
+        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
+        let _ = e;
+    }
+
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
+    if let Some(ref mut fs) = app.form_state {
+        fs.preset_names = names;
+        fs.selected_preset = 0; // Back to <none>, but keep current field values.
+    }
+}
+
+/// Reorder a preset for the current module in the given direction.
+fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    app.presets.reorder(&module_key, name, direction);
+    if let Err(e) = app.presets.save() {
+        let _ = e;
+    }
+
+    // Refresh preset_names and find the moved preset's new position
+    let names: Vec<String> = app
+        .presets
+        .get(&module_key)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
+    if let Some(ref mut fs) = app.form_state {
+        let new_idx = names
+            .iter()
+            .position(|n| n == name)
+            .map(|i| i + 1)
+            .unwrap_or(fs.selected_preset);
+        fs.preset_names = names;
+        fs.selected_preset = new_idx;
+    }
 }
 
 /// Handle form submission: validate, write, transition to summary.
@@ -297,7 +423,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     };
 
     // Validate form and extract field values
-    let (field_values, field_options, composite_data) = {
+    let (field_values, field_options, composite_data, callout_overrides) = {
         let form_state = match &app.form_state {
             Some(fs) => fs,
             None => return,
@@ -314,8 +440,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
 
         // Collect visible field names so stale hidden values are not written to the vault
         let visible_names: std::collections::HashSet<String> = {
-            let visible_indices =
-                visible_field_indices(&module.fields, &form_state.field_values);
+            let visible_indices = visible_field_indices(&module.fields, &form_state.field_values);
             visible_indices
                 .into_iter()
                 .map(|i| module.fields[i].name.clone())
@@ -329,6 +454,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             values,
             form_state.field_options.clone(),
             form_state.composite_values.clone(),
+            form_state.callout_overrides.clone(),
         )
     };
 
@@ -360,6 +486,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &field_values,
                 &composite_data,
                 date_fmt,
+                &callout_overrides,
             )
             .await
         }
@@ -370,6 +497,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &field_values,
                 &composite_data,
                 date_fmt,
+                &callout_overrides,
             )
             .await
         }
@@ -438,8 +566,7 @@ async fn handle_create_from_template(
         None => {
             if let Some(ref mut fs) = app.form_state {
                 if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message =
-                        Some(format!("template '{template_name}' not found"));
+                    sf.error_message = Some(format!("template '{template_name}' not found"));
                 }
             }
             return;
@@ -454,8 +581,7 @@ async fn handle_create_from_template(
         None => {
             if let Some(ref mut fs) = app.form_state {
                 if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message =
-                        Some(format!("failed to resolve path for '{note_name}'"));
+                    sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
                 }
             }
             return;
@@ -463,8 +589,12 @@ async fn handle_create_from_template(
     };
 
     // Build note content from template + sub-form values
-    let content =
-        pour::autocreate::build_templated_note_content(template, note_name, sub_form_values, &today);
+    let content = pour::autocreate::build_templated_note_content(
+        template,
+        note_name,
+        sub_form_values,
+        &today,
+    );
 
     // Look up post_create_command before the mutable borrow dance
     let post_command = {
@@ -500,10 +630,8 @@ async fn handle_create_from_template(
                             }
                             // Also add to live field_options so it appears in the dropdown
                             if let Some(ref mut fs) = app.form_state {
-                                let opts = fs
-                                    .field_options
-                                    .entry(field_name.to_string())
-                                    .or_default();
+                                let opts =
+                                    fs.field_options.entry(field_name.to_string()).or_default();
                                 if !pour::autocreate::is_existing_option(&stem, opts) {
                                     opts.push(stem);
                                 }
@@ -609,21 +737,18 @@ async fn handle_save(app: &mut App) {
                     // Read api_key from the raw config file rather than the in-memory
                     // value, which may carry a POUR_API_KEY env-var override. Without
                     // this guard a second save would write the env-var value to disk.
-                    let api_key_display = if std::env::var("POUR_API_KEY").is_ok() {
-                        // Read raw file value instead of env-overridden in-memory value,
-                        // to prevent writing the env var secret to disk on save.
-                        let config_path = pour::config::Config::default_config_path();
-                        std::fs::read_to_string(config_path)
-                            .ok()
-                            .and_then(|content| {
-                                let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-                                let key = doc.get("vault")?.get("api_key")?.as_str()?;
-                                Some(key.to_string())
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        vault.api_key.clone().unwrap_or_default()
-                    };
+                    // Always show the persisted value, never the env-var override.
+                    // secrets.toml is authoritative; config.toml is the legacy fallback.
+                    let api_key_display = pour::config::Config::read_secret_api_key()
+                        .or_else(|| {
+                            std::fs::read_to_string(pour::config::Config::default_config_path())
+                                .ok()
+                                .and_then(|content| {
+                                    let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+                                    doc.get("vault")?.get("api_key")?.as_str().map(String::from)
+                                })
+                        })
+                        .unwrap_or_default();
                     if let Some(ref mut s) = app.configure_state {
                         s.settings = vec![
                             pour::app::ConfigSetting {
@@ -714,6 +839,8 @@ fn handle_add_field(app: &mut App) {
         create_template: None,
         post_create_command: None,
         show_when: None,
+        icon: None,
+        preset_exclude: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -999,6 +1126,9 @@ fn handle_save_new_module(app: &mut App) {
         append_template: None,
         display_name,
         callout_type: None,
+        icon: None,
+        daily_link: None,
+        append_shallow: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1015,6 +1145,8 @@ fn handle_save_new_module(app: &mut App) {
             create_template: None,
             post_create_command: None,
             show_when: None,
+            icon: None,
+            preset_exclude: None,
         }],
     };
 
@@ -1246,6 +1378,9 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut mode: Option<WriteMode> = None;
     let mut append_under_header: Option<Option<String>> = None;
     let mut callout_type: Option<Option<String>> = None;
+    let mut icon: Option<Option<String>> = None;
+    let mut daily_link: Option<Option<bool>> = None;
+    let mut append_shallow: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1278,6 +1413,27 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     Some(setting.value.clone())
                 });
             }
+            "icon" => {
+                icon = Some(if setting.value.is_empty() {
+                    None
+                } else {
+                    Some(setting.value.clone())
+                });
+            }
+            "daily_link" => {
+                daily_link = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
+            }
+            "append_shallow" => {
+                append_shallow = Some(if setting.value == "true" {
+                    Some(true)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -1288,6 +1444,9 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         mode,
         append_under_header,
         callout_type,
+        icon,
+        daily_link,
+        append_shallow,
     }
 }
 
