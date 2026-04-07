@@ -18,6 +18,8 @@ pour note         # create a fleeting note
 pour              # open the dashboard
 ```
 
+![WindowsTerminal_MrF7aYYLa6](https://github.com/user-attachments/assets/8c658f4f-2b3c-43d5-ada3-8d44b12221c6)
+
 ## Install
 
 ```bash
