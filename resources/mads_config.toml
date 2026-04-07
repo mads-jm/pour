@@ -8,7 +8,7 @@
 config_version = "0.2.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
-module_order = ["me", "todo", "note", "coffee"]
+module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "book"]
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
@@ -77,6 +77,57 @@ field_type = "text"
 prompt = "Task"
 required = true
 target = "body"
+
+# ── log ──────────────────────────────────────────────────────────────────────
+# Usage: `pour log`
+# Appends a timestamped activity entry to your daily note under Today.
+[modules.log]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Daily Log"
+icon = "📋"
+append_under_header = "## Today"
+append_template = "- **{{time}}** · {{entry}}"
+
+[[modules.log.fields]]
+name = "entry"
+field_type = "text"
+prompt = "What did you do?"
+required = true
+target = "body"
+
+# ── workout ──────────────────────────────────────────────────────────────────
+# Usage: `pour workout`
+# Appends a workout summary to your daily note under Today.
+[modules.workout]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Workout"
+icon = "💪"
+append_under_header = "## Today"
+append_template = "- **{{time}}** · {{type}} — {{duration}} min{{notes}}"
+
+[[modules.workout.fields]]
+name = "type"
+field_type = "static_select"
+prompt = "Workout type"
+required = true
+options = ["Lifting", "Cardio", "Calisthenics", "Sports", "Yoga", "Walking", "Other"]
+target = "body"
+
+[[modules.workout.fields]]
+name = "duration"
+field_type = "number"
+prompt = "Minutes"
+required = true
+target = "body"
+
+[[modules.workout.fields]]
+name = "notes"
+field_type = "text"
+prompt = "Notes (optional)"
+target = "body"
+preset_exclude = true
 
 # ── note ─────────────────────────────────────────────────────────────────────
 # Usage: `pour note`
@@ -318,6 +369,80 @@ field_type = "textarea"
 prompt = "Tasting notes"
 target = "body"
 callout = "quote"
+preset_exclude = true
+
+# ── journal ──────────────────────────────────────────────────────────────────
+# Usage: `pour journal`
+# Creates a private journal entry in 13 - Joseph/00 - Journal/ with
+# year/month subdirectory structure matching existing entries.
+[modules.journal]
+mode = "create"
+path = "13 - Joseph/00 - Journal/%Y/%m %B/%y%m%d {{title}}.md"
+display_name = "Journal"
+icon = "📓"
+daily_link = true
+
+[[modules.journal.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter"
+preset_exclude = true
+
+[[modules.journal.fields]]
+name = "tags"
+field_type = "text"
+prompt = "Tags (comma-separated, e.g. life/love, life/wellness)"
+target = "frontmatter"
+
+[[modules.journal.fields]]
+name = "cssclasses"
+field_type = "text"
+prompt = "CSS classes"
+default = "page-dark"
+target = "frontmatter"
+
+[[modules.journal.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Write freely..."
+target = "body"
+preset_exclude = true
+
+# ── book ────────────────────────────────────────────────────────────────────
+# Usage: `pour book`
+# Appends reading notes/highlights to an existing book note in the Bookshelf.
+[modules.book]
+mode = "append"
+path = "04 - Permanent/📚Bookshelf/{{book}}.md"
+display_name = "Book Note"
+icon = "📚"
+append_under_header = "## Notes"
+callout_type = "quote"
+append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
+
+[[modules.book.fields]]
+name = "book"
+field_type = "dynamic_select"
+prompt = "Book"
+source = "04 - Permanent/📚Bookshelf"
+required = true
+target = "body"
+preset_exclude = true
+
+[[modules.book.fields]]
+name = "title"
+field_type = "text"
+prompt = "Note title (optional)"
+target = "body"
+
+[[modules.book.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Your thoughts / highlights"
+required = true
+target = "body"
 preset_exclude = true
 
 # ─── Templates ───────────────────────────────────────────────────────────────
