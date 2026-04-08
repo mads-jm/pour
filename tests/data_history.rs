@@ -1,14 +1,18 @@
 use chrono::{Duration, Utc};
-use pour::data::history::{History, HistoryData, HistoryEntry, format_relative};
+use pour::data::history::{format_relative, History, HistoryEntry};
+use std::io::Write;
 
-/// Create a History with the given entries, backed by a temp file.
+/// Create a History backed by a temp JSONL file with the given entries.
 fn history_with_entries(entries: Vec<HistoryEntry>) -> (History, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let path = dir.path().join("history.json");
+    let path = dir.path().join("history.jsonl");
 
-    let data = HistoryData { entries };
-    let json = serde_json::to_string_pretty(&data).expect("serialize");
-    std::fs::write(&path, json).expect("write temp history");
+    let mut file = std::fs::File::create(&path).expect("create temp history");
+    for entry in &entries {
+        let line = serde_json::to_string(entry).expect("serialize entry");
+        writeln!(file, "{}", line).expect("write line");
+    }
+    file.flush().expect("flush");
 
     (History::load_from(path), dir)
 }
@@ -134,7 +138,7 @@ fn last_per_module_tracks_each_module() {
 #[test]
 fn record_persists_to_disk() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let path = dir.path().join("history.json");
+    let path = dir.path().join("history.jsonl");
     let mut h = History::load_from(path.clone());
 
     assert_eq!(h.today_count(), 0);
@@ -184,4 +188,130 @@ fn format_relative_days_ago() {
 fn format_relative_weeks_ago() {
     let ts = Utc::now() - Duration::days(14);
     assert_eq!(format_relative(ts), "2w ago");
+}
+
+// ---------------------------------------------------------------------------
+// JSONL-specific tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn corrupt_last_line_is_skipped() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+
+    // Write a valid entry then a corrupt partial line
+    let valid = entry("coffee", 1);
+    let line = serde_json::to_string(&valid).expect("serialize");
+    std::fs::write(&path, format!("{}\n{{\"module_key\":\"broken\n", line)).expect("write");
+
+    let h = History::load_from(path);
+    assert_eq!(h.recent(10).len(), 1);
+    assert_eq!(h.last_pour().unwrap().module_key, "coffee");
+}
+
+#[test]
+fn unknown_fields_in_jsonl_are_ignored() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+
+    // Simulate a future version writing extra fields
+    let line = r#"{"module_key":"coffee","timestamp":"2026-04-06T12:00:00Z","vault_path":"test.md","first_field":null,"future_field":"hello","another_new_thing":42}"#;
+    std::fs::write(&path, format!("{}\n", line)).expect("write");
+
+    let h = History::load_from(path);
+    assert_eq!(h.recent(10).len(), 1);
+    assert_eq!(h.last_pour().unwrap().module_key, "coffee");
+}
+
+#[test]
+fn legacy_json_format_auto_migrates() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let legacy_path = dir.path().join("history.json");
+    let jsonl_path = dir.path().join("history.jsonl");
+
+    // Write old-format history.json
+    let old_data = serde_json::json!({
+        "entries": [
+            {
+                "module_key": "coffee",
+                "timestamp": "2026-04-06T10:00:00Z",
+                "vault_path": "Coffee/test.md",
+                "first_field": "Ethiopia"
+            },
+            {
+                "module_key": "me",
+                "timestamp": "2026-04-06T11:00:00Z",
+                "vault_path": "Journal/test.md",
+                "first_field": null
+            }
+        ]
+    });
+    std::fs::write(&legacy_path, serde_json::to_string_pretty(&old_data).unwrap())
+        .expect("write legacy");
+
+    // Load from the .jsonl path — should detect and migrate
+    let h = History::load_from(jsonl_path.clone());
+    assert_eq!(h.recent(10).len(), 2);
+    assert_eq!(h.last_pour().unwrap().module_key, "me");
+
+    // Legacy file should be removed
+    assert!(!legacy_path.exists(), "legacy file should be deleted after migration");
+
+    // JSONL file should exist
+    assert!(jsonl_path.exists(), "jsonl file should exist after migration");
+
+    // Reload to verify persistence
+    let h2 = History::load_from(jsonl_path);
+    assert_eq!(h2.recent(10).len(), 2);
+}
+
+#[test]
+fn empty_lines_in_jsonl_are_skipped() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+
+    let valid = entry("coffee", 1);
+    let line = serde_json::to_string(&valid).expect("serialize");
+    std::fs::write(&path, format!("{}\n\n\n{}\n", line, line)).expect("write");
+
+    let h = History::load_from(path);
+    assert_eq!(h.recent(10).len(), 2);
+}
+
+#[test]
+fn record_appends_without_rewriting() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+    let mut h = History::load_from(path.clone());
+
+    h.record("coffee", "test1.md", None).expect("record 1");
+    h.record("me", "test2.md", None).expect("record 2");
+    h.record("music", "test3.md", None).expect("record 3");
+
+    // File should have exactly 3 lines
+    let contents = std::fs::read_to_string(&path).expect("read");
+    let non_empty_lines: Vec<&str> = contents.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(non_empty_lines.len(), 3);
+
+    // Reload and verify
+    let h2 = History::load_from(path);
+    assert_eq!(h2.recent(10).len(), 3);
+    assert_eq!(h2.last_pour().unwrap().module_key, "music");
+}
+
+#[test]
+fn summary_cache_is_written() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+    let mut h = History::load_from(path.clone());
+
+    h.record("coffee", "test.md", Some("Ethiopia")).expect("record");
+
+    let summary_path = dir.path().join("history-summary.json");
+    assert!(summary_path.exists(), "summary cache should be written after record()");
+
+    let contents = std::fs::read_to_string(&summary_path).expect("read summary");
+    let summary: serde_json::Value = serde_json::from_str(&contents).expect("parse summary");
+    assert_eq!(summary["version"], 1);
+    assert_eq!(summary["total_entries"], 1);
 }
