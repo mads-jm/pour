@@ -1,4 +1,4 @@
-# Pour
+# [Pour](https://pour.madigan.app/)
 
 A terminal-native capture tool that writes structured Markdown to a folder. Config-driven, keyboard-first, no friction. Built for [Obsidian](https://obsidian.md) users, works without it.
 
@@ -17,6 +17,8 @@ pour todo         # add a task
 pour note         # create a fleeting note
 pour              # open the dashboard
 ```
+
+![WindowsTerminal_MrF7aYYLa6](https://github.com/user-attachments/assets/8c658f4f-2b3c-43d5-ada3-8d44b12221c6)
 
 ## Install
 
