@@ -1,6 +1,6 @@
 # Pour
 
-A terminal-native capture tool that logs structured data into an [Obsidian](https://obsidian.md) vault. Config-driven, keyboard-first, no friction.
+A terminal-native capture tool that writes structured Markdown to a folder. Config-driven, keyboard-first, no friction. Built for [Obsidian](https://obsidian.md) users, works without it.
 
 ## Why
 
@@ -176,6 +176,18 @@ api_key = "your-key-here"   # or POUR_API_KEY env var
 ```
 
 **`dynamic_select` data fallback chain**: API query → disk scan of `source` path → `~/.cache/pour/state.json` → freetext input. The TUI renders immediately from cache while fetching fresh data in the background.
+
+## Do I Need Obsidian?
+
+No. Pour writes plain Markdown files with YAML frontmatter to any directory. Obsidian is one excellent consumer of those files, but anything that reads Markdown works — Logseq, Dendron, Hugo, Zola, `grep`, a 10-line Python script.
+
+**Without Obsidian**: set `base_path` to any folder, skip the `api_key` and `api_port` settings. Pour writes files directly to disk. You get structured, queryable Markdown — no plugins, no proprietary format.
+
+**With Obsidian**: you get the REST API transport (faster writes, richer directory listing), `[[wikilink]]` support, and post-create plugin commands. These are opt-in — if you don't configure them, none of that code runs.
+
+A few config options are Obsidian-flavored (`wikilink = true`, `post_create_command`), but they're all opt-in. The core — config, TUI, form engine, presets, YAML output — is vault-agnostic.
+
+For the full story, see [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
 
 ## Tech Stack
 
