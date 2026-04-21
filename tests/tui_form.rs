@@ -761,7 +761,7 @@ fn char_input_still_blocked_on_static_select_without_allow_create() {
     handle_key(&mut app, key(KeyCode::Char('e')));
     let fs = app.form_state.as_ref().unwrap();
     assert_eq!(fs.field_values.get("origin").unwrap(), "");
-    assert!(fs.search_buffers.get("origin").is_none());
+    assert!(!fs.search_buffers.contains_key("origin"));
 }
 
 #[test]
@@ -801,7 +801,7 @@ source = "beans"
     handle_key(&mut app, key(KeyCode::Char('e')));
     let fs = app.form_state.as_ref().unwrap();
     assert_eq!(fs.field_values.get("bean").unwrap(), "");
-    assert!(fs.search_buffers.get("bean").is_none());
+    assert!(!fs.search_buffers.contains_key("bean"));
 }
 
 #[test]
@@ -819,7 +819,7 @@ fn tab_clears_search_buffer_on_allow_create_dynamic_select() {
     );
     handle_key(&mut app, key(KeyCode::Tab));
     let fs = app.form_state.as_ref().unwrap();
-    assert!(fs.search_buffers.get("bean").is_none());
+    assert!(!fs.search_buffers.contains_key("bean"));
 }
 
 // ── Visibility-aware navigation (TASK-A05) ──

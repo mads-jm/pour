@@ -248,21 +248,20 @@ pub fn render(app: &App, frame: &mut Frame) {
                 format!("   {}", entry.module_key),
                 Style::default().fg(Color::White),
             )];
-            if let Some(label) = entry.first_field.as_deref() {
-                if !label.is_empty() {
-                    // Available space for label: total width minus fixed parts
-                    let avail =
-                        (area.width as usize).saturating_sub(prefix_width + 3 + 2 + time_width);
-                    let trimmed = if label.len() > avail && avail > 0 {
-                        format!("{}..", &label[..avail.saturating_sub(2)])
-                    } else {
-                        label.to_string()
-                    };
-                    spans.push(Span::styled(
-                        format!(" - {trimmed}"),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                }
+            if let Some(label) = entry.first_field.as_deref()
+                && !label.is_empty()
+            {
+                // Available space for label: total width minus fixed parts
+                let avail = (area.width as usize).saturating_sub(prefix_width + 3 + 2 + time_width);
+                let trimmed = if label.len() > avail && avail > 0 {
+                    format!("{}..", &label[..avail.saturating_sub(2)])
+                } else {
+                    label.to_string()
+                };
+                spans.push(Span::styled(
+                    format!(" - {trimmed}"),
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
             spans.push(Span::styled(
                 format!("  {time_str}"),
@@ -488,14 +487,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> DashboardAc
             // Try to select the module mentioned in the first warning so
             // ConfigureModule opens the right one (warnings start with
             // "module '<key>': ...").
-            if let Some(first) = app.startup_warnings.first() {
-                if let Some(start) = first.find("'") {
-                    if let Some(end) = first[start + 1..].find("'") {
-                        let key = &first[start + 1..start + 1 + end];
-                        if let Some(idx) = app.module_keys.iter().position(|k| k == key) {
-                            app.selected_module = idx;
-                        }
-                    }
+            if let Some(first) = app.startup_warnings.first()
+                && let Some(start) = first.find("'")
+                && let Some(end) = first[start + 1..].find("'")
+            {
+                let key = &first[start + 1..start + 1 + end];
+                if let Some(idx) = app.module_keys.iter().position(|k| k == key) {
+                    app.selected_module = idx;
                 }
             }
             app.startup_warnings.clear();

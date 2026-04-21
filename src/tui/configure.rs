@@ -349,10 +349,10 @@ fn preview_path_template(template: &str, date_format: Option<&str>) -> String {
     // (e.g. a trailing `%` mid-edit). Fall back to the un-expanded string.
     use std::fmt::Write;
     let mut buf = String::new();
-    match write!(buf, "{}", now.format(&result)) {
-        Ok(()) => result = buf,
-        Err(_) => {} // leave result as-is with unexpanded specifiers
+    if write!(buf, "{}", now.format(&result)).is_ok() {
+        result = buf;
     }
+    // else: leave result as-is with unexpanded specifiers
     // Restore {{…}} placeholders.
     for (i, token) in placeholders.iter().enumerate() {
         let marker = format!("\x00PH{}\x00", i);
@@ -745,22 +745,9 @@ pub fn render(app: &App, frame: &mut Frame) {
                 Span::raw(" cancel"),
             ])
         }
-    } else if state.level == ConfigureLevel::FieldList {
-        Line::from(vec![
-            Span::styled(" Up/Down", Style::default().fg(Color::Yellow)),
-            Span::raw(" navigate  "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(" open  "),
-            Span::styled("n", Style::default().fg(Color::Yellow)),
-            Span::raw(" new  "),
-            Span::styled("d", Style::default().fg(Color::Yellow)),
-            Span::raw(" delete  "),
-            Span::styled("Ctrl+↑↓", Style::default().fg(Color::Yellow)),
-            Span::raw(" reorder  "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" back"),
-        ])
-    } else if matches!(state.level, ConfigureLevel::SubFieldList(_)) {
+    } else if state.level == ConfigureLevel::FieldList
+        || matches!(state.level, ConfigureLevel::SubFieldList(_))
+    {
         Line::from(vec![
             Span::styled(" Up/Down", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
@@ -2268,10 +2255,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
 
             KeyCode::Char('?') => {
                 // '?' on Path fields opens the placeholder help overlay
-                if let Some(setting) = state.settings.get(state.active_field) {
-                    if matches!(setting.kind, SettingKind::Path) {
-                        state.help_overlay_open = true;
-                    }
+                if let Some(setting) = state.settings.get(state.active_field)
+                    && matches!(setting.kind, SettingKind::Path)
+                {
+                    state.help_overlay_open = true;
                 }
                 ConfigureAction::None
             }
@@ -2419,15 +2406,15 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> ConfigureAc
                                     s.level = ConfigureLevel::FieldList;
                                     s.active_field = 0;
                                 }
-                            } else if nav_key == "sub_fields" {
-                                if let ConfigureLevel::FieldEditor(field_idx) = current_level {
-                                    if is_dirty {
-                                        auto_save_field_settings(app, field_idx);
-                                    }
-                                    if let Some(ref mut s) = app.configure_state {
-                                        s.level = ConfigureLevel::SubFieldList(field_idx);
-                                        s.active_field = 0;
-                                    }
+                            } else if nav_key == "sub_fields"
+                                && let ConfigureLevel::FieldEditor(field_idx) = current_level
+                            {
+                                if is_dirty {
+                                    auto_save_field_settings(app, field_idx);
+                                }
+                                if let Some(ref mut s) = app.configure_state {
+                                    s.level = ConfigureLevel::SubFieldList(field_idx);
+                                    s.active_field = 0;
                                 }
                             }
                         }

@@ -30,11 +30,11 @@ async fn main() {
             .and_then(|i| args.get(i + 1))
             .map(std::path::PathBuf::from);
 
-        if let Some(ref t) = template {
-            if !t.exists() {
-                eprintln!("pour init: template not found: {}", t.display());
-                process::exit(1);
-            }
+        if let Some(ref t) = template
+            && !t.exists()
+        {
+            eprintln!("pour init: template not found: {}", t.display());
+            process::exit(1);
         }
 
         match pour::init::run(pour::init::InitOptions { force, template }) {
@@ -294,11 +294,11 @@ async fn run_loop(
 
                 tui::Action::OpenInObsidian(file_path) => {
                     let uri = obsidian_uri(&app.config.vault.base_path, file_path.as_deref());
-                    if let Err(e) = open::that(&uri) {
-                        if let Some(ref mut ss) = app.summary_state {
-                            ss.message
-                                .push_str(&format!(" (Warning: could not open Obsidian: {e})"));
-                        }
+                    if let Err(e) = open::that(&uri)
+                        && let Some(ref mut ss) = app.summary_state
+                    {
+                        ss.message
+                            .push_str(&format!(" (Warning: could not open Obsidian: {e})"));
                     }
                 }
 
@@ -614,10 +614,10 @@ async fn handle_create_from_template(
     {
         Some(t) => t,
         None => {
-            if let Some(ref mut fs) = app.form_state {
-                if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message = Some(format!("template '{template_name}' not found"));
-                }
+            if let Some(ref mut fs) = app.form_state
+                && let Some(ref mut sf) = fs.sub_form
+            {
+                sf.error_message = Some(format!("template '{template_name}' not found"));
             }
             return;
         }
@@ -629,10 +629,10 @@ async fn handle_create_from_template(
     let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name) {
         Some(p) => p,
         None => {
-            if let Some(ref mut fs) = app.form_state {
-                if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
-                }
+            if let Some(ref mut fs) = app.form_state
+                && let Some(ref mut sf) = fs.sub_form
+            {
+                sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
             }
             return;
         }
@@ -709,26 +709,23 @@ async fn handle_create_from_template(
 
             // Update cache: derive source from the field config
             let module_key = app.module_keys.get(app.selected_module).cloned();
-            if let Some(ref mk) = module_key {
-                if let Some(module) = app.config.modules.get(mk) {
-                    if let Some(field) = module.fields.iter().find(|f| f.name == field_name) {
-                        if let Some(ref source) = field.source {
-                            let stem = pour::autocreate::sanitize_filename(note_name)
-                                .unwrap_or_else(|| note_name.to_string());
-                            let mut cached = cache.get(source).unwrap_or_default();
-                            if !pour::autocreate::is_existing_option(&stem, &cached) {
-                                cached.push(stem.clone());
-                                cache.set(source, cached);
-                            }
-                            // Also add to live field_options so it appears in the dropdown
-                            if let Some(ref mut fs) = app.form_state {
-                                let opts =
-                                    fs.field_options.entry(field_name.to_string()).or_default();
-                                if !pour::autocreate::is_existing_option(&stem, opts) {
-                                    opts.push(stem);
-                                }
-                            }
-                        }
+            if let Some(ref mk) = module_key
+                && let Some(module) = app.config.modules.get(mk)
+                && let Some(field) = module.fields.iter().find(|f| f.name == field_name)
+                && let Some(ref source) = field.source
+            {
+                let stem = pour::autocreate::sanitize_filename(note_name)
+                    .unwrap_or_else(|| note_name.to_string());
+                let mut cached = cache.get(source).unwrap_or_default();
+                if !pour::autocreate::is_existing_option(&stem, &cached) {
+                    cached.push(stem.clone());
+                    cache.set(source, cached);
+                }
+                // Also add to live field_options so it appears in the dropdown
+                if let Some(ref mut fs) = app.form_state {
+                    let opts = fs.field_options.entry(field_name.to_string()).or_default();
+                    if !pour::autocreate::is_existing_option(&stem, opts) {
+                        opts.push(stem);
                     }
                 }
             }
@@ -745,10 +742,10 @@ async fn handle_create_from_template(
         }
         Err(e) => {
             // Sub-form stays open so the user can retry or cancel
-            if let Some(ref mut fs) = app.form_state {
-                if let Some(ref mut sf) = fs.sub_form {
-                    sf.error_message = Some(format!("write failed: {e}"));
-                }
+            if let Some(ref mut fs) = app.form_state
+                && let Some(ref mut sf) = fs.sub_form
+            {
+                sf.error_message = Some(format!("write failed: {e}"));
             }
         }
     }
