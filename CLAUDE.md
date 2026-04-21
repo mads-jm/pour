@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Pour** is a terminal-native (TUI) capture tool written in Rust that logs structured data into an Obsidian vault. It acts as a headless data-entry client driven entirely by a TOML config file (`~/.config/pour/config.toml`). Users run `pour` for a dashboard or `pour <module>` (e.g., `pour me`, `pour coffee`) for fast direct entry.
+**Pour** is a terminal-native (TUI) capture tool written in Rust that logs structured data into an Obsidian vault. It acts as a headless data-entry client driven entirely by a TOML config file (`~/.pour/config.toml`). All runtime state lives under `~/.pour/` (override with `POUR_HOME` env var). Users run `pour` for a dashboard or `pour <module>` (e.g., `pour me`, `pour coffee`) for fast direct entry.
 
 ## Build & Development Commands
 
@@ -30,7 +30,7 @@ Pour writes to Obsidian via two paths, falling back automatically:
 
 ### Dynamic Data Fetching (3-tier fallback)
 
-For populating dropdowns (e.g., bean list): API query -> disk scan -> `~/.cache/pour/state.json` cache -> freetext input. The TUI renders immediately from cache while async-fetching fresh data in the background.
+For populating dropdowns (e.g., bean list): API query -> disk scan -> `~/.pour/cache/state.json` cache -> freetext input. The TUI renders immediately from cache while async-fetching fresh data in the background.
 
 ### File Write Modes
 
@@ -59,6 +59,7 @@ The app has no hardcoded knowledge of specific modules. All modules, fields, pat
 - Example: `src/config.rs` tests are in `tests/config.rs`
 - `tempfile` is available as a dev-dependency for filesystem tests
 - Use `POUR_CONFIG` env var to point tests at temporary config files
+- Use `POUR_HOME` env var to override the `~/.pour/` state directory in tests or alternate environments
 
 ## Documentation
 

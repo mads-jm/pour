@@ -377,7 +377,7 @@ impl Config {
     ///
     /// Resolution order for config file path:
     /// 1. `POUR_CONFIG` environment variable (if set)
-    /// 2. `~/.config/pour/config.toml` (via `dirs::config_dir()`)
+    /// 2. `~/.pour/config.toml` (or `$POUR_HOME/config.toml` if overridden)
     ///
     /// The `api_key` is resolved via `from_toml` in this order:
     /// env var > secrets.toml > config.toml.
@@ -465,7 +465,7 @@ impl Config {
     /// Apply the `api_key` resolution chain to an already-parsed config:
     ///
     /// 1. `config.toml [vault] api_key` (already present via serde)
-    /// 2. `~/.config/pour/secrets.toml`  (overrides config.toml)
+    /// 2. `~/.pour/secrets.toml`          (overrides config.toml)
     /// 3. `POUR_API_KEY` env var          (overrides everything)
     fn apply_api_key_overlay(config: &mut Config) {
         // Layer 2: secrets.toml overrides config.toml value.
@@ -560,10 +560,7 @@ impl Config {
             return Err(ConfigError::NotFound(path));
         }
 
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| ConfigError::NotFound(PathBuf::from("~/.config/pour/config.toml")))?;
-
-        let path = config_dir.join("pour").join("config.toml");
+        let path = crate::paths::config_path();
         if path.exists() {
             Ok(path)
         } else {

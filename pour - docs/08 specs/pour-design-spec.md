@@ -57,14 +57,15 @@ Pour uses a dual-pronged approach to writing data:
 1. __Primary (API):__ Attempts a fast local HTTPS request via [[reqwest]] to the [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs). *[Deviation: originally spec'd as HTTP; implementation uses HTTPS with `danger_accept_invalid_certs`.]*
 2. __Fallback (File System):__ If the connection is refused, it gracefully falls back to `std::fs` to write directly to the absolute vault path defined in the configuration.
 
-__API Authentication:__ The REST API plugin requires a Bearer token. Pour supports two sources:
+__API Authentication:__ The REST API plugin requires a Bearer token. Pour resolves the key in this order (first found wins):
 
-- `api_key` field under `[vault]` in `config.toml`.
-- `POUR_API_KEY` environment variable (takes precedence over config if set).
+1. `POUR_API_KEY` environment variable.
+2. `api_key` key in `~/.pour/secrets.toml` (preferred — keep out of version control).
+3. `api_key` field under `[vault]` in `config.toml` (legacy fallback; auto-migrated to `secrets.toml` on first load).
 
 ### __3.2 Dynamic Data Fetching & Caching__
 
-3-tier fallback (API → disk scan → cache → freetext) with async background refresh.
+3-tier fallback with async background refresh. The three data source tiers are: (1) transport layer (API or FS scan), (2) JSON cache (`~/.pour/cache/state.json`), (3) empty vector — which causes the field to accept freetext. Freetext is a UI mode, not a data source, which is why the count is three rather than four. See also [[The-3-Tier-Data-Fallback]].
 
 #### Inline Creation (`allow_create`)
 
@@ -135,15 +136,17 @@ config_version = "0.2.0"
 - __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`). The current version is `0.2.0`.
 - __Purpose:__ Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. *[Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.]*
 
-## __6. Technical Stack__
+## __5. Technical Stack__
 
 - __Language:__ Rust (2024 Edition)
 - __TUI Framework:__ [[ratatui]] + [[crossterm]]
 - __Serialization:__ `serde`, `serde_json`, [[toml-serde|toml]], `toml_edit` *[Deviation: `serde_yaml` was originally included but removed — YAML frontmatter uses custom serialization instead. See [[ADR-002-Custom-YAML-Serialization]].]*
 - __Network:__ [[reqwest]] (with `tokio` for async fetching)
 - __Time:__ [[chrono]] (for file formatting and timestamps)
+- __URL encoding:__ `percent-encoding` — encodes vault paths containing spaces in REST API request URLs
+- __Shell open:__ `open` — cross-platform crate for opening a file or URL in the system default handler (used for "Open in Obsidian" via `obsidian://` URI)
 
-## __7. Scope — v0.1__
+## __6. Scope — v0.1__
 
 The following are explicitly __in scope__ for v0.1:
 

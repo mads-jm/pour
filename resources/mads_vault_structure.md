@@ -163,7 +163,7 @@ specific fields — controlled by `show_when` rules on `brew_method`.
 1. Create the folder tree shown above in your vault
 2. Add at least one `.md` file in each `dynamic_select` source folder
    so the dropdowns have content on first run
-3. Copy `mads_config.toml` to `~/.config/pour/config.toml`
+3. Copy `mads_config.toml` to `~/.pour/config.toml` (or run `pour init` for interactive setup)
 4. Update `base_path` to your vault's absolute path
 5. Adjust the `02 - Areas/204 - Cooking/Coffee/` prefix if your vault
    uses a different folder scheme

@@ -416,8 +416,34 @@ These keys are set on the module itself, not on individual fields:
 | `config_version` | string | Optional semver string declaring the config schema version (e.g. `"0.2.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. |
 | `[vault].base_path` | string | Absolute path to the Obsidian vault root |
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
-| `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var) |
+| `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |
+| `[vault].date_format` | string | strftime format string used to expand the `{{date}}` placeholder in module `path` and `append_template` values. Defaults to `"%Y%m%d"` when absent. Example: `"%Y-%m-%d"` produces `2026-04-21`. |
 | `module_order` | string[] | Optional dashboard display ordering. Modules not listed appear alphabetically after listed ones |
+
+### `date_format` Example
+
+`date_format` controls what `{{date}}` resolves to in path and template strings. It does not affect strftime tokens (`%Y`, `%m`, `%d`) — those always expand using the standard strftime rules.
+
+```toml
+[vault]
+base_path = "/path/to/vault"
+date_format = "%Y-%m-%d"   # {{date}} → "2026-04-21" (default: "%Y%m%d" → "20260421")
+```
+
+Use `{{date}}` in a path or append template:
+
+```toml
+[modules.note]
+mode = "create"
+path = "Notes/%Y/%m/{{date}}-{{title}}.md"
+
+[modules.journal]
+mode = "append"
+path = "Daily/%Y%m%d.md"
+append_template = "- {{date}} {{time}} | {{body}}"
+```
+
+`date_format` is editable from the dashboard via vault settings (`v` → date_format field).
 
 ## Templates
 

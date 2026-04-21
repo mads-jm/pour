@@ -17,9 +17,13 @@ __04 architecture__ - Design spec, [[ARCHITECTURE#Architecture Decision Records|
 
 __05 notes__ - 'Fleeting' development notes; precursor to atomic notes in persistent vault above
 
+__06 reports__ - Sprint reports and release summaries (frozen historical records — do not edit sprints)
+
 __07 stories__ - User stories and vision documents
 
 __08 specs__ - Feature and component specifications
+
+__09 milestones__ - Release milestone notes and known limitations per version
 
 __99 meta__ -
 - 00 templates - Obsidian templates

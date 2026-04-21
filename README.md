@@ -35,7 +35,15 @@ Requires Rust 2024 edition. No other system dependencies - Obsidian Local REST A
 
 ## Quick Start
 
-**1. Create the config file**
+**0. Initialize**
+
+```bash
+pour init
+```
+
+`pour init` creates the default layout at `~/.pour/` — `config.toml`, `secrets.toml`, and example modules — guided by interactive prompts. Run this once before first use. All Pour state lives under `~/.pour/` (override with `POUR_HOME`).
+
+**1. Create the config file (manual alternative)**
 
 ```bash
 mkdir -p ~/.pour
@@ -180,13 +188,18 @@ Fields with `preset_exclude = true` are skipped during save and apply - useful f
 
 Pour writes to Obsidian via two paths, falling back automatically:
 
-1. **API** - HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in config or via `POUR_API_KEY` env var.
+1. **API** - HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in `~/.pour/secrets.toml` or via `POUR_API_KEY` env var.
 2. **Filesystem** - Direct `std::fs` writes to `vault.base_path`. Always available.
 
 ```toml
+# ~/.pour/config.toml
 [vault]
 base_path = "/path/to/vault"
 api_port = 27124
+```
+
+```toml
+# ~/.pour/secrets.toml  (keep out of version control)
 api_key = "your-key-here"   # or POUR_API_KEY env var
 ```
 
@@ -212,6 +225,8 @@ For the full story, see [Pour Without Obsidian](pour%20-%20docs/07%20stories/pou
 | HTTP | `reqwest` + `tokio` |
 | Serialization | `serde` + `toml` + `toml_edit` + `serde_json` |
 | Time | `chrono` |
+| URL encoding | `percent-encoding` — encodes vault paths with spaces in REST API URLs |
+| Shell open | `open` — opens notes in Obsidian via the `o` key on the summary screen |
 
 ## Development
 
