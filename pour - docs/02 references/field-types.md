@@ -49,6 +49,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See __Conditional Visibility__ below. |
 | `icon` | string | no | Optional icon displayed next to the field prompt in the TUI form (e.g. `"🫘"`). Purely cosmetic — not written to output. |
 | `preset_exclude` | bool | no | When `true`, this field is excluded from preset capture and application. Useful for notes/textarea fields whose values change every entry and shouldn't be part of a saved preset. Defaults to `false`. |
+| `list` | bool | no | When `true`, values containing `", "` are split on that delimiter and emitted as a YAML sequence in frontmatter (e.g. `"a, b"` → `- a\n- b`). When `wikilink = true` is also set, each split item is individually wrapped in `[[...]]`. Defaults to `false` — value is treated as a literal string and properly escaped. Valid on `text`, `static_select`, and `dynamic_select`. |
 
 ## Output Target Defaults
 

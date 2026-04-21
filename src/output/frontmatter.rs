@@ -18,16 +18,18 @@ const YAML_SPECIAL_START: &[char] = &['-'];
 /// - A `date` field is auto-injected (today, `YYYY-MM-DD`) if not already
 ///   present, and is always placed first.
 /// - Values containing YAML-special characters are double-quoted.
-/// - Comma-separated values (e.g. `"a, b, c"`) are emitted as a YAML list.
+/// - When the field's `list` flag is `true`, comma-separated values
+///   (e.g. `"a, b, c"`) are emitted as a YAML sequence. Otherwise the value
+///   is treated as a literal string and properly escaped.
 /// - Composite fields are emitted as YAML sequence-of-mappings.
 pub fn generate_frontmatter(
-    fields: &[(String, String)],
+    fields: &[(String, String, bool)],
     composites: &[FrontmatterComposite<'_>],
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     // Check whether the caller already supplied a date field.
-    let has_date = fields.iter().any(|(k, _)| k == "date");
+    let has_date = fields.iter().any(|(k, _, _)| k == "date");
 
     // Date always comes first.
     if !has_date {
@@ -35,7 +37,7 @@ pub fn generate_frontmatter(
         lines.push(format!("date: {today}"));
     }
 
-    for (key, value) in fields {
+    for (key, value, list) in fields {
         if value.is_empty() {
             continue;
         }
@@ -48,8 +50,8 @@ pub fn generate_frontmatter(
             continue;
         }
 
-        // Comma-separated → YAML list.
-        if value.contains(", ") {
+        // Comma-separated → YAML list only when the field opts in via `list = true`.
+        if *list && value.contains(", ") {
             let items: Vec<&str> = value.split(", ").collect();
             lines.push(format!("{key}:"));
             for item in items {

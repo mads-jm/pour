@@ -934,6 +934,7 @@ fn handle_add_field(app: &mut App) {
         show_when: None,
         icon: None,
         preset_exclude: None,
+        list: false,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -1241,6 +1242,7 @@ fn handle_save_new_module(app: &mut App) {
             show_when: None,
             icon: None,
             preset_exclude: None,
+            list: false,
         }],
     };
 

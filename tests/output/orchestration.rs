@@ -1,5 +1,6 @@
 use pour::config::Config;
-use pour::output::{CompositeData, write_append, write_create};
+use pour::output::render_composite_table;
+use pour::output::{CompositeData, apply_wikilink, write_append, write_create};
 use pour::transport::Transport;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -22,6 +23,7 @@ field_type = "static_select"
 prompt = "Roaster"
 options = ["Onyx", "Stumptown"]
 wikilink = true
+list = true
 
 [[modules.brew.fields]]
 name = "origin"
@@ -1123,5 +1125,96 @@ prompt = "Daily"
     assert!(
         content.contains("[[custom]]"),
         "user-provided daily value should be preserved, got:\n{content}"
+    );
+}
+
+// --- list flag + wikilink tests ---
+
+#[test]
+fn wikilink_comma_value_is_single_link_by_default() {
+    // wikilink = true, list = false (default): the whole value wraps as one link.
+    let result = apply_wikilink("tag1, tag2".to_string(), false);
+    assert_eq!(
+        result, "[[tag1, tag2]]",
+        "list=false should wrap the whole value as one wikilink, got: {result}"
+    );
+}
+
+#[test]
+fn wikilink_comma_value_splits_when_list_true() {
+    // wikilink = true, list = true: each comma-separated item gets its own link.
+    let result = apply_wikilink("tag1, tag2".to_string(), true);
+    assert_eq!(
+        result, "[[tag1]], [[tag2]]",
+        "list=true should split into individual wikilinks, got: {result}"
+    );
+}
+
+// --- composite table unicode-width test ---
+
+fn cjk_sub_fields() -> Vec<pour::config::SubFieldConfig> {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.c]
+mode = "create"
+path = "c.md"
+
+[[modules.c.fields]]
+name = "items"
+field_type = "composite_array"
+prompt = "Items"
+
+[[modules.c.fields.sub_fields]]
+name = "label"
+field_type = "text"
+prompt = "Label"
+
+[[modules.c.fields.sub_fields]]
+name = "count"
+field_type = "number"
+prompt = "Count"
+"####;
+    let config = Config::from_toml(toml).unwrap();
+    config.modules["c"].fields[0].sub_fields.clone().unwrap()
+}
+
+#[test]
+fn composite_table_width_accounts_for_cjk() {
+    let subs = cjk_sub_fields();
+    // CJK characters each occupy 2 display columns.
+    let rows = vec![
+        vec!["日本語".to_string(), "3".to_string()],
+        vec!["ABC".to_string(), "1".to_string()],
+    ];
+    let table = render_composite_table(&subs, &rows);
+
+    // The separator row width for the first column must be at least 6
+    // (3 CJK chars × 2 display cols each), not 3 (byte/char count).
+    // The separator line looks like: |---...-|---...-|
+    // Extract the first column separator length by finding between the first two |.
+    let sep_line = table
+        .lines()
+        .nth(1)
+        .expect("table should have a separator row");
+    // sep_line: |---------|-----|
+    // First segment after leading | is the first column separator dashes.
+    let first_col_sep = sep_line
+        .trim_start_matches('|')
+        .split('|')
+        .next()
+        .expect("separator should have column segment");
+    // The dashes count (excluding the surrounding -) should be >= 6 for CJK content.
+    let dash_count = first_col_sep.chars().filter(|&c| c == '-').count();
+    assert!(
+        dash_count >= 6,
+        "CJK cell '日本語' (display width 6) should drive column width to at least 6 dashes, got {dash_count} in separator: {sep_line}"
+    );
+
+    // Also verify the CJK row itself is present and the cell text appears in the table.
+    assert!(
+        table.contains("日本語"),
+        "CJK cell content should appear in table, got:\n{table}"
     );
 }

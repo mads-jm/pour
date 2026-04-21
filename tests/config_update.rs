@@ -454,6 +454,7 @@ fn add_field_with_show_when_persisted() {
         }),
         icon: None,
         preset_exclude: None,
+        list: false,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -686,6 +687,7 @@ fn add_field_appends_to_module() {
         show_when: None,
         icon: None,
         preset_exclude: None,
+        list: false,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -729,6 +731,7 @@ fn add_field_to_nonexistent_module_errors() {
         show_when: None,
         icon: None,
         preset_exclude: None,
+        list: false,
     };
 
     let result = Config::add_field_on_disk("nonexistent", &new_field);
@@ -810,6 +813,7 @@ fn add_field_preserves_comments() {
         show_when: None,
         icon: None,
         preset_exclude: None,
+        list: false,
     };
 
     Config::add_field_on_disk("coffee", &new_field).expect("add_field should succeed");
@@ -855,6 +859,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             show_when: None,
             icon: None,
             preset_exclude: None,
+            list: false,
         }],
     }
 }

@@ -5,8 +5,8 @@ use pour::output::frontmatter::generate_frontmatter;
 #[test]
 fn basic_frontmatter_with_auto_date() {
     let fields = vec![
-        ("brew_method".to_string(), "V60".to_string()),
-        ("rating".to_string(), "4".to_string()),
+        ("brew_method".to_string(), "V60".to_string(), false),
+        ("rating".to_string(), "4".to_string(), false),
     ];
     let result = generate_frontmatter(&fields, &[]);
 
@@ -30,8 +30,8 @@ fn basic_frontmatter_with_auto_date() {
 #[test]
 fn explicit_date_is_preserved_and_first() {
     let fields = vec![
-        ("rating".to_string(), "5".to_string()),
-        ("date".to_string(), "2025-01-15".to_string()),
+        ("rating".to_string(), "5".to_string(), false),
+        ("date".to_string(), "2025-01-15".to_string(), false),
     ];
     let result = generate_frontmatter(&fields, &[]);
 
@@ -48,8 +48,8 @@ fn explicit_date_is_preserved_and_first() {
 #[test]
 fn empty_values_are_skipped() {
     let fields = vec![
-        ("title".to_string(), "Hello".to_string()),
-        ("empty_field".to_string(), String::new()),
+        ("title".to_string(), "Hello".to_string(), false),
+        ("empty_field".to_string(), String::new(), false),
     ];
     let result = generate_frontmatter(&fields, &[]);
 
@@ -65,7 +65,11 @@ fn empty_values_are_skipped() {
 
 #[test]
 fn special_chars_are_quoted() {
-    let fields = vec![("origin".to_string(), "Ethiopia: Yirgacheffe".to_string())];
+    let fields = vec![(
+        "origin".to_string(),
+        "Ethiopia: Yirgacheffe".to_string(),
+        false,
+    )];
     let result = generate_frontmatter(&fields, &[]);
 
     assert!(
@@ -76,7 +80,12 @@ fn special_chars_are_quoted() {
 
 #[test]
 fn comma_separated_becomes_yaml_list() {
-    let fields = vec![("tags".to_string(), "coffee, review, morning".to_string())];
+    // list = true opts in to comma-split behavior
+    let fields = vec![(
+        "tags".to_string(),
+        "coffee, review, morning".to_string(),
+        true,
+    )];
     let result = generate_frontmatter(&fields, &[]);
 
     assert!(result.contains("tags:\n"), "should start a YAML list");
@@ -96,9 +105,11 @@ fn comma_separated_becomes_yaml_list() {
 
 #[test]
 fn comma_separated_items_with_special_chars_are_quoted() {
+    // list = true opts in to comma-split behavior
     let fields = vec![(
         "notes".to_string(),
         "good: flavor, bad: aftertaste".to_string(),
+        true,
     )];
     let result = generate_frontmatter(&fields, &[]);
 
@@ -115,8 +126,8 @@ fn comma_separated_items_with_special_chars_are_quoted() {
 #[test]
 fn all_empty_fields_still_produces_date() {
     let fields = vec![
-        ("a".to_string(), String::new()),
-        ("b".to_string(), String::new()),
+        ("a".to_string(), String::new(), false),
+        ("b".to_string(), String::new(), false),
     ];
     let result = generate_frontmatter(&fields, &[]);
 
@@ -220,7 +231,11 @@ fn composite_mixed_with_scalar_fields() {
         "Bloom".to_string(),
     ]];
 
-    let scalars = vec![("bean".to_string(), "Ethiopian Yirgacheffe".to_string())];
+    let scalars = vec![(
+        "bean".to_string(),
+        "Ethiopian Yirgacheffe".to_string(),
+        false,
+    )];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
     let result = generate_frontmatter(&scalars, &composites);
@@ -238,7 +253,7 @@ fn composite_mixed_with_scalar_fields() {
 #[test]
 fn yaml_reserved_bare_words_are_quoted() {
     for word in &["true", "false", "null", "yes", "no", "on", "off"] {
-        let fields = vec![("flag".to_string(), word.to_string())];
+        let fields = vec![("flag".to_string(), word.to_string(), false)];
         let result = generate_frontmatter(&fields, &[]);
         assert!(
             result.contains(&format!("flag: \"{word}\"")),
@@ -250,7 +265,7 @@ fn yaml_reserved_bare_words_are_quoted() {
 #[test]
 fn yaml_reserved_bare_words_case_insensitive() {
     for word in &["True", "FALSE", "Null", "YES", "NO", "On", "OFF"] {
-        let fields = vec![("flag".to_string(), word.to_string())];
+        let fields = vec![("flag".to_string(), word.to_string(), false)];
         let result = generate_frontmatter(&fields, &[]);
         assert!(
             result.contains(&format!("flag: \"{word}\"")),
@@ -262,7 +277,7 @@ fn yaml_reserved_bare_words_case_insensitive() {
 #[test]
 fn numeric_looking_strings_are_quoted() {
     for num in &["42", "3.14", "-7", "1e10", "0.0"] {
-        let fields = vec![("val".to_string(), num.to_string())];
+        let fields = vec![("val".to_string(), num.to_string(), false)];
         let result = generate_frontmatter(&fields, &[]);
         assert!(
             result.contains(&format!("val: \"{num}\"")),
@@ -273,7 +288,7 @@ fn numeric_looking_strings_are_quoted() {
 
 #[test]
 fn newline_in_value_is_escaped() {
-    let fields = vec![("note".to_string(), "line one\nline two".to_string())];
+    let fields = vec![("note".to_string(), "line one\nline two".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     // The literal newline must be replaced with \n inside the quoted string.
     assert!(
@@ -293,7 +308,7 @@ fn newline_in_value_is_escaped() {
 
 #[test]
 fn carriage_return_in_value_is_escaped() {
-    let fields = vec![("note".to_string(), "line one\rline two".to_string())];
+    let fields = vec![("note".to_string(), "line one\rline two".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains(r#"note: "line one\rline two""#),
@@ -303,7 +318,7 @@ fn carriage_return_in_value_is_escaped() {
 
 #[test]
 fn backslash_in_value_is_escaped() {
-    let fields = vec![("path".to_string(), r"C:\Users\Joe".to_string())];
+    let fields = vec![("path".to_string(), r"C:\Users\Joe".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     // The single backslash must be doubled inside the quoted YAML string.
     assert!(
@@ -317,7 +332,7 @@ fn backslash_before_double_quote_ordering() {
     // A value containing both a backslash and a double-quote.
     // Correct output: "C:\\\"file\""  — backslash doubled, quote escaped.
     // Wrong (if order reversed): "C:\"\\file\"" etc.
-    let fields = vec![("v".to_string(), "C:\\\"file\"".to_string())];
+    let fields = vec![("v".to_string(), "C:\\\"file\"".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains(r#"v: "C:\\\"file\"""#),
@@ -343,7 +358,7 @@ fn composite_empty_rows_skipped() {
 
 #[test]
 fn value_starting_with_dash_is_quoted() {
-    let fields = vec![("mood".to_string(), "-negative".to_string())];
+    let fields = vec![("mood".to_string(), "-negative".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("mood: \"-negative\""),
@@ -353,7 +368,7 @@ fn value_starting_with_dash_is_quoted() {
 
 #[test]
 fn value_with_embedded_quotes_escaped() {
-    let fields = vec![("title".to_string(), "He said \"hello\"".to_string())];
+    let fields = vec![("title".to_string(), "He said \"hello\"".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains(r#"title: "He said \"hello\"""#),
@@ -363,7 +378,7 @@ fn value_with_embedded_quotes_escaped() {
 
 #[test]
 fn value_with_hash_is_quoted() {
-    let fields = vec![("label".to_string(), "Coffee #3".to_string())];
+    let fields = vec![("label".to_string(), "Coffee #3".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("label: \"Coffee #3\""),
@@ -373,7 +388,7 @@ fn value_with_hash_is_quoted() {
 
 #[test]
 fn value_with_exclamation_is_quoted() {
-    let fields = vec![("label".to_string(), "Wow!".to_string())];
+    let fields = vec![("label".to_string(), "Wow!".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("label: \"Wow!\""),
@@ -383,7 +398,7 @@ fn value_with_exclamation_is_quoted() {
 
 #[test]
 fn value_with_at_sign_is_quoted() {
-    let fields = vec![("contact".to_string(), "user@email".to_string())];
+    let fields = vec![("contact".to_string(), "user@email".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("contact: \"user@email\""),
@@ -393,7 +408,7 @@ fn value_with_at_sign_is_quoted() {
 
 #[test]
 fn multiple_special_chars_quoted() {
-    let fields = vec![("desc".to_string(), "a: b & c".to_string())];
+    let fields = vec![("desc".to_string(), "a: b & c".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("desc: \"a: b & c\""),
@@ -403,7 +418,7 @@ fn multiple_special_chars_quoted() {
 
 #[test]
 fn single_item_not_treated_as_list() {
-    let fields = vec![("tag".to_string(), "coffee".to_string())];
+    let fields = vec![("tag".to_string(), "coffee".to_string(), false)];
     let result = generate_frontmatter(&fields, &[]);
     assert!(
         result.contains("tag: coffee"),
@@ -463,5 +478,49 @@ prompt = "Description"
     assert!(
         result.contains("desc: \"A: B\""),
         "composite text with colon should be quoted, got: {result}"
+    );
+}
+
+// --- list flag tests ---
+
+#[test]
+fn frontmatter_comma_value_is_literal_by_default() {
+    // list = false (default): comma-separated value must be a single quoted scalar, not a list.
+    let fields = vec![("tags".to_string(), "tag1, tag2".to_string(), false)];
+    let result = generate_frontmatter(&fields, &[]);
+
+    // Should be a scalar line, not a YAML sequence.
+    assert!(
+        !result.contains("  - tag1"),
+        "list=false should not produce sequence items, got: {result}"
+    );
+    assert!(
+        !result.contains("  - tag2"),
+        "list=false should not produce sequence items, got: {result}"
+    );
+    // The value contains a comma which is YAML-special, so it must be quoted.
+    assert!(
+        result.contains("tags: \"tag1, tag2\""),
+        "list=false comma value should be a quoted scalar, got: {result}"
+    );
+}
+
+#[test]
+fn frontmatter_comma_value_splits_when_list_true() {
+    // list = true: comma-separated value must be emitted as a YAML sequence.
+    let fields = vec![("tags".to_string(), "tag1, tag2".to_string(), true)];
+    let result = generate_frontmatter(&fields, &[]);
+
+    assert!(
+        result.contains("tags:\n"),
+        "list=true should open a YAML sequence, got: {result}"
+    );
+    assert!(
+        result.contains("  - tag1\n"),
+        "list=true should emit first item, got: {result}"
+    );
+    assert!(
+        result.contains("  - tag2\n"),
+        "list=true should emit second item, got: {result}"
     );
 }

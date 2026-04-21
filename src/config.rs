@@ -138,6 +138,12 @@ pub struct FieldConfig {
     /// Useful for notes/textarea fields that should not be part of a saved preset.
     #[serde(default)]
     pub preset_exclude: Option<bool>,
+    /// When `true`, comma-separated values (e.g. `"a, b, c"`) are split and
+    /// emitted as a YAML sequence in frontmatter, and each item gets its own
+    /// wikilink when `wikilink = true`. Defaults to `false` (value treated as a
+    /// literal string — not split).
+    #[serde(default)]
+    pub list: bool,
 }
 
 /// The kind of input widget for a field.
@@ -2405,6 +2411,20 @@ impl Config {
             }
 
             for field in &module.fields {
+                // `list = true` only makes sense for scalar field types where
+                // comma-splitting produces meaningful frontmatter lists.
+                if field.list
+                    && !matches!(
+                        field.field_type,
+                        FieldType::Text | FieldType::StaticSelect | FieldType::DynamicSelect
+                    )
+                {
+                    errors.push(format!(
+                        "module '{name}', field '{}': 'list = true' is only valid on text, static_select, or dynamic_select",
+                        field.name
+                    ));
+                }
+
                 // static_select must have non-empty options
                 if field.field_type == FieldType::StaticSelect {
                     match &field.options {

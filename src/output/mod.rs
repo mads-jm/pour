@@ -6,6 +6,7 @@ use crate::transport::Transport;
 use crate::visibility::visible_field_indices;
 use anyhow::{Result, bail};
 use std::collections::{HashMap, HashSet};
+use unicode_width::UnicodeWidthStr;
 
 /// Composite field data: field_name → rows of cell values.
 pub type CompositeData = HashMap<String, Vec<Vec<String>>>;
@@ -37,17 +38,15 @@ pub async fn write_create(
 
     if let Some(ref icon) = module.icon {
         // Only inject if no user field is already named "icon" (avoid duplicate YAML keys).
-        if !fm_fields.iter().any(|(k, _)| k == "icon") {
-            fm_fields.insert(0, ("icon".to_string(), icon.clone()));
+        if !fm_fields.iter().any(|(k, _, _)| k == "icon") {
+            fm_fields.insert(0, ("icon".to_string(), icon.clone(), false));
         }
     }
 
-    if module.daily_link == Some(true) {
-        if !fm_fields.iter().any(|(k, _)| k == "daily") {
-            let date_fmt = date_format.unwrap_or("%Y%m%d");
-            let daily = format!("[[{}]]", chrono::Local::now().format(date_fmt));
-            fm_fields.push(("daily".to_string(), daily));
-        }
+    if module.daily_link == Some(true) && !fm_fields.iter().any(|(k, _, _)| k == "daily") {
+        let date_fmt = date_format.unwrap_or("%Y%m%d");
+        let daily = format!("[[{}]]", chrono::Local::now().format(date_fmt));
+        fm_fields.push(("daily".to_string(), daily, false));
     }
 
     let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
@@ -140,6 +139,10 @@ pub async fn write_append(
 /// A composite field destined for frontmatter: name, sub-field configs, and row data.
 pub type FrontmatterComposite<'a> = (String, &'a [SubFieldConfig], Vec<Vec<String>>);
 
+/// Scalar frontmatter fields: (key, value, list_flag).
+/// `list_flag` enables comma-split into YAML sequence when true.
+type FmFields = Vec<(String, String, bool)>;
+
 /// Partition field values into frontmatter pairs, composite frontmatter, and body strings.
 ///
 /// Routing rules:
@@ -153,12 +156,8 @@ fn partition_fields<'a>(
     composite_data: &CompositeData,
     callout_overrides: &HashMap<String, String>,
     callout_titles: &HashMap<String, String>,
-) -> (
-    Vec<(String, String)>,
-    Vec<FrontmatterComposite<'a>>,
-    Vec<String>,
-) {
-    let mut fm_fields: Vec<(String, String)> = Vec::new();
+) -> (FmFields, Vec<FrontmatterComposite<'a>>, Vec<String>) {
+    let mut fm_fields: FmFields = Vec::new();
     let mut fm_composites: Vec<FrontmatterComposite<'a>> = Vec::new();
     let mut body_parts: Vec<String> = Vec::new();
 
@@ -220,7 +219,7 @@ fn partition_fields<'a>(
         };
 
         let value = if field_cfg.wikilink == Some(true) {
-            apply_wikilink(raw)
+            apply_wikilink(raw, field_cfg.list)
         } else {
             raw
         };
@@ -235,7 +234,7 @@ fn partition_fields<'a>(
 
         match target {
             FieldTarget::Frontmatter => {
-                fm_fields.push((field_cfg.name.clone(), value));
+                fm_fields.push((field_cfg.name.clone(), value, field_cfg.list));
             }
             FieldTarget::Body => {
                 if !value.is_empty() {
@@ -272,14 +271,16 @@ fn partition_fields<'a>(
 
 /// Wrap a value in Obsidian wikilink syntax: `[[value]]`.
 ///
-/// Handles comma-separated values by wrapping each item individually,
-/// so `"Onyx, Stumptown"` becomes `"[[Onyx]], [[Stumptown]]"`.
+/// When `list` is `true`, comma-separated values are wrapped individually:
+/// `"Onyx, Stumptown"` becomes `"[[Onyx]], [[Stumptown]]"`.
+/// When `list` is `false` (default), the whole value is wrapped as a single
+/// wikilink: `"Onyx, Stumptown"` becomes `"[[Onyx, Stumptown]]"`.
 /// No-ops on items already wrapped (starts with `[[` and ends with `]]`).
-pub fn apply_wikilink(value: String) -> String {
-    if value.contains(", ") {
+pub fn apply_wikilink(value: String, list: bool) -> String {
+    if list && value.contains(", ") {
         value
             .split(", ")
-            .map(|item| wrap_single_wikilink(item))
+            .map(wrap_single_wikilink)
             .collect::<Vec<_>>()
             .join(", ")
     } else {
@@ -303,22 +304,25 @@ pub fn render_composite_table(sub_fields: &[SubFieldConfig], rows: &[Vec<String>
 
     let headers: Vec<&str> = sub_fields.iter().map(|s| s.prompt.as_str()).collect();
 
-    // Calculate column widths (minimum: header length)
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    // Calculate column widths using display width (handles CJK and wide chars).
+    let mut widths: Vec<usize> = headers.iter().map(|h| UnicodeWidthStr::width(*h)).collect();
     for row in rows {
         for (i, cell) in row.iter().enumerate() {
             if i < widths.len() {
-                widths[i] = widths[i].max(cell.len());
+                widths[i] = widths[i].max(UnicodeWidthStr::width(cell.as_str()));
             }
         }
     }
 
     let mut out = String::new();
 
-    // Header row
+    // Header row — pad with spaces to display width.
     out.push('|');
     for (i, header) in headers.iter().enumerate() {
-        out.push_str(&format!(" {:width$} |", header, width = widths[i]));
+        let w = widths[i];
+        let display_w = UnicodeWidthStr::width(*header);
+        let padding = w.saturating_sub(display_w);
+        out.push_str(&format!(" {}{} |", header, " ".repeat(padding)));
     }
     out.push('\n');
 
@@ -329,12 +333,14 @@ pub fn render_composite_table(sub_fields: &[SubFieldConfig], rows: &[Vec<String>
     }
     out.push('\n');
 
-    // Data rows
+    // Data rows — pad with spaces to display width.
     for row in rows {
         out.push('|');
         for (i, width) in widths.iter().enumerate() {
             let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
-            out.push_str(&format!(" {:width$} |", cell, width = width));
+            let display_w = UnicodeWidthStr::width(cell);
+            let padding = width.saturating_sub(display_w);
+            out.push_str(&format!(" {}{} |", cell, " ".repeat(padding)));
         }
         out.push('\n');
     }

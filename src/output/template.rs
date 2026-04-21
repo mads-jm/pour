@@ -152,7 +152,8 @@ pub fn render_append_template(
                 // Declared field that is currently hidden — clear its placeholder.
                 String::new()
             } else if field_cfg.is_some_and(|f| f.wikilink == Some(true)) {
-                super::apply_wikilink(value.clone())
+                let list = field_cfg.map(|f| f.list).unwrap_or(false);
+                super::apply_wikilink(value.clone(), list)
             } else if let Some(callout) = callout_overrides
                 .get(key)
                 .or_else(|| field_cfg.and_then(|f| f.callout.as_ref()))
