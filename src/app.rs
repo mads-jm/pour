@@ -160,10 +160,10 @@ impl SubFormState {
                 field.default.clone().unwrap_or_default(),
             );
 
-            if field.field_type == TemplateFieldType::StaticSelect {
-                if let Some(opts) = &field.options {
-                    field_options.insert(field.name.clone(), opts.clone());
-                }
+            if field.field_type == TemplateFieldType::StaticSelect
+                && let Some(opts) = &field.options
+            {
+                field_options.insert(field.name.clone(), opts.clone());
             }
         }
 
@@ -270,7 +270,8 @@ pub struct BrowserState {
     pub current_path: String,
     pub entries: Vec<VaultEntry>,
     pub selected: usize,
-    pub loading: bool,
+    /// Error message from the last directory listing attempt, if any.
+    pub error: Option<String>,
 }
 
 /// A pending destructive action awaiting user confirmation.
@@ -351,6 +352,10 @@ pub struct App {
     pub help_open: bool,
     /// Saved presets for all modules.
     pub presets: Presets,
+    /// Messages deferred from async tasks (e.g. autocreate) that must not be
+    /// printed while TUI raw mode is active. Drained and written to stderr by
+    /// main after `ratatui::restore()`.
+    pub deferred_stderr: Vec<String>,
 }
 
 impl App {
@@ -397,6 +402,7 @@ impl App {
             history,
             help_open: false,
             presets,
+            deferred_stderr: Vec::new(),
         }
     }
 

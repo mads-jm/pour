@@ -113,6 +113,11 @@ pub fn note_vault_path(source: &str, filename_stem: &str) -> String {
 /// 4. Create the note via the transport layer (best-effort: log and continue on failure).
 /// 5. Append the new value to the cache for the field's source.
 ///
+/// Diagnostic messages (skips, failures) are appended to `deferred_stderr` rather
+/// than printed directly, because this function runs while the TUI raw mode is active.
+/// The caller is responsible for draining and printing those messages after restoring
+/// the terminal.
+///
 /// Returns a list of notes that were successfully created.
 pub async fn run(
     module: &ModuleConfig,
@@ -121,6 +126,7 @@ pub async fn run(
     transport: &Transport,
     cache: &mut Cache,
     today: &str,
+    deferred_stderr: &mut Vec<String>,
 ) -> Vec<AutoCreatedNote> {
     let mut created = Vec::new();
 
@@ -150,10 +156,10 @@ pub async fn run(
         let stem = match sanitize_filename(value) {
             Some(s) => s,
             None => {
-                eprintln!(
+                deferred_stderr.push(format!(
                     "pour: auto-create skipped — empty or reserved filename after sanitization (field '{}', value '{}')",
                     field.name, value
-                );
+                ));
                 continue;
             }
         };
@@ -180,7 +186,7 @@ pub async fn run(
                 });
             }
             Err(e) => {
-                eprintln!("pour: auto-create failed for '{vault_path}': {e}");
+                deferred_stderr.push(format!("pour: auto-create failed for '{vault_path}': {e}"));
             }
         }
     }

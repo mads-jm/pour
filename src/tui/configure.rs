@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, ConfigSetting, ConfigureLevel, ConfigureState, PendingConfirm, SettingKind};
 
@@ -28,7 +29,7 @@ fn sync_scroll_offset(state: &mut ConfigureState, term_cols: u16) {
         SettingKind::Identifier => 0,
         SettingKind::QuickSelect(_) => 8, // " [select]"
     };
-    let prefix_len = 2 + setting.label.len() + 3;
+    let prefix_len = 2 + UnicodeWidthStr::width(setting.label.as_str()) + 3;
     let avail = (term_cols as usize).saturating_sub(prefix_len + kind_hint_len);
 
     if avail == 0 {
@@ -908,8 +909,8 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
 
         // Horizontal scroll viewport when editing this row.
         // prefix = "▸ " (2) + label + ":  " (3)
-        let prefix_len = 2usize + setting.label.len() + 3;
-        let hint_len = kind_hint.len();
+        let prefix_len = 2usize + UnicodeWidthStr::width(setting.label.as_str()) + 3;
+        let hint_len = UnicodeWidthStr::width(kind_hint);
         let avail = (area.width as usize).saturating_sub(prefix_len + hint_len);
 
         let (value_display, left_clipped, right_clipped) =
@@ -998,7 +999,7 @@ fn render_settings(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         && let Some(setting) = state.settings.get(state.active_field)
     {
         // prefix = "▸ " (2) + label + ":  " (3)
-        let prefix_len = 2 + setting.label.len() + 3;
+        let prefix_len = 2 + UnicodeWidthStr::width(setting.label.as_str()) + 3;
         // Offset within the viewport: cursor_position minus scroll, plus 1 if left indicator shown
         let left_indicator: u16 = if state.scroll_offset > 0 { 1 } else { 0 };
         let viewport_col = state.cursor_position.saturating_sub(state.scroll_offset) as u16;
@@ -1040,7 +1041,7 @@ fn render_confirm_dialog(app: &App, frame: &mut Frame, area: ratatui::layout::Re
     };
 
     // Center a small box
-    let dialog_width = (message.len() as u16 + 6).min(area.width);
+    let dialog_width = (UnicodeWidthStr::width(message.as_str()) as u16 + 6).min(area.width);
     let dialog_height = 3_u16;
     let x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
     let y = area.y + (area.height.saturating_sub(dialog_height)) / 2;

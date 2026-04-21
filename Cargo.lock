@@ -872,6 +872,7 @@ dependencies = [
  "tokio",
  "toml",
  "toml_edit",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]

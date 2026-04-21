@@ -157,6 +157,7 @@ async fn novel_value_creates_note() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -195,6 +196,7 @@ async fn existing_value_does_not_create_note() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -228,6 +230,7 @@ async fn case_insensitive_duplicate_not_created() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -257,6 +260,7 @@ async fn allow_create_false_does_not_create() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -288,6 +292,7 @@ async fn cache_updated_after_creation() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -346,6 +351,7 @@ async fn transport_error_does_not_block_and_returns_empty() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -373,6 +379,7 @@ async fn empty_value_not_created() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -405,6 +412,7 @@ async fn sanitized_form_matches_existing_option() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 
@@ -436,6 +444,7 @@ async fn windows_reserved_name_not_created() {
         &transport,
         &mut cache,
         "2026-04-02",
+        &mut Vec::new(),
     )
     .await;
 

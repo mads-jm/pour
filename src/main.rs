@@ -97,7 +97,11 @@ async fn main() {
         fetch_dynamic_options(&mut app, module_name, &mut cache).await;
     }
 
-    // Install panic hook that restores terminal before printing panic
+    // Install panic hook that restores terminal before printing panic.
+    // Known limitation: autocreate messages queued in App.deferred_stderr during
+    // raw mode are not drained on panic (ownership of `app` prevents safe access
+    // from the hook closure without a shared Mutex). Panic path prioritizes
+    // terminal restoration over diagnostics surfacing.
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         ratatui::restore();
@@ -112,6 +116,11 @@ async fn main() {
 
     // Restore terminal
     ratatui::restore();
+
+    // Drain messages that were deferred during TUI raw mode (e.g. autocreate diagnostics)
+    for msg in app.deferred_stderr.drain(..) {
+        eprintln!("{msg}");
+    }
 
     // Report any error from the main loop
     if let Err(e) = result {
@@ -511,6 +520,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
         &app.transport,
         cache,
         &today,
+        &mut app.deferred_stderr,
     )
     .await;
 
@@ -1613,18 +1623,25 @@ fn build_field_updates(state: &pour::app::ConfigureState) -> FieldUpdates {
 
 /// Fetch a directory listing and populate the browser state.
 async fn handle_browse(app: &mut App, path: &str) {
-    let entries = app
-        .transport
-        .list_directory_entries(path)
-        .await
-        .unwrap_or_default();
+    // Clear stale error immediately so the previous failure doesn't linger
+    // on screen while the new listing is in flight.
+    if let Some(ref mut state) = app.configure_state
+        && let Some(ref mut browser) = state.browser_state
+    {
+        browser.error = None;
+    }
+
+    let (entries, error) = match app.transport.list_directory_entries(path).await {
+        Ok(e) => (e, None),
+        Err(e) => (Vec::new(), Some(format!("pour: browse error: {e}"))),
+    };
 
     if let Some(ref mut state) = app.configure_state {
         state.browser_state = Some(BrowserState {
             current_path: path.to_string(),
             entries,
             selected: 0,
-            loading: false,
+            error,
         });
         state.browser_open = true;
     }

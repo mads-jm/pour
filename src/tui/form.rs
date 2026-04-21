@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
     App, CalloutTitleEdit, FormState, PresetDialogFocus, PresetSaveDialog, SubFormState,
@@ -86,15 +87,14 @@ pub fn render(app: &App, frame: &mut Frame) {
         // Contextual hints: "t title" appears when focused on a textarea row
         // that has an active callout and the editor is closed.
         let visible = visible_field_indices(&module.fields, &form_state.field_values);
-        let active_field_cfg = if form_state.active_field >= 1
-            && form_state.active_field <= visible.len()
-        {
-            visible
-                .get(form_state.active_field - 1)
-                .and_then(|&ci| module.fields.get(ci))
-        } else {
-            None
-        };
+        let active_field_cfg =
+            if form_state.active_field >= 1 && form_state.active_field <= visible.len() {
+                visible
+                    .get(form_state.active_field - 1)
+                    .and_then(|&ci| module.fields.get(ci))
+            } else {
+                None
+            };
         let show_title_hint = !form_state.textarea_open
             && active_field_cfg.is_some_and(|f| {
                 f.field_type == FieldType::Textarea
@@ -137,12 +137,11 @@ pub fn render(app: &App, frame: &mut Frame) {
     }
 
     // Sub-form overlay renders LAST so it paints over footer and fields
-    if let Some(sub_form) = &form_state.sub_form {
-        if let Some(templates) = &app.config.templates {
-            if let Some(template) = templates.get(&sub_form.template_name) {
-                render_sub_form(frame, area, sub_form, template);
-            }
-        }
+    if let Some(sub_form) = &form_state.sub_form
+        && let Some(templates) = &app.config.templates
+        && let Some(template) = templates.get(&sub_form.template_name)
+    {
+        render_sub_form(frame, area, sub_form, template);
     }
 }
 
@@ -470,8 +469,8 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     {
         let is_text_input = matches!(field.field_type, FieldType::Text | FieldType::Number);
         if is_text_input {
-            // prefix: "▸ " (2) + prompt + required_marker (1) + ": " (2)
-            let prefix_len = 2 + field.prompt.len() + 1 + 2;
+            // prefix: "▸ " (2 cols) + prompt (display width) + required_marker (1) + ": " (2)
+            let prefix_len = 2 + UnicodeWidthStr::width(field.prompt.as_str()) + 1 + 2;
             let cursor_x = area.x + prefix_len as u16 + form_state.cursor_position as u16;
             // active_field is the visual row index (preset row at 0, fields at 1+).
             let cursor_y = area.y + form_state.active_field as u16;
@@ -848,23 +847,20 @@ fn render_select_options(
             if !search.is_empty() {
                 let search_chars: Vec<char> =
                     search.chars().flat_map(|c| c.to_lowercase()).collect();
-                let match_pos = opt
-                    .char_indices()
-                    .enumerate()
-                    .find_map(|(_, (byte_idx, _))| {
-                        let remaining = &opt[byte_idx..];
-                        let mut opt_chars = remaining.chars();
-                        let mut matched_bytes = 0usize;
-                        for &sc in &search_chars {
-                            match opt_chars.next() {
-                                Some(oc) if oc.to_lowercase().next() == Some(sc) => {
-                                    matched_bytes += oc.len_utf8();
-                                }
-                                _ => return None,
+                let match_pos = opt.char_indices().find_map(|(byte_idx, _)| {
+                    let remaining = &opt[byte_idx..];
+                    let mut opt_chars = remaining.chars();
+                    let mut matched_bytes = 0usize;
+                    for &sc in &search_chars {
+                        match opt_chars.next() {
+                            Some(oc) if oc.to_lowercase().next() == Some(sc) => {
+                                matched_bytes += oc.len_utf8();
                             }
+                            _ => return None,
                         }
-                        Some((byte_idx, matched_bytes))
-                    });
+                    }
+                    Some((byte_idx, matched_bytes))
+                });
                 if let Some((match_start, match_len)) = match_pos {
                     let before = &opt[..match_start];
                     let matched = &opt[match_start..match_start + match_len];
@@ -1042,11 +1038,14 @@ fn render_composite_editor(
     let col_count = sub_fields.len();
 
     // Calculate column widths: max of header and cell widths, with minimum 6
-    let mut widths: Vec<usize> = sub_fields.iter().map(|s| s.prompt.len().max(6)).collect();
+    let mut widths: Vec<usize> = sub_fields
+        .iter()
+        .map(|s| UnicodeWidthStr::width(s.prompt.as_str()).max(6))
+        .collect();
     for row in &rows {
         for (i, cell) in row.iter().enumerate() {
             if i < widths.len() {
-                widths[i] = widths[i].max(cell.len().max(1));
+                widths[i] = widths[i].max(UnicodeWidthStr::width(cell.as_str()).max(1));
             }
         }
     }
@@ -1277,8 +1276,6 @@ fn render_sub_form(
             // mislead users who need to type a novel value.
             let text = if is_active && !extensible {
                 format!("◂ {inner_val} ▸")
-            } else if is_active && extensible {
-                inner_val.to_string()
             } else {
                 inner_val.to_string()
             };
@@ -2026,10 +2023,10 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                             // disk so it's available next session.
                             if is_static_allow_create {
                                 let fname = field.name.clone();
-                                if let Some(opts) = form_state.field_options.get_mut(&fname) {
-                                    if !opts.iter().any(|o| o == &search) {
-                                        opts.push(search.clone());
-                                    }
+                                if let Some(opts) = form_state.field_options.get_mut(&fname)
+                                    && !opts.iter().any(|o| o == &search)
+                                {
+                                    opts.push(search.clone());
                                 }
                                 let field_index = form_state.active_config_idx;
                                 form_state
@@ -2155,7 +2152,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     let value_snap = form_state
                         .field_values
                         .get(&field.name)
-                        .map(|s| s.clone())
+                        .cloned()
                         .unwrap_or_default();
                     let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
                     let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
@@ -2197,7 +2194,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     let value_snap = form_state
                         .field_values
                         .get(&field.name)
-                        .map(|s| s.clone())
+                        .cloned()
                         .unwrap_or_default();
                     let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
                     let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
@@ -2247,38 +2244,38 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             }
             // Cycle select fields backward when dropdown is closed
             if is_select && !form_state.dropdown_open {
-                if let Some(field) = active_field {
-                    if let Some(opts) = form_state.field_options.get(&field.name).cloned() {
-                        if !opts.is_empty() {
-                            let current = form_state
-                                .field_values
-                                .get(&field.name)
-                                .cloned()
-                                .unwrap_or_default();
-                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
-                            let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
-                            form_state
-                                .field_values
-                                .insert(field.name.clone(), opts[new_idx].clone());
-                        }
-                    }
+                if let Some(field) = active_field
+                    && let Some(opts) = form_state.field_options.get(&field.name).cloned()
+                    && !opts.is_empty()
+                {
+                    let current = form_state
+                        .field_values
+                        .get(&field.name)
+                        .cloned()
+                        .unwrap_or_default();
+                    let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                    let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
+                    form_state
+                        .field_values
+                        .insert(field.name.clone(), opts[new_idx].clone());
                 }
                 return FormAction::None;
             }
             if form_state.cursor_position > 0 {
                 form_state.cursor_position -= 1;
             }
-            if is_textarea && form_state.textarea_open {
-                if let Some(field) = active_field {
-                    let value_snap = form_state
-                        .field_values
-                        .get(&field.name)
-                        .map(|s| s.clone())
-                        .unwrap_or_default();
-                    let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
-                    let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
-                    sync_textarea_scroll(form_state, &value_snap, avail);
-                }
+            if is_textarea
+                && form_state.textarea_open
+                && let Some(field) = active_field
+            {
+                let value_snap = form_state
+                    .field_values
+                    .get(&field.name)
+                    .cloned()
+                    .unwrap_or_default();
+                let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+                let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
+                sync_textarea_scroll(form_state, &value_snap, avail);
             }
             FormAction::None
         }
@@ -2321,21 +2318,20 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             }
             // Cycle select fields forward when dropdown is closed
             if is_select && !form_state.dropdown_open {
-                if let Some(field) = active_field {
-                    if let Some(opts) = form_state.field_options.get(&field.name).cloned() {
-                        if !opts.is_empty() {
-                            let current = form_state
-                                .field_values
-                                .get(&field.name)
-                                .cloned()
-                                .unwrap_or_default();
-                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
-                            let new_idx = (idx + 1) % opts.len();
-                            form_state
-                                .field_values
-                                .insert(field.name.clone(), opts[new_idx].clone());
-                        }
-                    }
+                if let Some(field) = active_field
+                    && let Some(opts) = form_state.field_options.get(&field.name).cloned()
+                    && !opts.is_empty()
+                {
+                    let current = form_state
+                        .field_values
+                        .get(&field.name)
+                        .cloned()
+                        .unwrap_or_default();
+                    let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                    let new_idx = (idx + 1) % opts.len();
+                    form_state
+                        .field_values
+                        .insert(field.name.clone(), opts[new_idx].clone());
                 }
                 return FormAction::None;
             }
@@ -2352,7 +2348,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     let value_snap = form_state
                         .field_values
                         .get(&field.name)
-                        .map(|s| s.clone())
+                        .cloned()
                         .unwrap_or_default();
                     let term_cols = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
                     let avail = term_cols.saturating_sub(8).min(60).saturating_sub(2);
@@ -2742,21 +2738,20 @@ fn handle_sub_form_key(
         // ── Left: cycle static_select backward, or move text cursor ──────────
         KeyCode::Left => {
             if is_static_select {
-                if let Some(tf) = active_tfield {
-                    if let Some(opts) = sub_form.field_options.get(&tf.name) {
-                        if !opts.is_empty() {
-                            let current = sub_form
-                                .field_values
-                                .get(&tf.name)
-                                .cloned()
-                                .unwrap_or_default();
-                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
-                            let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
-                            sub_form
-                                .field_values
-                                .insert(tf.name.clone(), opts[new_idx].clone());
-                        }
-                    }
+                if let Some(tf) = active_tfield
+                    && let Some(opts) = sub_form.field_options.get(&tf.name)
+                    && !opts.is_empty()
+                {
+                    let current = sub_form
+                        .field_values
+                        .get(&tf.name)
+                        .cloned()
+                        .unwrap_or_default();
+                    let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                    let new_idx = if idx == 0 { opts.len() - 1 } else { idx - 1 };
+                    sub_form
+                        .field_values
+                        .insert(tf.name.clone(), opts[new_idx].clone());
                 }
             } else if sub_form.cursor_position > 0 {
                 sub_form.cursor_position -= 1;
@@ -2767,21 +2762,20 @@ fn handle_sub_form_key(
         // ── Right: cycle static_select forward, or move text cursor ──────────
         KeyCode::Right => {
             if is_static_select {
-                if let Some(tf) = active_tfield {
-                    if let Some(opts) = sub_form.field_options.get(&tf.name) {
-                        if !opts.is_empty() {
-                            let current = sub_form
-                                .field_values
-                                .get(&tf.name)
-                                .cloned()
-                                .unwrap_or_default();
-                            let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
-                            let new_idx = (idx + 1) % opts.len();
-                            sub_form
-                                .field_values
-                                .insert(tf.name.clone(), opts[new_idx].clone());
-                        }
-                    }
+                if let Some(tf) = active_tfield
+                    && let Some(opts) = sub_form.field_options.get(&tf.name)
+                    && !opts.is_empty()
+                {
+                    let current = sub_form
+                        .field_values
+                        .get(&tf.name)
+                        .cloned()
+                        .unwrap_or_default();
+                    let idx = opts.iter().position(|o| o == &current).unwrap_or(0);
+                    let new_idx = (idx + 1) % opts.len();
+                    sub_form
+                        .field_values
+                        .insert(tf.name.clone(), opts[new_idx].clone());
                 }
             } else if let Some(tf) = active_tfield {
                 let char_count = sub_form
