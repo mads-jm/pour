@@ -83,7 +83,27 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::styled(" (y/n)", Style::default().fg(Color::Yellow)),
         ])
     } else {
-        Line::from(vec![
+        // Contextual hints: "t title" appears when focused on a textarea row
+        // that has an active callout and the editor is closed.
+        let visible = visible_field_indices(&module.fields, &form_state.field_values);
+        let active_field_cfg = if form_state.active_field >= 1
+            && form_state.active_field <= visible.len()
+        {
+            visible
+                .get(form_state.active_field - 1)
+                .and_then(|&ci| module.fields.get(ci))
+        } else {
+            None
+        };
+        let show_title_hint = !form_state.textarea_open
+            && active_field_cfg.is_some_and(|f| {
+                f.field_type == FieldType::Textarea
+                    && (form_state.callout_overrides.contains_key(&f.name)
+                        || f.callout.is_some()
+                        || form_state.callout_overrides.contains_key("_callout_type"))
+            });
+
+        let mut spans = vec![
             Span::styled(" s", Style::default().fg(Color::Yellow)),
             Span::raw(" save  "),
             Span::styled("d", Style::default().fg(Color::Yellow)),
@@ -94,9 +114,14 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" interact  "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" clear/back"),
-        ])
+        ];
+        if show_title_hint {
+            spans.push(Span::styled("t", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" title  "));
+        }
+        spans.push(Span::styled("Esc", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" clear/back"));
+        Line::from(spans)
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
@@ -1526,12 +1551,12 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         return handle_composite_key(form_state, active_field.unwrap(), key);
     }
 
-    // Ctrl+T: open callout-title editor for the currently-active textarea field,
+    // Open callout-title editor for the currently-active textarea field,
     // provided it has an active callout type (per-field override or module default).
-    if key.code == KeyCode::Char('t')
-        && key
-            .modifiers
-            .contains(crossterm::event::KeyModifiers::CONTROL)
+    // Bare `t` is the primary binding — safe here because the textarea editor
+    // is closed, so no text input is active. We intentionally avoid Ctrl+T:
+    // some IDEs/terminals swallow Ctrl-letter chords before they reach the TUI.
+    if matches!(key.code, KeyCode::Char('t') | KeyCode::Char('T'))
         && !form_state.textarea_open
         && let Some(field) = active_field
         && field.field_type == FieldType::Textarea
