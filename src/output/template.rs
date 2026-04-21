@@ -85,6 +85,7 @@ pub fn render_append_template(
     module: &ModuleConfig,
     composite_data: &CompositeData,
     callout_overrides: &HashMap<String, String>,
+    callout_titles: &HashMap<String, String>,
 ) -> String {
     let now = Local::now();
 
@@ -159,7 +160,16 @@ pub fn render_append_template(
                 if value.is_empty() {
                     String::new()
                 } else {
-                    let mut block = format!("> [!{callout}]");
+                    let title = callout_titles
+                        .get(key)
+                        .map(|s| s.as_str())
+                        .or_else(|| field_cfg.and_then(|f| f.callout_title.as_deref()))
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty());
+                    let mut block = match title {
+                        Some(t) => format!("> [!{callout}] {t}"),
+                        None => format!("> [!{callout}]"),
+                    };
                     for line in value.lines() {
                         block.push_str("\n> ");
                         block.push_str(line);

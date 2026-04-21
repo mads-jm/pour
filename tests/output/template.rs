@@ -102,6 +102,7 @@ fn render_append_template_replaces_fields() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     assert_eq!(result, "Mood: happy | Hello world");
 }
@@ -116,6 +117,7 @@ fn render_append_template_special_time_token() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     let now = Local::now().format("%H:%M").to_string();
     assert!(
@@ -134,6 +136,7 @@ fn render_append_template_special_date_token() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Date: {today}"));
@@ -149,6 +152,7 @@ fn render_append_template_missing_field_left_as_is() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     assert_eq!(result, "Value: {{unknown}}");
 }
@@ -165,6 +169,7 @@ fn render_append_template_mixed_known_and_unknown() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     assert_eq!(result, "Alice said {{quote}}");
 }
@@ -177,7 +182,14 @@ fn render_append_template_realistic_journal() {
 
     let m = dummy_module();
     let template = "#### {{time}}\n> [!note] {{title}}\n> {{body}}";
-    let result = render_append_template(template, &fields, &m, &no_composites(), &no_overrides());
+    let result = render_append_template(
+        template,
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &::std::collections::HashMap::new(),
+    );
 
     let now = Local::now().format("%H:%M").to_string();
     assert!(
@@ -226,6 +238,7 @@ fn render_append_template_callout_placeholder() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert!(
@@ -245,6 +258,7 @@ fn render_append_template_callout_placeholder_without_type() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert!(
@@ -292,6 +306,7 @@ fn render_append_template_percent_in_field_value_is_literal() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
     assert_eq!(
         result, "Note: Improved by 30% today",
@@ -361,6 +376,7 @@ fn render_append_template_composite_as_markdown_table() {
         &m,
         &composites,
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert!(result.contains("Bean: Ethiopian"), "scalar field replaced");
@@ -413,6 +429,7 @@ fn render_append_template_hidden_field_placeholder_empty() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert!(
@@ -443,6 +460,7 @@ fn render_append_template_visible_field_renders_normally() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert_eq!(
@@ -479,7 +497,14 @@ fn render_append_template_field_callout_wraps_value() {
     fields.insert("body".to_string(), "Line one\nLine two".to_string());
 
     let m = field_callout_module();
-    let result = render_append_template("{{body}}", &fields, &m, &no_composites(), &no_overrides());
+    let result = render_append_template(
+        "{{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &::std::collections::HashMap::new(),
+    );
 
     assert!(
         result.contains("> [!tip]"),
@@ -507,6 +532,7 @@ fn render_append_template_field_callout_empty_value() {
         &m,
         &no_composites(),
         &no_overrides(),
+        &::std::collections::HashMap::new(),
     );
 
     assert!(
@@ -524,7 +550,14 @@ fn render_append_template_callout_override_takes_precedence() {
     let mut overrides = HashMap::new();
     overrides.insert("body".to_string(), "warning".to_string());
 
-    let result = render_append_template("{{body}}", &fields, &m, &no_composites(), &overrides);
+    let result = render_append_template(
+        "{{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &overrides,
+        &::std::collections::HashMap::new(),
+    );
 
     assert!(
         result.contains("> [!warning]"),
@@ -533,5 +566,122 @@ fn render_append_template_callout_override_takes_precedence() {
     assert!(
         !result.contains("> [!tip]"),
         "config callout should not appear when overridden, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_field_callout_title_from_runtime() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Hello".to_string());
+
+    let m = field_callout_module();
+    let mut titles = HashMap::new();
+    titles.insert("body".to_string(), "Reminder".to_string());
+
+    let result = render_append_template(
+        "{{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &titles,
+    );
+
+    assert!(
+        result.contains("> [!tip] Reminder"),
+        "runtime title should appear after callout type, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_field_callout_title_from_config() {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.t]
+mode = "append"
+path = "t.md"
+append_under_header = "## Log"
+
+[[modules.t.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+callout = "note"
+callout_title = "Default Title"
+"####;
+    let m = Config::from_toml(toml)
+        .unwrap()
+        .modules
+        .into_values()
+        .next()
+        .unwrap();
+
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "text".to_string());
+
+    let result = render_append_template(
+        "{{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &::std::collections::HashMap::new(),
+    );
+
+    assert!(
+        result.contains("> [!note] Default Title"),
+        "config callout_title should appear, got: {result}"
+    );
+}
+
+#[test]
+fn render_append_template_runtime_title_overrides_config_title() {
+    let toml = r####"
+[vault]
+base_path = "/tmp"
+
+[modules.t]
+mode = "append"
+path = "t.md"
+append_under_header = "## Log"
+
+[[modules.t.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+callout = "note"
+callout_title = "Default"
+"####;
+    let m = Config::from_toml(toml)
+        .unwrap()
+        .modules
+        .into_values()
+        .next()
+        .unwrap();
+
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "text".to_string());
+
+    let mut titles = HashMap::new();
+    titles.insert("body".to_string(), "Custom".to_string());
+
+    let result = render_append_template(
+        "{{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &titles,
+    );
+
+    assert!(
+        result.contains("> [!note] Custom"),
+        "runtime title should override config title, got: {result}"
+    );
+    assert!(
+        !result.contains("Default"),
+        "default title should be hidden when runtime title set, got: {result}"
     );
 }

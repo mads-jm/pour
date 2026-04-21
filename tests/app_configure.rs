@@ -312,6 +312,8 @@ fn make_form_state(
         textarea_open: false,
         textarea_scroll_offset: 0,
         callout_overrides: HashMap::new(),
+        callout_titles: HashMap::new(),
+        callout_title_edit: None,
         composite_values,
         composite_open: false,
         composite_row: 0,

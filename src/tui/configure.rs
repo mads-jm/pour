@@ -312,6 +312,7 @@ pub fn build_field_updates_from_settings(
         source,
         target,
         callout,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,

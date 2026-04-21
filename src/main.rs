@@ -460,7 +460,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     };
 
     // Validate form and extract field values
-    let (field_values, field_options, composite_data, callout_overrides) = {
+    let (field_values, field_options, composite_data, callout_overrides, callout_titles) = {
         let form_state = match &app.form_state {
             Some(fs) => fs,
             None => return,
@@ -492,6 +492,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             form_state.field_options.clone(),
             form_state.composite_values.clone(),
             form_state.callout_overrides.clone(),
+            form_state.callout_titles.clone(),
         )
     };
 
@@ -524,6 +525,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &composite_data,
                 date_fmt,
                 &callout_overrides,
+                &callout_titles,
             )
             .await
         }
@@ -535,6 +537,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &composite_data,
                 date_fmt,
                 &callout_overrides,
+                &callout_titles,
             )
             .await
         }
@@ -913,6 +916,7 @@ fn handle_add_field(app: &mut App) {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -1219,6 +1223,7 @@ fn handle_save_new_module(app: &mut App) {
             target: None,
             sub_fields: None,
             callout: None,
+            callout_title: None,
             allow_create: None,
             wikilink: None,
             create_template: None,

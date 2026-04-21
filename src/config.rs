@@ -106,6 +106,10 @@ pub struct FieldConfig {
     pub sub_fields: Option<Vec<SubFieldConfig>>,
     /// Obsidian callout type to wrap this field's body output in (e.g. "note", "tip").
     pub callout: Option<String>,
+    /// Title rendered on the callout line: `> [!type] {callout_title}`. Only
+    /// used when `callout` is set; if empty or absent, no title is emitted.
+    #[serde(default)]
+    pub callout_title: Option<String>,
     /// When `true`, allows the user to create new entries inline during selection.
     /// Only valid on `dynamic_select` fields.
     #[serde(default)]
@@ -260,6 +264,8 @@ pub struct FieldUpdates {
     pub target: Option<Option<FieldTarget>>,
     /// Obsidian callout type. `Some(None)` removes the key.
     pub callout: Option<Option<String>>,
+    /// Title rendered after the callout type. `Some(None)` removes the key.
+    pub callout_title: Option<Option<String>>,
     /// Conditional visibility rule. `Some(None)` removes the key.
     pub show_when: Option<Option<ShowWhen>>,
     /// Wrap output in wikilink syntax. `Some(None)` removes the key.

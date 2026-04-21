@@ -66,6 +66,14 @@ pub struct FormState {
     /// Runtime callout type overrides, keyed by field name.
     /// Initialized from config defaults; cyclable via Left/Right in the form.
     pub callout_overrides: HashMap<String, String>,
+    /// Runtime callout title overrides, keyed by field name.
+    /// Initialized from config `callout_title`; editable via Ctrl+T on a
+    /// textarea field with an active callout.
+    pub callout_titles: HashMap<String, String>,
+    /// Active inline callout-title edit buffer.
+    /// `Some((field_name, cursor))` while the user is typing in the title
+    /// prompt overlay; `None` otherwise.
+    pub callout_title_edit: Option<CalloutTitleEdit>,
     /// Row data for composite_array fields, keyed by field name.
     /// Each row is a Vec of cell values (one per sub-field column).
     pub composite_values: HashMap<String, Vec<Vec<String>>>,
@@ -92,6 +100,17 @@ pub struct FormState {
     pub preset_overlay: Option<PresetSaveDialog>,
     /// Whether the delete-preset confirmation prompt is shown.
     pub confirm_delete_preset: bool,
+}
+
+/// Active callout-title edit session on a textarea field.
+#[derive(Debug, Clone)]
+pub struct CalloutTitleEdit {
+    /// Name of the field whose callout title is being edited.
+    pub field_name: String,
+    /// Current buffer contents.
+    pub buffer: String,
+    /// Cursor position (char index) into `buffer`.
+    pub cursor: usize,
 }
 
 /// State for the template-driven sub-form overlay.
@@ -393,6 +412,7 @@ impl App {
         let mut field_options = HashMap::new();
         let mut composite_values = HashMap::new();
         let mut callout_overrides = HashMap::new();
+        let mut callout_titles = HashMap::new();
 
         for field in &module.fields {
             if field.field_type == FieldType::CompositeArray {
@@ -415,6 +435,9 @@ impl App {
             // Seed callout overrides from config defaults
             if let Some(ref callout) = field.callout {
                 callout_overrides.insert(field.name.clone(), callout.clone());
+            }
+            if let Some(ref title) = field.callout_title {
+                callout_titles.insert(field.name.clone(), title.clone());
             }
         }
 
@@ -450,6 +473,8 @@ impl App {
             textarea_open: false,
             textarea_scroll_offset: 0,
             callout_overrides,
+            callout_titles,
+            callout_title_edit: None,
             composite_values,
             composite_open: false,
             composite_row: 0,

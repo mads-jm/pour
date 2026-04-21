@@ -144,6 +144,7 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -204,6 +205,7 @@ async fn write_create_rejects_append_module() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await;
     assert!(result.is_err(), "write_create on append module should fail");
@@ -237,6 +239,7 @@ async fn write_append_inserts_rendered_template() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_append should succeed");
@@ -267,6 +270,7 @@ async fn write_append_rejects_create_module() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await;
     assert!(result.is_err(), "write_append on create module should fail");
@@ -298,6 +302,7 @@ async fn wikilink_true_wraps_frontmatter_value() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -336,6 +341,7 @@ async fn wikilink_true_wraps_body_value() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -372,6 +378,7 @@ async fn wikilink_no_double_wrap() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -412,6 +419,7 @@ async fn wikilink_default_false_no_behavior_change() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -449,6 +457,7 @@ async fn wikilink_wraps_each_comma_separated_item() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -489,6 +498,7 @@ async fn write_create_skips_empty_body_section() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -551,6 +561,7 @@ async fn write_create_wraps_body_in_callout() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -634,6 +645,7 @@ async fn hidden_field_excluded_from_frontmatter() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -675,6 +687,7 @@ async fn visible_conditional_field_included_in_frontmatter() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -712,6 +725,7 @@ async fn hidden_field_excluded_from_body() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -774,6 +788,7 @@ async fn write_append_wraps_body_in_field_callout() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_append should succeed");
@@ -820,6 +835,7 @@ async fn write_append_callout_override_in_template() {
         &CompositeData::new(),
         None,
         &overrides,
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_append should succeed");
@@ -879,6 +895,7 @@ async fn create_mode_includes_module_icon_in_frontmatter() {
         &CompositeData::new(),
         None,
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -961,6 +978,7 @@ async fn daily_link_injects_daily_frontmatter_key() {
         &CompositeData::new(),
         Some("%Y%m%d"),
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -999,6 +1017,7 @@ async fn daily_link_uses_date_format_from_caller() {
         &CompositeData::new(),
         Some("%Y-%m-%d"),
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -1037,6 +1056,7 @@ async fn daily_link_false_does_not_inject_daily_key() {
         &CompositeData::new(),
         Some("%Y%m%d"),
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");
@@ -1088,6 +1108,7 @@ prompt = "Daily"
         &CompositeData::new(),
         Some("%Y%m%d"),
         &HashMap::new(),
+        &::std::collections::HashMap::new(),
     )
     .await
     .expect("write_create should succeed");

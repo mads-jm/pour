@@ -41,6 +41,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `target` | string | no | `"frontmatter"` or `"body"` — overrides the default routing |
 | `sub_fields` | array | conditional | Required for `composite_array`; column definitions |
 | `callout` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). When set on a `textarea` field targeting body, the output is wrapped in `> [!type]` blockquote syntax. |
+| `callout_title` | string | no | Default title rendered on the callout line: `> [!type] <callout_title>`. Only used when `callout` is set. In the TUI, press `Ctrl+T` while focused on the textarea to edit the title for the current entry — an empty title clears it. |
 | `allow_create` | bool | no | Only valid on `dynamic_select`. When `true`, the user can type characters to filter options and enter a completely novel value if nothing matches. Defaults to `false` (closed list). |
 | `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Applies to `text`, `static_select`, and `dynamic_select` fields. No-ops if the value is already wrapped. Defaults to `false`. |
 | `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
