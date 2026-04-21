@@ -1270,9 +1270,15 @@ fn render_sub_form(
         let value_area = Rect::new(value_x, row_y, value_width, 1);
 
         let (display_val, value_style) = if tfield.field_type == TemplateFieldType::StaticSelect {
+            let extensible = tfield.allow_create.unwrap_or(false);
             let inner_val = if value.is_empty() { "select" } else { value };
-            let text = if is_active {
+            // Extensible active fields render as plain text so the cursor has
+            // room to land — the ◂ ▸ chevrons imply cycle-only input and
+            // mislead users who need to type a novel value.
+            let text = if is_active && !extensible {
                 format!("◂ {inner_val} ▸")
+            } else if is_active && extensible {
+                inner_val.to_string()
             } else {
                 inner_val.to_string()
             };
@@ -1302,8 +1308,13 @@ fn render_sub_form(
         let val_widget = Paragraph::new(Line::from(Span::styled(display_val, value_style)));
         frame.render_widget(val_widget, value_area);
 
-        // Place cursor for active text/number fields
-        if is_active && tfield.field_type != TemplateFieldType::StaticSelect {
+        // Place cursor for active text/number fields, and for extensible
+        // static_select fields (allow_create) so the user can see where typing
+        // will land.
+        let extensible_static = tfield.field_type == TemplateFieldType::StaticSelect
+            && tfield.allow_create.unwrap_or(false);
+        if is_active && (tfield.field_type != TemplateFieldType::StaticSelect || extensible_static)
+        {
             let cx = value_x + sub_form.cursor_position as u16;
             if cx < value_x + value_width {
                 frame.set_cursor_position(Position::new(cx, row_y));
@@ -1340,20 +1351,34 @@ fn render_sub_form(
         }
     }
 
-    // Hint line
+    // Hint line — adapt wording when on an extensible static_select so the user
+    // knows they can type a novel value instead of only cycling options.
+    let active_tfield = template.fields.get(sub_form.active_field);
+    let on_extensible_static = active_tfield.is_some_and(|tf| {
+        tf.field_type == TemplateFieldType::StaticSelect && tf.allow_create.unwrap_or(false)
+    });
     let hint_y = inner.y + inner.height.saturating_sub(1);
     if hint_y > inner.y {
         let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
-        let hint = Paragraph::new(Line::from(vec![
+        let mut spans = vec![
             Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
             Span::styled("←→", Style::default().fg(Color::Yellow)),
-            Span::raw(" select  "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(" submit  "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" cancel"),
-        ]));
+            Span::raw(if on_extensible_static {
+                " cycle  "
+            } else {
+                " select  "
+            }),
+        ];
+        if on_extensible_static {
+            spans.push(Span::styled("type", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" add new  "));
+        }
+        spans.push(Span::styled("Enter", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" submit  "));
+        spans.push(Span::styled("Esc", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" cancel"));
+        let hint = Paragraph::new(Line::from(spans));
         frame.render_widget(hint, hint_area);
     }
 }
@@ -2784,6 +2809,28 @@ fn handle_sub_form_key(
                     && c != '-'
                 {
                     return FormAction::None;
+                }
+                // Extensible static_select: if the current value is one of the
+                // existing options (i.e. came from cycling or initial default),
+                // clear it on first keystroke so the user types a fresh novel
+                // value instead of appending to "Ethiopia" → "EthiopiaH".
+                if is_static_select_extensible {
+                    let is_existing_option = sub_form
+                        .field_options
+                        .get(&tf.name)
+                        .map(|opts| {
+                            let current = sub_form
+                                .field_values
+                                .get(&tf.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            !current.is_empty() && opts.iter().any(|o| o == &current)
+                        })
+                        .unwrap_or(false);
+                    if is_existing_option {
+                        sub_form.field_values.insert(tf.name.clone(), String::new());
+                        sub_form.cursor_position = 0;
+                    }
                 }
                 let value = sub_form.field_values.entry(tf.name.clone()).or_default();
                 // cursor_position is a char index — convert to byte offset

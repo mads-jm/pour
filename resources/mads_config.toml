@@ -163,7 +163,7 @@ preset_exclude = true      # freeform content varies every entry
 # The `show_when` key gates field visibility on the controlling field's value.
 [modules.coffee]
 mode = "create"
-path = "02 - Areas/204 - Cooking/Coffee/{{bean}}@{{time}}-%Y%m%d.md"
+path = "02 - Areas/204 - Cooking/Coffee/Brews{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
 icon = "☕"
 daily_link = true
@@ -519,4 +519,3 @@ options = ["Pour Over", "Espresso", "Immersion"]
 name = "brand"
 field_type = "text"
 prompt = "Brand"
-
