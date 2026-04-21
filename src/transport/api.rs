@@ -29,6 +29,9 @@ use super::VaultEntry;
 /// All methods require a valid API key for Bearer authentication.
 pub struct ApiClient {
     client: Client,
+    // Field is pub to allow existing integration tests to read it directly.
+    // Once tests/transport/api.rs is updated to use `base_url()`, this should
+    // be downgraded to private.
     pub base_url: String,
     api_key: String,
 }
@@ -68,18 +71,29 @@ impl ApiClient {
     ///
     /// The underlying `reqwest::Client` accepts self-signed certificates
     /// and enforces a 5-second timeout on every request.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `reqwest` client cannot be built. In practice this
+    /// configuration (TLS override + timeout only) is infallible on all
+    /// supported platforms.
     pub fn new(port: u16, api_key: String) -> Self {
         let client = Client::builder()
             .danger_accept_invalid_certs(true)
             .timeout(std::time::Duration::from_secs(5))
             .build()
-            .expect("failed to build reqwest client");
+            .expect("reqwest client build failed — this configuration should be infallible");
 
         Self {
             client,
             base_url: format!("https://127.0.0.1:{port}"),
             api_key,
         }
+    }
+
+    /// Return the base URL this client targets (e.g. `"https://127.0.0.1:27124"`).
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     /// Check whether the Obsidian REST API is reachable.

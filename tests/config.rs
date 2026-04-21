@@ -697,6 +697,35 @@ prompt = "Pour again"
 }
 
 #[test]
+fn validate_rejects_duplicate_module_field_names() {
+    let toml_str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.brew]
+mode = "create"
+path = "brew.md"
+
+[[modules.brew.fields]]
+name = "grind"
+field_type = "text"
+prompt = "Grind size"
+
+[[modules.brew.fields]]
+name = "grind"
+field_type = "number"
+prompt = "Grind size (duplicate)"
+"####;
+    let result = Config::from_toml(toml_str);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("module 'brew': duplicate field name 'grind'"),
+        "got: {msg}"
+    );
+}
+
+#[test]
 fn existing_sample_toml_still_parses_with_composite_array() {
     // Regression guard: the original SAMPLE_TOML must still parse.
     let config = Config::from_toml(SAMPLE_TOML).expect("SAMPLE_TOML should still parse");

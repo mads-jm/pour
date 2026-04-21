@@ -21,7 +21,8 @@ pub struct Config {
 }
 
 /// Vault connection settings.
-/// TODO : need to persist vault name here?
+// The vault name is not persisted here; it is implicit in the section name
+// and is resolved at runtime from the config path.
 #[derive(Debug, Deserialize)]
 pub struct VaultConfig {
     pub base_path: String,
@@ -1187,7 +1188,12 @@ impl Config {
 
         module["fields"]
             .as_array_of_tables_mut()
-            .expect("fields is an array of tables")
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![
+                    "fields key is not an array of tables — this is a bug in the config editor"
+                        .to_string(),
+                ])
+            })?
             .push(new_table);
 
         let new_content = doc.to_string();
@@ -1872,7 +1878,12 @@ impl Config {
 
         field["sub_fields"]
             .as_array_of_tables_mut()
-            .expect("sub_fields is an array of tables")
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![
+                    "sub_fields key is not an array of tables — this is a bug in the config editor"
+                        .to_string(),
+                ])
+            })?
             .push(new_t);
 
         let new_content = doc.to_string();
@@ -2205,7 +2216,12 @@ impl Config {
             loop {
                 if in_path.contains(current) {
                     // Found a cycle — extract the cycle portion
-                    let cycle_start = path.iter().position(|&n| n == current).unwrap();
+                    // `current` was just found in `in_path`, which is kept in
+                    // sync with `path`, so it is always present.
+                    let cycle_start = path
+                        .iter()
+                        .position(|&n| n == current)
+                        .expect("current node must be in path when a cycle is detected");
                     let cycle: Vec<&str> = path[cycle_start..].to_vec();
 
                     // Canonical key: sorted so we don't report the same cycle twice
@@ -2380,6 +2396,17 @@ impl Config {
                 ));
             }
 
+            // Check for duplicate field names within the module
+            let mut seen_fields = std::collections::HashSet::new();
+            for field in &module.fields {
+                if !seen_fields.insert(&field.name) {
+                    errors.push(format!(
+                        "module '{name}': duplicate field name '{}'",
+                        field.name
+                    ));
+                }
+            }
+
             for field in &module.fields {
                 // static_select must have non-empty options
                 if field.field_type == FieldType::StaticSelect {
@@ -2535,22 +2562,22 @@ impl Config {
                         _ => {}
                     }
                     // Reject empty string for `equals`
-                    if let Some(ref eq_val) = sw.equals {
-                        if eq_val.is_empty() {
-                            errors.push(format!(
-                                "show_when on field '{}': 'equals' must not be empty",
-                                field.name
-                            ));
-                        }
+                    if let Some(ref eq_val) = sw.equals
+                        && eq_val.is_empty()
+                    {
+                        errors.push(format!(
+                            "show_when on field '{}': 'equals' must not be empty",
+                            field.name
+                        ));
                     }
                     // Reject empty vec for `one_of`
-                    if let Some(ref one_of_val) = sw.one_of {
-                        if one_of_val.is_empty() {
-                            errors.push(format!(
-                                "show_when on field '{}': 'one_of' must not be empty",
-                                field.name
-                            ));
-                        }
+                    if let Some(ref one_of_val) = sw.one_of
+                        && one_of_val.is_empty()
+                    {
+                        errors.push(format!(
+                            "show_when on field '{}': 'one_of' must not be empty",
+                            field.name
+                        ));
                     }
                 }
             }
