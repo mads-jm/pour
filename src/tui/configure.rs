@@ -1281,6 +1281,48 @@ fn render_browser(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
         }
     };
 
+    // Surface a listing error (if any) above the entry list
+    if let Some(msg) = browser.error.as_deref() {
+        let (err_area, list_area) = {
+            let err_h = area.height.min(3);
+            (
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: err_h,
+                },
+                Rect {
+                    x: area.x,
+                    y: area.y + err_h,
+                    width: area.width,
+                    height: area.height.saturating_sub(err_h),
+                },
+            )
+        };
+        let err = Paragraph::new(Line::from(Span::styled(
+            format!(" ! {msg}"),
+            Style::default().fg(Color::Red),
+        )))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Red))
+                .title(" error "),
+        );
+        frame.render_widget(err, err_area);
+        render_browser_list(browser, frame, list_area);
+        return;
+    }
+
+    render_browser_list(browser, frame, area);
+}
+
+fn render_browser_list(
+    browser: &crate::app::BrowserState,
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+) {
     // Build entry list: ".." first (unless at root/empty), then dirs only
     let at_root = browser.current_path.is_empty() || browser.current_path == "/";
 

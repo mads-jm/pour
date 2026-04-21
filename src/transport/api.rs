@@ -29,10 +29,7 @@ use super::VaultEntry;
 /// All methods require a valid API key for Bearer authentication.
 pub struct ApiClient {
     client: Client,
-    // Field is pub to allow existing integration tests to read it directly.
-    // Once tests/transport/api.rs is updated to use `base_url()`, this should
-    // be downgraded to private.
-    pub base_url: String,
+    base_url: String,
     api_key: String,
 }
 
