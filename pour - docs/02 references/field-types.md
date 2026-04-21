@@ -213,7 +213,7 @@ prompt = "Bean"
 source = "Coffee/Beans"
 ```
 
-__TUI__: Same dropdown interaction as `static_select`. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (`~/.cache/pour/state.json`), then freetext input if all fail.
+__TUI__: Same dropdown interaction as `static_select`. Options are populated via the 3-tier fallback: API directory listing, filesystem scan, JSON cache (`~/.pour/cache/state.json`), then freetext input if all fail.
 
 When `allow_create = true`, the user can type characters directly into the field to filter the dropdown options (case-insensitive substring match). If typing produces no matching options, `Enter` accepts the typed text as a novel value. `Backspace` trims the typed text. `Esc` clears the search buffer before closing the dropdown. Navigating away (Tab/Shift-Tab) discards any unsaved search text.
 

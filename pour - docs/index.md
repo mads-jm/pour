@@ -68,8 +68,8 @@ cargo fmt                # format
 | Area | File |
 |------|------|
 | Entry point | `src/main.rs` |
-| Config schema | `~/.config/pour/config.toml` |
-| Cache | `~/.cache/pour/state.json` |
+| Config schema | `~/.pour/config.toml` |
+| Cache | `~/.pour/cache/state.json` |
 
 ---
 
@@ -81,7 +81,7 @@ Pour writes to Obsidian via a __hybrid transport layer__:
 
 ### Dynamic Data Fetching (3-tier fallback)
 
-API query -> disk scan -> `~/.cache/pour/state.json` cache -> freetext input
+API query -> disk scan -> `~/.pour/cache/state.json` cache -> freetext input
 
 ---
 

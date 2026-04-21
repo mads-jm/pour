@@ -63,7 +63,7 @@ Yes. Today, with caveats.
 - **Create mode**: Modules like `pour coffee` generate standalone `.md` files with YAML frontmatter. Any tool that reads Markdown + YAML can consume these — Hugo, Jekyll, Logseq, Dendron, a custom script, or just `cat`.
 - **Append mode**: Modules like `pour me` append under a heading in an existing file. This is standard Markdown manipulation — nothing Obsidian-specific about inserting text below `### Journal`.
 - **Dynamic selects from disk**: Pour scans a directory for `.md` files to populate dropdown options. This is just `readdir` — it doesn't need Obsidian.
-- **Presets and cache**: Stored in `~/.cache/pour/`, completely independent of any note-taking app.
+- **Presets and cache**: Stored in `~/.pour/` (config/presets) and `~/.pour/cache/` (ephemeral state), completely independent of any note-taking app.
 
 ### What's Obsidian-flavored
 

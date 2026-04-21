@@ -38,8 +38,21 @@ Requires Rust 2024 edition. No other system dependencies - Obsidian Local REST A
 **1. Create the config file**
 
 ```bash
-mkdir -p ~/.config/pour
-touch ~/.config/pour/config.toml
+mkdir -p ~/.pour
+touch ~/.pour/config.toml
+```
+
+All Pour state lives under `~/.pour/` (override with `POUR_HOME`):
+
+```
+~/.pour/
+  config.toml
+  secrets.toml
+  presets.json
+  cache/
+    state.json
+    history.jsonl
+    history-summary.json
 ```
 
 **2. Point it at your vault**
@@ -177,7 +190,7 @@ api_port = 27124
 api_key = "your-key-here"   # or POUR_API_KEY env var
 ```
 
-**`dynamic_select` data fallback chain**: API query → disk scan of `source` path → `~/.cache/pour/state.json` → freetext input. The TUI renders immediately from cache while fetching fresh data in the background.
+**`dynamic_select` data fallback chain**: API query → disk scan of `source` path → `~/.pour/cache/state.json` → freetext input. The TUI renders immediately from cache while fetching fresh data in the background.
 
 ## Do I Need Obsidian?
 

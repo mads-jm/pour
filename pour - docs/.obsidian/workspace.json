@@ -89,6 +89,7 @@
       {
         "id": "fcb1d4b43c31bc60",
         "type": "tabs",
+        "dimension": 31.238273921200747,
         "children": [
           {
             "id": "9ecf195dd71bc4ea",
@@ -179,6 +180,7 @@
       {
         "id": "fa7861038d6e1bf6",
         "type": "tabs",
+        "dimension": 68.76172607879924,
         "children": [
           {
             "id": "6629666eed5eef8f",
@@ -224,7 +226,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 272.5
+    "width": 684.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -242,8 +244,9 @@
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "6c2879caa85fe5ed",
+  "active": "6629666eed5eef8f",
   "lastOpenFiles": [
+    "00 index/BACKLOG.kanban.md",
     "05 notes/inline-creation-future-phases.md",
     "01 concepts/Inline-Note-Creation.md",
     "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
@@ -269,7 +272,6 @@
     "04 architecture/System-Architecture-Overview.md",
     "08 specs/pour-design-spec.md",
     "03 guides/Guide-Config-to-Vault.md",
-    "06 reports/v0.1.0-report.md",
     "00 index/REFERENCES.base",
     "00 index/ADR.base",
     "00 index/CONCEPTS.base",

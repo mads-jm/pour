@@ -98,7 +98,7 @@ v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only
 
 *[Deviation: not in original spec. Added to support fast re-entry for repeated captures with the same base configuration (e.g., same bean, method, and dose across a brew series).]*
 
-Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.cache/pour/presets.json` keyed by module name.
+Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.pour/presets.json` keyed by module name.
 
 __Keybindings:__
 - `Ctrl+S` — save current form values as a named preset (name input overlay appears)

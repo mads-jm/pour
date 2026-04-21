@@ -10,7 +10,7 @@ date modified: Tuesday, April 7th 2026, 3:30:33 am
 
 # Guide: Adapting Pour to Your Vault
 
-Pour is config-driven — every module, field, path, and template is defined in `~/.config/pour/config.toml`. This guide walks through mapping that config to __your__ Obsidian vault structure, starting from the default config and building up to fully customized modules.
+Pour is config-driven — every module, field, path, and template is defined in `~/.pour/config.toml`. This guide walks through mapping that config to __your__ Obsidian vault structure, starting from the default config and building up to fully customized modules.
 
 For the complete field reference, see [[field-types]]. For module patterns, see [[pour-design-spec]].
 
@@ -387,7 +387,7 @@ Presets let you save a snapshot of a module's current field values and restore t
 
 ### How Presets Work
 
-Each module maintains its own preset list, stored in `~/.cache/pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form.
+Each module maintains its own preset list, stored in `~/.pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form.
 
 At the top of every module form, Pour shows a preset row:
 
