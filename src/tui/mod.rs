@@ -111,6 +111,8 @@ pub enum Action {
     DeletePreset { name: String },
     /// Reorder a preset by name in the given direction (+1 or -1).
     ReorderPreset { name: String, direction: i32 },
+    /// Append a novel option to a static_select module field's `options` list.
+    AppendStaticOption { field_index: usize, value: String },
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -190,6 +192,9 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             form::FormAction::DeletePreset { name } => Action::DeletePreset { name },
             form::FormAction::ReorderPreset { name, direction } => {
                 Action::ReorderPreset { name, direction }
+            }
+            form::FormAction::AppendStaticOption { field_index, value } => {
+                Action::AppendStaticOption { field_index, value }
             }
             form::FormAction::None => Action::None,
         },

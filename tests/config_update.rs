@@ -1454,3 +1454,70 @@ preset_exclude = true
         "preset_exclude should be None after removal"
     );
 }
+
+// ---------------------------------------------------------------------------
+// append_option_to_field_on_disk
+// ---------------------------------------------------------------------------
+
+const STATIC_SELECT_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia"]
+allow_create = true
+"###;
+
+#[test]
+fn append_option_adds_new_value_to_end() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    Config::append_option_to_field_on_disk("coffee", 0, "Tanzania").expect("append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.modules["coffee"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia", "Tanzania"]);
+}
+
+#[test]
+fn append_option_is_noop_when_already_present() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    Config::append_option_to_field_on_disk("coffee", 0, "Ethiopia")
+        .expect("duplicate append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.modules["coffee"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia"], "list unchanged");
+}
+
+#[test]
+fn append_option_module_not_found_errors() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_field_on_disk("nope", 0, "Tanzania")
+        .expect_err("should fail for unknown module");
+    assert!(matches!(err, ConfigError::ModuleNotFound(_)));
+}
+
+#[test]
+fn append_option_field_out_of_range_errors() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_field_on_disk("coffee", 99, "Tanzania")
+        .expect_err("should fail for out-of-range field index");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
+}

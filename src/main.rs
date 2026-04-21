@@ -309,6 +309,10 @@ async fn run_loop(
                     handle_reorder_preset(app, &name, direction);
                 }
 
+                tui::Action::AppendStaticOption { field_index, value } => {
+                    handle_append_static_option(app, field_index, &value);
+                }
+
                 tui::Action::None => {}
             }
         }
@@ -408,6 +412,39 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
         fs.preset_descriptions = descriptions;
         fs.selected_preset = new_idx;
     }
+}
+
+/// Append a novel option to a static_select module field's options list.
+///
+/// Mutates the in-memory config so the field's dropdown reflects the new
+/// option immediately, then persists the change to config.toml. The
+/// form's `field_options` snapshot has already been updated by the form
+/// handler — this function only handles the Config + disk side.
+fn handle_append_static_option(app: &mut pour::app::App, field_index: usize, value: &str) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    // Update in-memory config so subsequent form inits see the new option.
+    if let Some(module) = app.config.modules.get_mut(&module_key)
+        && let Some(field) = module.fields.get_mut(field_index)
+    {
+        let already = field
+            .options
+            .as_ref()
+            .map(|opts| opts.iter().any(|o| o == value))
+            .unwrap_or(false);
+        if !already {
+            field
+                .options
+                .get_or_insert_with(Vec::new)
+                .push(value.to_string());
+        }
+    }
+
+    // Persist to disk; swallow errors silently (raw terminal mode).
+    let _ = pour::config::Config::append_option_to_field_on_disk(&module_key, field_index, value);
 }
 
 /// Handle form submission: validate, write, transition to summary.

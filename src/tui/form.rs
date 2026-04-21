@@ -1282,6 +1282,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     let is_dynamic_allow_create = active_field
         .map(|f| f.field_type == FieldType::DynamicSelect && f.allow_create.unwrap_or(false))
         .unwrap_or(false);
+    // True for static_select fields that opt in to typing novel values.
+    // Novel values are appended to the field's options list in-memory and on disk.
+    let is_static_allow_create = active_field
+        .map(|f| f.field_type == FieldType::StaticSelect && f.allow_create.unwrap_or(false))
+        .unwrap_or(false);
+    // Union gate: any select-type field that accepts novel typed values.
+    let is_select_allow_create = is_dynamic_allow_create || is_static_allow_create;
 
     // Preset save overlay intercepts ALL keys when open (before sub-form check)
     if form_state.preset_overlay.is_some() {
@@ -1495,7 +1502,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         //   3. field already empty → cancel form (back to dashboard)
         KeyCode::Esc => {
             // If the search buffer has content, clear it first (without closing dropdown).
-            if is_dynamic_allow_create
+            if is_select_allow_create
                 && let Some(field) = active_field
                 && form_state
                     .search_buffers
@@ -1584,7 +1591,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Up => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    let search = if is_dynamic_allow_create {
+                    let search = if is_select_allow_create {
                         form_state
                             .search_buffers
                             .get(&field.name)
@@ -1631,7 +1638,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Down => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    let search = if is_dynamic_allow_create {
+                    let search = if is_select_allow_create {
                         form_state
                             .search_buffers
                             .get(&field.name)
@@ -1680,7 +1687,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             if on_submit_button {
                 FormAction::Submit
             } else if is_select {
-                if is_dynamic_allow_create && let Some(field) = active_field {
+                if is_select_allow_create && let Some(field) = active_field {
                     let search = form_state
                         .search_buffers
                         .get(&field.name)
@@ -1729,6 +1736,30 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                                         return FormAction::None;
                                     }
                                 }
+                            }
+                            // For static_select, append the novel option to
+                            // both the in-memory options list and persist to
+                            // disk so it's available next session.
+                            if is_static_allow_create {
+                                let fname = field.name.clone();
+                                if let Some(opts) = form_state.field_options.get_mut(&fname) {
+                                    if !opts.iter().any(|o| o == &search) {
+                                        opts.push(search.clone());
+                                    }
+                                }
+                                let field_index = form_state.active_config_idx;
+                                form_state
+                                    .field_values
+                                    .insert(fname.clone(), search.clone());
+                                form_state.search_buffers.remove(&fname);
+                                form_state.dropdown_open = false;
+                                if let Some(idx) = field_index {
+                                    return FormAction::AppendStaticOption {
+                                        field_index: idx,
+                                        value: search,
+                                    };
+                                }
+                                return FormAction::None;
                             }
                             // Fallback: accept typed text as novel value (bare stub creation)
                             let fname = field.name.clone();
@@ -1797,8 +1828,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Char(c) => {
-            // For allow_create dynamic_select fields, route typing into the search buffer.
-            if is_dynamic_allow_create && let Some(field) = active_field {
+            // For allow_create select fields (static or dynamic), route typing into the search buffer.
+            if is_select_allow_create && let Some(field) = active_field {
                 let buf = form_state
                     .search_buffers
                     .entry(field.name.clone())
@@ -1851,8 +1882,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Backspace => {
-            // For allow_create dynamic_select, backspace trims the search buffer.
-            if is_dynamic_allow_create && let Some(field) = active_field {
+            // For allow_create select fields (static or dynamic), backspace trims the search buffer.
+            if is_select_allow_create && let Some(field) = active_field {
                 let buf = form_state
                     .search_buffers
                     .entry(field.name.clone())
@@ -2078,6 +2109,13 @@ pub enum FormAction {
     ReorderPreset {
         name: String,
         direction: i32,
+    },
+    /// Append a novel option to a static_select field's `options` list,
+    /// persisting the change to config.toml. The field value has already
+    /// been set in-memory; this action only handles persistence.
+    AppendStaticOption {
+        field_index: usize,
+        value: String,
     },
 }
 

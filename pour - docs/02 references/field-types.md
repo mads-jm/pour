@@ -199,7 +199,8 @@ options = ["V60", "AeroPress", "Espresso", "French Press"]
 
 __TUI__: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
 __Output__: Selected string written to frontmatter. If `wikilink = true`, the value is wrapped in `[[...]]` before output (e.g. `roaster: "[[Onyx]]"`), creating an Obsidian backlink to the named note.
-__Validation__: `options` must be present and non-empty. Config load fails otherwise.
+__Extensible options__: With `allow_create = true`, a novel value typed into the open dropdown is accepted on Enter, appended to the in-memory options list, and persisted back to the field's `options` array in `config.toml`. Fields without `allow_create` remain locked to the configured options.
+__Validation__: `options` must be present and non-empty. Config load fails otherwise. `allow_create` is only valid on `static_select` and `dynamic_select` fields.
 
 ## `dynamic_select`
 

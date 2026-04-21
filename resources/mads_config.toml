@@ -313,6 +313,17 @@ default = "96"
 target = "frontmatter"
 show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
 
+# Filter — paper/cloth/metal variants for filtered brews. Novel values typed
+# at capture time persist to this list via `allow_create`.
+[[modules.coffee.fields]]
+name = "filter"
+field_type = "static_select"
+prompt = "Filter"
+options = ["Paper", "Abaca", "Cafec Light", "Cafec Dark", "Cloth", "Metal"]
+target = "frontmatter"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+allow_create = true
+
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
 name = "recipe"
@@ -465,7 +476,10 @@ prompt = "Roaster"
 name = "origin"
 field_type = "static_select"
 prompt = "Origin"
-options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen", "Blend"]
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen"]
+# Typing a novel value at capture time appends it to this list and persists
+# to config.toml so it's available next session.
+allow_create = true
 
 [[templates.bean.fields]]
 name = "process"
