@@ -135,6 +135,13 @@ jobs:
     needs: [check-version, build]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    # Gated behind the `production` environment — configured reviewers must
+    # approve the deployment in the Actions UI before the tag + release are
+    # created. Artifacts from the `build` job stay available while the run
+    # waits for approval.
+    environment:
+      name: production
+      url: ${{ steps.release.outputs.url }}
     permissions:
       contents: write
     steps:
@@ -145,7 +152,8 @@ jobs:
           merge-multiple: true
       - name: list artifacts
         run: ls -R dist
-      - uses: softprops/action-gh-release@v2
+      - id: release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check-version.outputs.tag }}
           name: ${{ needs.check-version.outputs.tag }}
