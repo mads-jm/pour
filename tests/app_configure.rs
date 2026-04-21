@@ -319,6 +319,7 @@ fn make_form_state(
         search_buffers: HashMap::new(),
         sub_form: None,
         preset_names: Vec::new(),
+        preset_descriptions: Vec::new(),
         selected_preset: 0,
         preset_overlay: None,
         confirm_delete_preset: false,

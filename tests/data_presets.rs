@@ -9,6 +9,7 @@ use tempfile::NamedTempFile;
 fn make_entry(name: &str, values: &[(&str, &str)]) -> PresetEntry {
     PresetEntry {
         name: name.to_owned(),
+        description: None,
         values: values
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -255,6 +256,94 @@ fn reorder_absent_module_is_noop() {
     let (mut presets, _file) = tmp_presets();
     // Should not panic
     presets.reorder("no_such_module", "A", 1);
+}
+
+// ---------------------------------------------------------------------------
+// description field — backward compatibility + round-trip
+// ---------------------------------------------------------------------------
+
+#[test]
+fn legacy_json_without_description_loads_as_none() {
+    // JSON written by a pre-description version of Pour.
+    let legacy = r#"{
+      "modules": {
+        "coffee": [
+          { "name": "Morning", "values": { "bean": "Ethiopia" } }
+        ]
+      }
+    }"#;
+    let file = NamedTempFile::new().expect("tempfile");
+    std::fs::write(file.path(), legacy).expect("write");
+
+    let presets = Presets::load_from(file.path().to_path_buf());
+    let list = presets.get("coffee");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].name, "Morning");
+    assert!(
+        list[0].description.is_none(),
+        "missing description key should deserialize as None"
+    );
+}
+
+#[test]
+fn save_omits_description_key_when_none() {
+    let file = NamedTempFile::new().expect("tempfile");
+    let path = file.path().to_path_buf();
+    let mut presets = Presets::load_from(path.clone());
+    presets.set("coffee", make_entry("Morning", &[("bean", "Ethiopia")]));
+    presets.save().expect("save");
+
+    let contents = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        !contents.contains("description"),
+        "description key must be omitted when None; got: {contents}"
+    );
+}
+
+#[test]
+fn description_round_trips_through_save_and_load() {
+    let file = NamedTempFile::new().expect("tempfile");
+    let path = file.path().to_path_buf();
+    let mut presets = Presets::load_from(path.clone());
+
+    let entry = PresetEntry {
+        name: "Morning".to_owned(),
+        description: Some("Standard daily brew".to_owned()),
+        values: HashMap::new(),
+    };
+    presets.set("coffee", entry);
+    presets.save().expect("save");
+
+    let loaded = Presets::load_from(path);
+    let list = loaded.get("coffee");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].description.as_deref(), Some("Standard daily brew"));
+}
+
+#[test]
+fn upsert_by_name_overwrites_description() {
+    let (mut presets, _file) = tmp_presets();
+
+    presets.set(
+        "coffee",
+        PresetEntry {
+            name: "Morning".to_owned(),
+            description: Some("old".to_owned()),
+            values: HashMap::new(),
+        },
+    );
+    presets.set(
+        "coffee",
+        PresetEntry {
+            name: "Morning".to_owned(),
+            description: Some("new".to_owned()),
+            values: HashMap::new(),
+        },
+    );
+
+    let list = presets.get("coffee");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].description.as_deref(), Some("new"));
 }
 
 #[test]

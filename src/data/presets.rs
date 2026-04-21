@@ -7,6 +7,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresetEntry {
     pub name: String,
+    /// Optional human-readable description for disambiguating similar presets.
+    /// Rendered as a dim subtitle under the preset row in the form view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Maps field_name -> field_value for all fields captured in this preset.
     pub values: HashMap<String, String>,
 }

@@ -2,11 +2,11 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, FormState, PresetSaveDialog, SubFormState};
+use crate::app::{App, FormState, PresetDialogFocus, PresetSaveDialog, SubFormState};
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 use crate::visibility::visible_field_indices;
 
@@ -158,11 +158,42 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         preset_name_display
     };
     let preset_indicator = if on_preset_row { "▸" } else { " " };
-    let preset_item = ListItem::new(Line::from(vec![
+    let preset_title_line = Line::from(vec![
         Span::styled(format!("{preset_indicator} "), preset_label_style),
         Span::styled("Preset: ", preset_label_style),
         Span::styled(preset_value_text, preset_value_style),
-    ]));
+    ]);
+
+    // Description subtitle: shown only when a real preset is selected and it
+    // has a non-empty description. Rendered dim, indented under the preset name.
+    let preset_description = if form_state.selected_preset > 0 {
+        form_state
+            .preset_descriptions
+            .get(form_state.selected_preset - 1)
+            .and_then(|d| d.clone())
+    } else {
+        None
+    };
+
+    let preset_item = if let Some(desc) = preset_description {
+        let subtitle_style = if on_preset_row {
+            Style::default()
+                .fg(Color::Gray)
+                .add_modifier(Modifier::ITALIC)
+        } else {
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC)
+        };
+        // Indent to align under the preset value (past "▸ Preset: ").
+        let subtitle_line = Line::from(vec![
+            Span::raw("          "),
+            Span::styled(desc, subtitle_style),
+        ]);
+        ListItem::new(Text::from(vec![preset_title_line, subtitle_line]))
+    } else {
+        ListItem::new(preset_title_line)
+    };
 
     let mut items: Vec<ListItem> = vec![preset_item];
 
@@ -408,14 +439,14 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
 /// Render the centered overlay for naming a preset before saving.
 fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSaveDialog) {
-    if area.height < 8 || area.width < 30 {
+    if area.height < 10 || area.width < 30 {
         return;
     }
 
     let modal_width = (area.width * 3 / 5)
         .max(40)
         .min(area.width.saturating_sub(4));
-    let modal_height = 5u16;
+    let modal_height = 7u16;
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -434,39 +465,60 @@ fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSav
         modal_area.height.saturating_sub(2),
     );
 
+    let label_style = Style::default().fg(Color::Cyan);
+    let placeholder_style = Style::default().fg(Color::DarkGray);
+    let value_style = Style::default().fg(Color::White);
+
     // Name input line
     let name_area = Rect::new(inner.x, inner.y, inner.width, 1);
-    let name_text = if overlay.name_buffer.is_empty() {
-        "<name>".to_string()
+    let (name_text, name_style) = if overlay.name_buffer.is_empty() {
+        ("<name>".to_string(), placeholder_style)
     } else {
-        overlay.name_buffer.clone()
+        (overlay.name_buffer.clone(), value_style)
     };
-    let name_style = if overlay.name_buffer.is_empty() {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let name_widget = Paragraph::new(Line::from(vec![
-        Span::styled("Name: ", Style::default().fg(Color::Cyan)),
-        Span::styled(name_text, name_style),
-    ]));
-    frame.render_widget(name_widget, name_area);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Name: ", label_style),
+            Span::styled(name_text, name_style),
+        ])),
+        name_area,
+    );
 
-    // Hint line
-    let hint_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    // Description input line
+    let desc_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    let (desc_text, desc_style) = if overlay.description_buffer.is_empty() {
+        ("<description — optional>".to_string(), placeholder_style)
+    } else {
+        (overlay.description_buffer.clone(), value_style)
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Desc: ", label_style),
+            Span::styled(desc_text, desc_style),
+        ])),
+        desc_area,
+    );
+
+    // Hint line (two rows below inputs leaves a visual gap)
+    let hint_area = Rect::new(inner.x, inner.y + 3, inner.width, 1);
     let hint = Paragraph::new(Line::from(vec![
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(" save  "),
+        Span::styled("Tab", Style::default().fg(Color::Yellow)),
+        Span::raw(" switch  "),
         Span::styled("Esc", Style::default().fg(Color::Yellow)),
         Span::raw(" cancel"),
     ]));
     frame.render_widget(hint, hint_area);
 
-    // Place cursor inside the name input
-    let cx = inner.x + 6 + overlay.cursor_position as u16; // "Name: " = 6 chars
-    let cy = inner.y;
+    // Place cursor inside the focused input ("Name: " / "Desc: " are both 6 chars)
+    let (cursor_row, cursor_col) = match overlay.focus {
+        PresetDialogFocus::Name => (inner.y, overlay.cursor_position),
+        PresetDialogFocus::Description => (inner.y + 1, overlay.description_cursor),
+    };
+    let cx = inner.x + 6 + cursor_col as u16;
     if cx < modal_area.x + modal_area.width - 1 {
-        frame.set_cursor_position(Position::new(cx, cy));
+        frame.set_cursor_position(Position::new(cx, cursor_row));
     }
 }
 
@@ -1278,19 +1330,31 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::CONTROL))
     {
-        let prefill = if form_state.selected_preset > 0 {
-            form_state
+        let (prefill_name, prefill_desc) = if form_state.selected_preset > 0 {
+            let idx = form_state.selected_preset - 1;
+            let name = form_state
                 .preset_names
-                .get(form_state.selected_preset - 1)
+                .get(idx)
                 .cloned()
-                .unwrap_or_default()
+                .unwrap_or_default();
+            let desc = form_state
+                .preset_descriptions
+                .get(idx)
+                .cloned()
+                .flatten()
+                .unwrap_or_default();
+            (name, desc)
         } else {
-            String::new()
+            (String::new(), String::new())
         };
-        let cursor_position = prefill.chars().count();
+        let cursor_position = prefill_name.chars().count();
+        let description_cursor = prefill_desc.chars().count();
         form_state.preset_overlay = Some(PresetSaveDialog {
-            name_buffer: prefill,
+            name_buffer: prefill_name,
             cursor_position,
+            description_buffer: prefill_desc,
+            description_cursor,
+            focus: PresetDialogFocus::Name,
         });
         return FormAction::None;
     }
@@ -2003,6 +2067,7 @@ pub enum FormAction {
     /// Save a preset with the given name and field values for the current module.
     SavePreset {
         name: String,
+        description: Option<String>,
         values: std::collections::HashMap<String, String>,
     },
     /// Delete the preset with the given name for the current module.
@@ -2130,6 +2195,12 @@ fn handle_preset_overlay_key(
         None => return FormAction::None,
     };
 
+    // Borrow helpers: operate on (buffer, cursor) for the focused input.
+    let max_len = |focus: PresetDialogFocus| match focus {
+        PresetDialogFocus::Name => 50,
+        PresetDialogFocus::Description => 120,
+    };
+
     match key.code {
         KeyCode::Esc => {
             form_state.preset_overlay = None;
@@ -2140,6 +2211,14 @@ fn handle_preset_overlay_key(
             if name.is_empty() {
                 return FormAction::None;
             }
+            let description = {
+                let trimmed = overlay.description_buffer.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            };
             // Collect values from visible, non-excluded, non-composite fields
             let visible_indices =
                 crate::visibility::visible_field_indices(&module.fields, &form_state.field_values);
@@ -2161,54 +2240,80 @@ fn handle_preset_overlay_key(
                     values.insert(field.name.clone(), val);
                 }
             }
-            // Also include non-visible field values for excluded-from-visibility fields
-            // (only visible fields are written — skip non-visible intentionally)
-            let _ = module_key; // used by caller when handling FormAction::SavePreset
+            let _ = module_key;
             form_state.preset_overlay = None;
-            FormAction::SavePreset { name, values }
+            FormAction::SavePreset {
+                name,
+                description,
+                values,
+            }
+        }
+        KeyCode::Tab | KeyCode::Up | KeyCode::Down | KeyCode::BackTab => {
+            overlay.focus = match overlay.focus {
+                PresetDialogFocus::Name => PresetDialogFocus::Description,
+                PresetDialogFocus::Description => PresetDialogFocus::Name,
+            };
+            FormAction::None
         }
         KeyCode::Backspace => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.cursor_position > 0 {
-                // Convert char-based cursor to byte offset for safe removal.
-                let byte_pos = overlay
-                    .name_buffer
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&mut overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => (
+                    &mut overlay.description_buffer,
+                    &mut overlay.description_cursor,
+                ),
+            };
+            if *cursor > 0 {
+                let byte_pos = buffer
                     .char_indices()
-                    .nth(overlay.cursor_position - 1)
+                    .nth(*cursor - 1)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
-                overlay.name_buffer.remove(byte_pos);
-                overlay.cursor_position -= 1;
+                buffer.remove(byte_pos);
+                *cursor -= 1;
             }
             FormAction::None
         }
         KeyCode::Left => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.cursor_position > 0 {
-                overlay.cursor_position -= 1;
+            let cursor = match overlay.focus {
+                PresetDialogFocus::Name => &mut overlay.cursor_position,
+                PresetDialogFocus::Description => &mut overlay.description_cursor,
+            };
+            if *cursor > 0 {
+                *cursor -= 1;
             }
             FormAction::None
         }
         KeyCode::Right => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            let char_count = overlay.name_buffer.chars().count();
-            if overlay.cursor_position < char_count {
-                overlay.cursor_position += 1;
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => {
+                    (&overlay.description_buffer, &mut overlay.description_cursor)
+                }
+            };
+            let char_count = buffer.chars().count();
+            if *cursor < char_count {
+                *cursor += 1;
             }
             FormAction::None
         }
         KeyCode::Char(c) => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.name_buffer.chars().count() < 50 {
-                // Convert char-based cursor to byte offset for safe insertion.
-                let byte_pos = overlay
-                    .name_buffer
+            let limit = max_len(overlay.focus);
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&mut overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => (
+                    &mut overlay.description_buffer,
+                    &mut overlay.description_cursor,
+                ),
+            };
+            if buffer.chars().count() < limit {
+                let byte_pos = buffer
                     .char_indices()
-                    .nth(overlay.cursor_position)
+                    .nth(*cursor)
                     .map(|(i, _)| i)
-                    .unwrap_or(overlay.name_buffer.len());
-                overlay.name_buffer.insert(byte_pos, c);
-                overlay.cursor_position += 1;
+                    .unwrap_or(buffer.len());
+                buffer.insert(byte_pos, c);
+                *cursor += 1;
             }
             FormAction::None
         }

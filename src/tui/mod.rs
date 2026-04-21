@@ -104,6 +104,7 @@ pub enum Action {
     /// Save (upsert) a preset for the current module.
     SavePreset {
         name: String,
+        description: Option<String>,
         values: std::collections::HashMap<String, String>,
     },
     /// Delete a preset by name for the current module.
@@ -177,7 +178,15 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
                 note_name,
                 field_values,
             },
-            form::FormAction::SavePreset { name, values } => Action::SavePreset { name, values },
+            form::FormAction::SavePreset {
+                name,
+                description,
+                values,
+            } => Action::SavePreset {
+                name,
+                description,
+                values,
+            },
             form::FormAction::DeletePreset { name } => Action::DeletePreset { name },
             form::FormAction::ReorderPreset { name, direction } => {
                 Action::ReorderPreset { name, direction }

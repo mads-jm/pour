@@ -1,0 +1,63 @@
+{
+  "modules": {
+    "coffee": [
+      {
+        "name": "Flair - YesPlz",
+        "description": "Morning latte on the Flair 58 — YesPlz Homestar, Turbo-ish",
+        "values": {
+          "bean": "YesPlz - Homestar",
+          "machine": "Flair 58",
+          "grinder": "K-Ultra",
+          "rating": "4",
+          "grind_setting": "2.0",
+          "time_s": "45",
+          "dose_g": "20",
+          "drink_type": "Latte",
+          "shot_style": "Standard",
+          "yield_g": "43",
+          "brew_method": "Espresso"
+        }
+      },
+      {
+        "name": "V60 - KUltra",
+        "description": "Afternoon pour over — standard 1:15 ratio, 3 min target",
+        "values": {
+          "grind_setting": "7",
+          "dose_g": "20",
+          "yield_g": "300",
+          "time_s": "190",
+          "water_temp_c": "95",
+          "rating": "3",
+          "brew_method": "Pour Over",
+          "brewer": "V60",
+          "grinder": "K-Ultra"
+        }
+      }
+    ],
+    "me": [
+      {
+        "name": "Project",
+        "description": "Work thought — tagged for project journal review",
+        "values": {
+          "title": "Project Work"
+        }
+      },
+      {
+        "name": "Journal",
+        "values": {
+          "title": "Journal : "
+        }
+      }
+    ],
+    "workout": [
+      {
+        "name": "AM Run",
+        "description": "Morning cardio — 15 min default, tweak duration per session",
+        "values": {
+          "type": "Cardio",
+          "duration": "15"
+        }
+      }
+    ]
+  }
+}

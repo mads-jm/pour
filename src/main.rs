@@ -293,8 +293,12 @@ async fn run_loop(
                     }
                 }
 
-                tui::Action::SavePreset { name, values } => {
-                    handle_save_preset(app, &name, values);
+                tui::Action::SavePreset {
+                    name,
+                    description,
+                    values,
+                } => {
+                    handle_save_preset(app, &name, description, values);
                 }
 
                 tui::Action::DeletePreset { name } => {
@@ -317,6 +321,7 @@ async fn run_loop(
 fn handle_save_preset(
     app: &mut App,
     name: &str,
+    description: Option<String>,
     values: std::collections::HashMap<String, String>,
 ) {
     let module_key = match app.module_keys.get(app.selected_module) {
@@ -326,6 +331,7 @@ fn handle_save_preset(
 
     let entry = pour::data::presets::PresetEntry {
         name: name.to_string(),
+        description,
         values,
     };
     app.presets.set(&module_key, entry);
@@ -334,13 +340,10 @@ fn handle_save_preset(
         let _ = e;
     }
 
-    // Refresh preset_names and select the newly saved preset
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    // Refresh preset_names + descriptions and select the newly saved preset
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         let new_idx = names
             .iter()
@@ -348,6 +351,7 @@ fn handle_save_preset(
             .map(|i| i + 1)
             .unwrap_or(0);
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = new_idx;
     }
 }
@@ -368,14 +372,12 @@ fn handle_delete_preset(app: &mut App, name: &str) {
         let _ = e;
     }
 
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = 0; // Back to <none>, but keep current field values.
     }
 }
@@ -392,13 +394,10 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
         let _ = e;
     }
 
-    // Refresh preset_names and find the moved preset's new position
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    // Refresh preset_names + descriptions and find the moved preset's new position
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         let new_idx = names
             .iter()
@@ -406,6 +405,7 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
             .map(|i| i + 1)
             .unwrap_or(fs.selected_preset);
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = new_idx;
     }
 }

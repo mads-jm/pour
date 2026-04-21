@@ -108,6 +108,7 @@ fn make_app_from_toml(toml: &str) -> App {
 fn make_entry(values: &[(&str, &str)]) -> PresetEntry {
     PresetEntry {
         name: "Test".to_owned(),
+        description: None,
         values: values
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -138,6 +139,7 @@ fn init_form_preset_names_populated_from_saved_presets() {
         "coffee",
         PresetEntry {
             name: "Morning".to_owned(),
+            description: None,
             values: HashMap::new(),
         },
     );
@@ -145,6 +147,7 @@ fn init_form_preset_names_populated_from_saved_presets() {
         "coffee",
         PresetEntry {
             name: "Afternoon".to_owned(),
+            description: None,
             values: HashMap::new(),
         },
     );

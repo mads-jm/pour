@@ -408,6 +408,21 @@ When you apply a preset, Pour resets __all non-excluded fields__ to the preset's
 
 The preset row is always at the top of the form. Navigate to it with `Up` from the first field, or `Down` from the preset row to enter the form.
 
+### Preset Names and Descriptions
+
+Each preset has a required `name` and an optional `description`. The name is what you cycle through on the preset row. The description is a short sentence that renders as a dim subtitle under the preset name when that preset is selected — useful for disambiguating similar presets (e.g., two espresso recipes on the same machine).
+
+When you press `Ctrl+S` to save, the overlay shows two inputs:
+
+```
+Name: V60 - KUltra
+Desc: Afternoon pour over — standard 1:15 ratio
+```
+
+Use `Tab` (or `Up`/`Down`) to switch between the name and description inputs. `Enter` saves; `Esc` cancels. The description is optional — leave it blank and nothing extra is written to `presets.json`. Legacy preset files (no `description` key) continue to load unchanged.
+
+For an example `presets.json`, see `resources/presets.json` in the repo.
+
 ### When to Use Presets
 
 Presets pay off most for create-mode modules with many fields that rarely change. A coffee log is the canonical case: bean, grinder, dose, yield, and time are consistent for a given setup, while tasting notes differ every brew. Save one preset per common setup (e.g., "V60 light roast", "Espresso morning shot") and cycle between them at the top of the form.
