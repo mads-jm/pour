@@ -77,7 +77,7 @@ fn summary_version_default() -> u32 {
     1
 }
 
-/// Manages the capture history log persisted at `~/.cache/pour/history.jsonl`.
+/// Manages the capture history log persisted at `~/.pour/cache/history.jsonl`.
 ///
 /// Write path: append a single JSON line per capture (O(1)).
 /// Read path: parse JSONL at startup, build in-memory vec.
@@ -90,11 +90,11 @@ pub struct History {
 }
 
 impl History {
-    /// Load history from the default platform cache directory.
+    /// Load history from the default location
+    /// (`~/.pour/cache/history.jsonl`, or under `$POUR_HOME/cache/` if set).
     /// Returns empty history if the file is missing or corrupt.
     pub fn load() -> Self {
-        let path = default_history_path();
-        Self::load_from(path)
+        Self::load_from(crate::paths::history_path())
     }
 
     /// Load history from a specific file path.
@@ -449,18 +449,13 @@ fn write_summary(path: &Path, summary: &HistorySummary) -> Result<()> {
     Ok(())
 }
 
-fn load_or_recompute_summary(
-    path: &Path,
-    entries: &[HistoryEntry],
-) -> HistorySummary {
+fn load_or_recompute_summary(path: &Path, entries: &[HistoryEntry]) -> HistorySummary {
     // Try loading cached summary
     if let Ok(contents) = std::fs::read_to_string(path)
         && let Ok(summary) = serde_json::from_str::<HistorySummary>(&contents)
     {
         let today = Local::now().date_naive();
-        if summary.computed_date == Some(today)
-            && summary.total_entries == entries.len()
-        {
+        if summary.computed_date == Some(today) && summary.total_entries == entries.len() {
             // Summary is fresh — use it
             return summary;
         }
@@ -541,12 +536,4 @@ pub fn format_relative(dt: DateTime<Utc>) -> String {
 
     let weeks = days_ago / 7;
     format!("{weeks}w ago")
-}
-
-/// Resolve the default history file path.
-fn default_history_path() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("pour")
-        .join("history.jsonl")
 }

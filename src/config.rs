@@ -472,15 +472,10 @@ impl Config {
     }
 
     /// Return the expected config file path without checking if it exists.
-    /// Respects `POUR_CONFIG` env var, otherwise uses the platform config dir.
+    /// Respects `POUR_CONFIG` env var, otherwise resolves under `POUR_HOME`
+    /// (defaulting to `~/.pour/config.toml`).
     pub fn default_config_path() -> PathBuf {
-        if let Ok(env_path) = std::env::var("POUR_CONFIG") {
-            return PathBuf::from(env_path);
-        }
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from(".config"))
-            .join("pour")
-            .join("config.toml")
+        crate::paths::config_path()
     }
 
     /// Return the path to `secrets.toml`, a sibling of `config.toml`.
@@ -488,10 +483,7 @@ impl Config {
     /// When `POUR_CONFIG` is set the secrets file sits in the same directory
     /// as the overridden config, which provides automatic test isolation.
     pub fn secrets_path() -> PathBuf {
-        Self::default_config_path()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join("secrets.toml")
+        crate::paths::secrets_path()
     }
 
     /// Read `api_key` from `secrets.toml`.

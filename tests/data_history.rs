@@ -1,5 +1,5 @@
 use chrono::{Duration, Utc};
-use pour::data::history::{format_relative, History, HistoryEntry};
+use pour::data::history::{History, HistoryEntry, format_relative};
 use std::io::Write;
 
 /// Create a History backed by a temp JSONL file with the given entries.
@@ -246,8 +246,11 @@ fn legacy_json_format_auto_migrates() {
             }
         ]
     });
-    std::fs::write(&legacy_path, serde_json::to_string_pretty(&old_data).unwrap())
-        .expect("write legacy");
+    std::fs::write(
+        &legacy_path,
+        serde_json::to_string_pretty(&old_data).unwrap(),
+    )
+    .expect("write legacy");
 
     // Load from the .jsonl path — should detect and migrate
     let h = History::load_from(jsonl_path.clone());
@@ -255,10 +258,16 @@ fn legacy_json_format_auto_migrates() {
     assert_eq!(h.last_pour().unwrap().module_key, "me");
 
     // Legacy file should be removed
-    assert!(!legacy_path.exists(), "legacy file should be deleted after migration");
+    assert!(
+        !legacy_path.exists(),
+        "legacy file should be deleted after migration"
+    );
 
     // JSONL file should exist
-    assert!(jsonl_path.exists(), "jsonl file should exist after migration");
+    assert!(
+        jsonl_path.exists(),
+        "jsonl file should exist after migration"
+    );
 
     // Reload to verify persistence
     let h2 = History::load_from(jsonl_path);
@@ -305,10 +314,14 @@ fn summary_cache_is_written() {
     let path = dir.path().join("history.jsonl");
     let mut h = History::load_from(path.clone());
 
-    h.record("coffee", "test.md", Some("Ethiopia")).expect("record");
+    h.record("coffee", "test.md", Some("Ethiopia"))
+        .expect("record");
 
     let summary_path = dir.path().join("history-summary.json");
-    assert!(summary_path.exists(), "summary cache should be written after record()");
+    assert!(
+        summary_path.exists(),
+        "summary cache should be written after record()"
+    );
 
     let contents = std::fs::read_to_string(&summary_path).expect("read summary");
     let summary: serde_json::Value = serde_json::from_str(&contents).expect("parse summary");

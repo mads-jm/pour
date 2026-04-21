@@ -20,7 +20,7 @@ pub struct PresetsData {
 }
 
 /// Manages reading and writing the `presets.json` file that stores
-/// per-module named presets at `~/.cache/pour/presets.json`.
+/// per-module named presets at `~/.pour/presets.json`.
 #[derive(Debug)]
 pub struct Presets {
     data: PresetsData,
@@ -28,13 +28,12 @@ pub struct Presets {
 }
 
 impl Presets {
-    /// Load presets from the default platform cache directory
-    /// (`~/.cache/pour/presets.json` on Linux, equivalent on other OSes).
+    /// Load presets from the default location (`~/.pour/presets.json`,
+    /// or `$POUR_HOME/presets.json` if overridden).
     ///
     /// Returns empty presets if the file is missing or corrupt.
     pub fn load() -> Self {
-        let path = default_presets_path();
-        Self::load_from(path)
+        Self::load_from(crate::paths::presets_path())
     }
 
     /// Create an empty `Presets` instance not backed by any file.
@@ -150,12 +149,4 @@ impl Presets {
 
         list.swap(idx, new_idx);
     }
-}
-
-/// Resolve the default presets file path using the platform cache directory.
-fn default_presets_path() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("pour")
-        .join("presets.json")
 }

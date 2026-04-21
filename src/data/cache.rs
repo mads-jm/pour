@@ -26,13 +26,12 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// Load the cache from the default platform cache directory
-    /// (`~/.cache/pour/state.json` on Linux, equivalent on other OSes).
+    /// Load the cache from the default location
+    /// (`~/.pour/cache/state.json`, or under `$POUR_HOME/cache/` if set).
     ///
     /// Returns an empty cache if the file is missing or corrupt.
     pub fn load() -> Self {
-        let path = default_cache_path();
-        Self::load_from(path)
+        Self::load_from(crate::paths::state_path())
     }
 
     /// Load the cache from a specific file path.
@@ -79,12 +78,4 @@ impl Cache {
         crate::util::atomic_replace(&tmp_path, &self.path)?;
         Ok(())
     }
-}
-
-/// Resolve the default cache file path using the platform cache directory.
-fn default_cache_path() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("pour")
-        .join("state.json")
 }
