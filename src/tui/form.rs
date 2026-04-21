@@ -2394,6 +2394,8 @@ fn handle_sub_form_key(
     let is_static_select = active_tfield
         .map(|f| f.field_type == TemplateFieldType::StaticSelect)
         .unwrap_or(false);
+    let is_static_select_extensible =
+        is_static_select && active_tfield.and_then(|f| f.allow_create).unwrap_or(false);
 
     // Helper: advance cursor to end of the current field value after navigation
     let sync_cursor = |sf: &mut SubFormState, tmpl: &crate::config::TemplateConfig| {
@@ -2512,7 +2514,7 @@ fn handle_sub_form_key(
 
         // ── Text / number input ───────────────────────────────────────────────
         KeyCode::Char(c) => {
-            if on_submit_button || is_static_select {
+            if on_submit_button || (is_static_select && !is_static_select_extensible) {
                 return FormAction::None;
             }
             if let Some(tf) = active_tfield {
@@ -2538,7 +2540,7 @@ fn handle_sub_form_key(
         }
 
         KeyCode::Backspace => {
-            if on_submit_button || is_static_select {
+            if on_submit_button || (is_static_select && !is_static_select_extensible) {
                 return FormAction::None;
             }
             if let Some(tf) = active_tfield {

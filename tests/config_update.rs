@@ -1521,3 +1521,82 @@ fn append_option_field_out_of_range_errors() {
         .expect_err("should fail for out-of-range field index");
     assert!(matches!(err, ConfigError::ValidationError(_)));
 }
+
+// ---------------------------------------------------------------------------
+// append_option_to_template_field_on_disk
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_STATIC_SELECT_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+create_template = "bean"
+
+[templates.bean]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia"]
+allow_create = true
+"###;
+
+#[test]
+fn append_template_option_adds_new_value_to_end() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    Config::append_option_to_template_field_on_disk("bean", 0, "Tanzania")
+        .expect("append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.templates.as_ref().expect("templates")["bean"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia", "Tanzania"]);
+}
+
+#[test]
+fn append_template_option_is_noop_when_already_present() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    Config::append_option_to_template_field_on_disk("bean", 0, "Ethiopia")
+        .expect("duplicate append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.templates.as_ref().expect("templates")["bean"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia"], "list unchanged");
+}
+
+#[test]
+fn append_template_option_template_not_found_errors() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_template_field_on_disk("nope", 0, "Tanzania")
+        .expect_err("should fail for unknown template");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
+}
+
+#[test]
+fn append_template_option_field_out_of_range_errors() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_template_field_on_disk("bean", 99, "Tanzania")
+        .expect_err("should fail for out-of-range field index");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
+}

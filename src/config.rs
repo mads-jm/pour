@@ -186,6 +186,9 @@ pub struct TemplateFieldConfig {
     /// Valid only for `static_select`.
     pub options: Option<Vec<String>>,
     pub default: Option<String>,
+    /// For `static_select` only: allow typing a novel value which is appended
+    /// to the field's `options` on disk.
+    pub allow_create: Option<bool>,
 }
 
 /// A template definition for auto-created notes.
@@ -951,6 +954,81 @@ impl Config {
         let new_content = doc.to_string();
 
         // Validate before writing.
+        Self::from_toml(&new_content)?;
+
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
+        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+
+        Ok(())
+    }
+
+    /// Append a new option string to a template static_select field's
+    /// `options` array on disk. No-op if the option is already present
+    /// (case-sensitive match). Preserves comments and formatting via
+    /// `toml_edit`. Atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationError` if the template or field cannot
+    /// be located, or if the resulting config fails validation.
+    pub fn append_option_to_template_field_on_disk(
+        template_name: &str,
+        field_index: usize,
+        new_option: &str,
+    ) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+
+        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+
+        let mut doc: DocumentMut = original
+            .parse()
+            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+
+        let field = doc
+            .get_mut("templates")
+            .and_then(|m| m.as_table_mut())
+            .and_then(|t| t.get_mut(template_name))
+            .and_then(|v| v.as_table_mut())
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!("template '{template_name}' not found")])
+            })?
+            .get_mut("fields")
+            .and_then(|f| f.as_array_of_tables_mut())
+            .and_then(|arr| arr.get_mut(field_index))
+            .ok_or_else(|| {
+                ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for template '{template_name}'"
+                )])
+            })?;
+
+        let already_present = field
+            .get("options")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str())
+                    .any(|existing| existing == new_option)
+            })
+            .unwrap_or(false);
+
+        if already_present {
+            return Ok(());
+        }
+
+        match field.get_mut("options").and_then(|v| v.as_array_mut()) {
+            Some(arr) => {
+                arr.push(new_option);
+            }
+            None => {
+                let mut arr = toml_edit::Array::new();
+                arr.push(new_option);
+                field["options"] = toml_edit::value(arr);
+            }
+        }
+
+        let new_content = doc.to_string();
+
         Self::from_toml(&new_content)?;
 
         let tmp_path = path.with_extension("toml.tmp");
@@ -2531,6 +2609,16 @@ impl Config {
                             }
                             _ => {}
                         }
+                    }
+
+                    // allow_create is only valid on static_select template fields
+                    if field.allow_create.is_some()
+                        && field.field_type != TemplateFieldType::StaticSelect
+                    {
+                        errors.push(format!(
+                            "template '{name}', field '{}': allow_create is only valid on static_select template fields",
+                            field.name
+                        ));
                     }
                 }
             }

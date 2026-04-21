@@ -378,6 +378,10 @@ ingredients:
 __Output (body)__: Rendered as a Markdown table.
 __Validation__: `sub_fields` must be present and non-empty. Sub-field names must be unique. `static_select` sub-fields must have non-empty `options`.
 
+### Template fields and `allow_create`
+
+Template fields (`[[templates.<name>.fields]]`) support `allow_create = true` on `static_select` fields only. When set, typing a novel value in the sub-form is accepted; after the templated note is written successfully, the new value is appended to the template field's `options` array in `config.toml` so it appears next session. Without `allow_create`, the sub-form static_select remains locked to the configured cycle of options.
+
 ### Sub-field Types
 
 Sub-fields support a restricted set of types — no nesting or dynamic data:

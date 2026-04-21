@@ -643,6 +643,33 @@ async fn handle_create_from_template(
             .and_then(|f| f.post_create_command.clone())
     };
 
+    // Collect template-field option appends that need to persist to disk.
+    // This is safe to compute now because `template` borrows from `app.config`
+    // which we'll release before the mutable operations below.
+    let template_option_appends: Vec<(usize, String)> = template
+        .fields
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, tf)| {
+            if tf.field_type != pour::config::TemplateFieldType::StaticSelect
+                || !tf.allow_create.unwrap_or(false)
+            {
+                return None;
+            }
+            let value = sub_form_values.get(&tf.name)?.trim().to_string();
+            if value.is_empty() {
+                return None;
+            }
+            let already = tf
+                .options
+                .as_ref()
+                .map(|opts| opts.iter().any(|o| o == &value))
+                .unwrap_or(false);
+            if already { None } else { Some((idx, value)) }
+        })
+        .collect();
+    let template_name_owned = template_name.to_string();
+
     // Write via transport (best-effort)
     match app.transport.create_file(&vault_path, &content).await {
         Ok(()) => {
@@ -650,6 +677,21 @@ async fn handle_create_from_template(
             // created, so a hook failure does not block the user — swallow silently.
             if let Some(ref cmd) = post_command {
                 let _ = app.transport.execute_command(cmd).await;
+            }
+
+            // Persist novel template-field options (both in-memory and on-disk).
+            for (field_idx, value) in &template_option_appends {
+                if let Some(templates) = app.config.templates.as_mut()
+                    && let Some(tpl) = templates.get_mut(&template_name_owned)
+                    && let Some(tf) = tpl.fields.get_mut(*field_idx)
+                {
+                    tf.options.get_or_insert_with(Vec::new).push(value.clone());
+                }
+                let _ = pour::config::Config::append_option_to_template_field_on_disk(
+                    &template_name_owned,
+                    *field_idx,
+                    value,
+                );
             }
 
             // Update cache: derive source from the field config
