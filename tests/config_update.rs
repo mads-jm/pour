@@ -233,6 +233,7 @@ fn update_field_name_and_prompt() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -268,6 +269,7 @@ fn update_field_type_with_options() {
         source: None,
         target: Some(Some(FieldTarget::Frontmatter)),
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -300,6 +302,7 @@ fn update_field_preserves_comments() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -337,6 +340,7 @@ fn update_field_validation_rejects_select_without_options() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -374,6 +378,7 @@ fn update_field_out_of_range_errors() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -405,6 +410,7 @@ fn update_field_remove_optional_keys() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -436,6 +442,7 @@ fn add_field_with_show_when_persisted() {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -477,6 +484,7 @@ fn update_field_add_show_when() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: Some(Some(ShowWhen {
             field: "method".to_string(),
             equals: Some("Espresso".to_string()),
@@ -538,6 +546,7 @@ show_when = { field = "method", equals = "V60" }
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: Some(None), // remove the key
         wikilink: None,
         allow_create: None,
@@ -669,6 +678,7 @@ fn add_field_appends_to_module() {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -711,6 +721,7 @@ fn add_field_to_nonexistent_module_errors() {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -791,6 +802,7 @@ fn add_field_preserves_comments() {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -835,6 +847,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
             target: None,
             sub_fields: None,
             callout: None,
+            callout_title: None,
             allow_create: None,
             wikilink: None,
             create_template: None,
@@ -1294,6 +1307,7 @@ fn icon_round_trips_through_update_field() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -1376,6 +1390,7 @@ fn preset_exclude_round_trips_through_update_field() {
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -1430,6 +1445,7 @@ preset_exclude = true
         source: None,
         target: None,
         callout: None,
+        callout_title: None,
         show_when: None,
         wikilink: None,
         allow_create: None,
@@ -1453,4 +1469,150 @@ preset_exclude = true
         config.modules["coffee"].fields[1].preset_exclude, None,
         "preset_exclude should be None after removal"
     );
+}
+
+// ---------------------------------------------------------------------------
+// append_option_to_field_on_disk
+// ---------------------------------------------------------------------------
+
+const STATIC_SELECT_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia"]
+allow_create = true
+"###;
+
+#[test]
+fn append_option_adds_new_value_to_end() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    Config::append_option_to_field_on_disk("coffee", 0, "Tanzania").expect("append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.modules["coffee"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia", "Tanzania"]);
+}
+
+#[test]
+fn append_option_is_noop_when_already_present() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    Config::append_option_to_field_on_disk("coffee", 0, "Ethiopia")
+        .expect("duplicate append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.modules["coffee"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia"], "list unchanged");
+}
+
+#[test]
+fn append_option_module_not_found_errors() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_field_on_disk("nope", 0, "Tanzania")
+        .expect_err("should fail for unknown module");
+    assert!(matches!(err, ConfigError::ModuleNotFound(_)));
+}
+
+#[test]
+fn append_option_field_out_of_range_errors() {
+    let (_file, _guard) = write_temp_config(STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_field_on_disk("coffee", 99, "Tanzania")
+        .expect_err("should fail for out-of-range field index");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
+}
+
+// ---------------------------------------------------------------------------
+// append_option_to_template_field_on_disk
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_STATIC_SELECT_TOML: &str = r###"
+[vault]
+base_path = "C:/vault"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "Coffee/Beans"
+allow_create = true
+create_template = "bean"
+
+[templates.bean]
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Ethiopia", "Colombia"]
+allow_create = true
+"###;
+
+#[test]
+fn append_template_option_adds_new_value_to_end() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    Config::append_option_to_template_field_on_disk("bean", 0, "Tanzania")
+        .expect("append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.templates.as_ref().expect("templates")["bean"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia", "Tanzania"]);
+}
+
+#[test]
+fn append_template_option_is_noop_when_already_present() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    Config::append_option_to_template_field_on_disk("bean", 0, "Ethiopia")
+        .expect("duplicate append should succeed");
+
+    let config = Config::load().expect("reload should succeed");
+    let opts = config.templates.as_ref().expect("templates")["bean"].fields[0]
+        .options
+        .as_ref()
+        .expect("options present");
+    assert_eq!(opts, &vec!["Ethiopia", "Colombia"], "list unchanged");
+}
+
+#[test]
+fn append_template_option_template_not_found_errors() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_template_field_on_disk("nope", 0, "Tanzania")
+        .expect_err("should fail for unknown template");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
+}
+
+#[test]
+fn append_template_option_field_out_of_range_errors() {
+    let (_file, _guard) = write_temp_config(TEMPLATE_STATIC_SELECT_TOML);
+
+    let err = Config::append_option_to_template_field_on_disk("bean", 99, "Tanzania")
+        .expect_err("should fail for out-of-range field index");
+    assert!(matches!(err, ConfigError::ValidationError(_)));
 }

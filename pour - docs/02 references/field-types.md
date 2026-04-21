@@ -41,6 +41,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `target` | string | no | `"frontmatter"` or `"body"` — overrides the default routing |
 | `sub_fields` | array | conditional | Required for `composite_array`; column definitions |
 | `callout` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). When set on a `textarea` field targeting body, the output is wrapped in `> [!type]` blockquote syntax. |
+| `callout_title` | string | no | Default title rendered on the callout line: `> [!type] <callout_title>`. Only used when `callout` is set. In the TUI, press `t` while focused on the textarea row (editor closed) to edit the title for the current entry — an empty title clears it. A `t title` hint appears in the footer bar when the hotkey is available. Bare `t` is used rather than `Ctrl+T` because some IDEs/terminals intercept Ctrl-letter chords before they reach the TUI. |
 | `allow_create` | bool | no | Only valid on `dynamic_select`. When `true`, the user can type characters to filter options and enter a completely novel value if nothing matches. Defaults to `false` (closed list). |
 | `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Applies to `text`, `static_select`, and `dynamic_select` fields. No-ops if the value is already wrapped. Defaults to `false`. |
 | `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
@@ -199,7 +200,8 @@ options = ["V60", "AeroPress", "Espresso", "French Press"]
 
 __TUI__: Enter toggles a dropdown overlay. Up/Down cycles options while open. Enter again confirms selection. The selected value is shown inline when the dropdown is closed.
 __Output__: Selected string written to frontmatter. If `wikilink = true`, the value is wrapped in `[[...]]` before output (e.g. `roaster: "[[Onyx]]"`), creating an Obsidian backlink to the named note.
-__Validation__: `options` must be present and non-empty. Config load fails otherwise.
+__Extensible options__: With `allow_create = true`, a novel value typed into the open dropdown is accepted on Enter, appended to the in-memory options list, and persisted back to the field's `options` array in `config.toml`. Fields without `allow_create` remain locked to the configured options.
+__Validation__: `options` must be present and non-empty. Config load fails otherwise. `allow_create` is only valid on `static_select` and `dynamic_select` fields.
 
 ## `dynamic_select`
 
@@ -376,6 +378,10 @@ ingredients:
 
 __Output (body)__: Rendered as a Markdown table.
 __Validation__: `sub_fields` must be present and non-empty. Sub-field names must be unique. `static_select` sub-fields must have non-empty `options`.
+
+### Template fields and `allow_create`
+
+Template fields (`[[templates.<name>.fields]]`) support `allow_create = true` on `static_select` fields only. When set, typing a novel value in the sub-form is accepted; after the templated note is written successfully, the new value is appended to the template field's `options` array in `config.toml` so it appears next session. Without `allow_create`, the sub-form static_select remains locked to the configured cycle of options.
 
 ### Sub-field Types
 

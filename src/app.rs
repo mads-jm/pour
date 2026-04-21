@@ -16,6 +16,13 @@ pub enum Screen {
     Configure,
 }
 
+/// Which field of the preset-save overlay currently has focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresetDialogFocus {
+    Name,
+    Description,
+}
+
 /// Dialog state for naming a preset during a save operation.
 #[derive(Debug)]
 pub struct PresetSaveDialog {
@@ -23,6 +30,12 @@ pub struct PresetSaveDialog {
     pub name_buffer: String,
     /// Cursor position within `name_buffer`.
     pub cursor_position: usize,
+    /// Optional human-readable description for the preset.
+    pub description_buffer: String,
+    /// Cursor position within `description_buffer`.
+    pub description_cursor: usize,
+    /// Which input row currently has focus.
+    pub focus: PresetDialogFocus,
 }
 
 /// State for the module entry form.
@@ -53,6 +66,14 @@ pub struct FormState {
     /// Runtime callout type overrides, keyed by field name.
     /// Initialized from config defaults; cyclable via Left/Right in the form.
     pub callout_overrides: HashMap<String, String>,
+    /// Runtime callout title overrides, keyed by field name.
+    /// Initialized from config `callout_title`; editable via Ctrl+T on a
+    /// textarea field with an active callout.
+    pub callout_titles: HashMap<String, String>,
+    /// Active inline callout-title edit buffer.
+    /// `Some((field_name, cursor))` while the user is typing in the title
+    /// prompt overlay; `None` otherwise.
+    pub callout_title_edit: Option<CalloutTitleEdit>,
     /// Row data for composite_array fields, keyed by field name.
     /// Each row is a Vec of cell values (one per sub-field column).
     pub composite_values: HashMap<String, Vec<Vec<String>>>,
@@ -70,12 +91,26 @@ pub struct FormState {
     /// Ordered list of preset names for the current module.
     /// Index 0 conceptually represents `<none>` (no preset applied).
     pub preset_names: Vec<String>,
+    /// Parallel to `preset_names`: optional description per preset.
+    /// Rendered as a dim subtitle under the preset row when `Some`.
+    pub preset_descriptions: Vec<Option<String>>,
     /// Index into `preset_names`; 0 means no preset is selected.
     pub selected_preset: usize,
     /// Open preset-save dialog, if the user is naming a new preset.
     pub preset_overlay: Option<PresetSaveDialog>,
     /// Whether the delete-preset confirmation prompt is shown.
     pub confirm_delete_preset: bool,
+}
+
+/// Active callout-title edit session on a textarea field.
+#[derive(Debug, Clone)]
+pub struct CalloutTitleEdit {
+    /// Name of the field whose callout title is being edited.
+    pub field_name: String,
+    /// Current buffer contents.
+    pub buffer: String,
+    /// Cursor position (char index) into `buffer`.
+    pub cursor: usize,
 }
 
 /// State for the template-driven sub-form overlay.
@@ -377,6 +412,7 @@ impl App {
         let mut field_options = HashMap::new();
         let mut composite_values = HashMap::new();
         let mut callout_overrides = HashMap::new();
+        let mut callout_titles = HashMap::new();
 
         for field in &module.fields {
             if field.field_type == FieldType::CompositeArray {
@@ -400,6 +436,9 @@ impl App {
             if let Some(ref callout) = field.callout {
                 callout_overrides.insert(field.name.clone(), callout.clone());
             }
+            if let Some(ref title) = field.callout_title {
+                callout_titles.insert(field.name.clone(), title.clone());
+            }
         }
 
         if let Some(ref callout) = module.callout_type {
@@ -411,12 +450,12 @@ impl App {
             crate::visibility::visible_field_indices(&module.fields, &field_values);
         let initial_config_idx = initial_visible.first().copied();
 
-        // Populate preset names from saved presets for this module.
-        let preset_names = self
-            .presets
-            .get(module_key)
-            .into_iter()
-            .map(|p| p.name)
+        // Populate preset names (and descriptions) from saved presets for this module.
+        let saved_presets = self.presets.get(module_key);
+        let preset_names: Vec<String> = saved_presets.iter().map(|p| p.name.clone()).collect();
+        let preset_descriptions: Vec<Option<String>> = saved_presets
+            .iter()
+            .map(|p| p.description.clone())
             .collect();
 
         // Start on the first real field (active_field 1), not the preset row (0).
@@ -434,6 +473,8 @@ impl App {
             textarea_open: false,
             textarea_scroll_offset: 0,
             callout_overrides,
+            callout_titles,
+            callout_title_edit: None,
             composite_values,
             composite_open: false,
             composite_row: 0,
@@ -441,6 +482,7 @@ impl App {
             search_buffers: HashMap::new(),
             sub_form: None,
             preset_names,
+            preset_descriptions,
             selected_preset: 0,
             preset_overlay: None,
             confirm_delete_preset: false,

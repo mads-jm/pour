@@ -163,7 +163,7 @@ preset_exclude = true      # freeform content varies every entry
 # The `show_when` key gates field visibility on the controlling field's value.
 [modules.coffee]
 mode = "create"
-path = "02 - Areas/204 - Cooking/Coffee/{{bean}}@{{time}}-%Y%m%d.md"
+path = "02 - Areas/204 - Cooking/Coffee/Brews{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
 icon = "☕"
 daily_link = true
@@ -312,6 +312,17 @@ prompt = "Water temp (°C)"
 default = "96"
 target = "frontmatter"
 show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+
+# Filter — paper/cloth/metal variants for filtered brews. Novel values typed
+# at capture time persist to this list via `allow_create`.
+[[modules.coffee.fields]]
+name = "filter"
+field_type = "static_select"
+prompt = "Filter"
+options = ["Paper", "Abaca", "Cafec Light", "Cafec Dark", "Cloth", "Metal"]
+target = "frontmatter"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+allow_create = true
 
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
@@ -465,7 +476,10 @@ prompt = "Roaster"
 name = "origin"
 field_type = "static_select"
 prompt = "Origin"
-options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen", "Blend"]
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen"]
+# Typing a novel value at capture time appends it to this list and persists
+# to config.toml so it's available next session.
+allow_create = true
 
 [[templates.bean.fields]]
 name = "process"
@@ -505,4 +519,3 @@ options = ["Pour Over", "Espresso", "Immersion"]
 name = "brand"
 field_type = "text"
 prompt = "Brand"
-

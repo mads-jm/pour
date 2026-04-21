@@ -293,8 +293,12 @@ async fn run_loop(
                     }
                 }
 
-                tui::Action::SavePreset { name, values } => {
-                    handle_save_preset(app, &name, values);
+                tui::Action::SavePreset {
+                    name,
+                    description,
+                    values,
+                } => {
+                    handle_save_preset(app, &name, description, values);
                 }
 
                 tui::Action::DeletePreset { name } => {
@@ -303,6 +307,10 @@ async fn run_loop(
 
                 tui::Action::ReorderPreset { name, direction } => {
                     handle_reorder_preset(app, &name, direction);
+                }
+
+                tui::Action::AppendStaticOption { field_index, value } => {
+                    handle_append_static_option(app, field_index, &value);
                 }
 
                 tui::Action::None => {}
@@ -317,6 +325,7 @@ async fn run_loop(
 fn handle_save_preset(
     app: &mut App,
     name: &str,
+    description: Option<String>,
     values: std::collections::HashMap<String, String>,
 ) {
     let module_key = match app.module_keys.get(app.selected_module) {
@@ -326,6 +335,7 @@ fn handle_save_preset(
 
     let entry = pour::data::presets::PresetEntry {
         name: name.to_string(),
+        description,
         values,
     };
     app.presets.set(&module_key, entry);
@@ -334,13 +344,10 @@ fn handle_save_preset(
         let _ = e;
     }
 
-    // Refresh preset_names and select the newly saved preset
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    // Refresh preset_names + descriptions and select the newly saved preset
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         let new_idx = names
             .iter()
@@ -348,6 +355,7 @@ fn handle_save_preset(
             .map(|i| i + 1)
             .unwrap_or(0);
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = new_idx;
     }
 }
@@ -368,14 +376,12 @@ fn handle_delete_preset(app: &mut App, name: &str) {
         let _ = e;
     }
 
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = 0; // Back to <none>, but keep current field values.
     }
 }
@@ -392,13 +398,10 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
         let _ = e;
     }
 
-    // Refresh preset_names and find the moved preset's new position
-    let names: Vec<String> = app
-        .presets
-        .get(&module_key)
-        .into_iter()
-        .map(|p| p.name)
-        .collect();
+    // Refresh preset_names + descriptions and find the moved preset's new position
+    let saved = app.presets.get(&module_key);
+    let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
+    let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
         let new_idx = names
             .iter()
@@ -406,8 +409,42 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
             .map(|i| i + 1)
             .unwrap_or(fs.selected_preset);
         fs.preset_names = names;
+        fs.preset_descriptions = descriptions;
         fs.selected_preset = new_idx;
     }
+}
+
+/// Append a novel option to a static_select module field's options list.
+///
+/// Mutates the in-memory config so the field's dropdown reflects the new
+/// option immediately, then persists the change to config.toml. The
+/// form's `field_options` snapshot has already been updated by the form
+/// handler — this function only handles the Config + disk side.
+fn handle_append_static_option(app: &mut pour::app::App, field_index: usize, value: &str) {
+    let module_key = match app.module_keys.get(app.selected_module) {
+        Some(k) => k.clone(),
+        None => return,
+    };
+
+    // Update in-memory config so subsequent form inits see the new option.
+    if let Some(module) = app.config.modules.get_mut(&module_key)
+        && let Some(field) = module.fields.get_mut(field_index)
+    {
+        let already = field
+            .options
+            .as_ref()
+            .map(|opts| opts.iter().any(|o| o == value))
+            .unwrap_or(false);
+        if !already {
+            field
+                .options
+                .get_or_insert_with(Vec::new)
+                .push(value.to_string());
+        }
+    }
+
+    // Persist to disk; swallow errors silently (raw terminal mode).
+    let _ = pour::config::Config::append_option_to_field_on_disk(&module_key, field_index, value);
 }
 
 /// Handle form submission: validate, write, transition to summary.
@@ -423,7 +460,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     };
 
     // Validate form and extract field values
-    let (field_values, field_options, composite_data, callout_overrides) = {
+    let (field_values, field_options, composite_data, callout_overrides, callout_titles) = {
         let form_state = match &app.form_state {
             Some(fs) => fs,
             None => return,
@@ -455,6 +492,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             form_state.field_options.clone(),
             form_state.composite_values.clone(),
             form_state.callout_overrides.clone(),
+            form_state.callout_titles.clone(),
         )
     };
 
@@ -487,6 +525,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &composite_data,
                 date_fmt,
                 &callout_overrides,
+                &callout_titles,
             )
             .await
         }
@@ -498,6 +537,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 &composite_data,
                 date_fmt,
                 &callout_overrides,
+                &callout_titles,
             )
             .await
         }
@@ -606,6 +646,33 @@ async fn handle_create_from_template(
             .and_then(|f| f.post_create_command.clone())
     };
 
+    // Collect template-field option appends that need to persist to disk.
+    // This is safe to compute now because `template` borrows from `app.config`
+    // which we'll release before the mutable operations below.
+    let template_option_appends: Vec<(usize, String)> = template
+        .fields
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, tf)| {
+            if tf.field_type != pour::config::TemplateFieldType::StaticSelect
+                || !tf.allow_create.unwrap_or(false)
+            {
+                return None;
+            }
+            let value = sub_form_values.get(&tf.name)?.trim().to_string();
+            if value.is_empty() {
+                return None;
+            }
+            let already = tf
+                .options
+                .as_ref()
+                .map(|opts| opts.iter().any(|o| o == &value))
+                .unwrap_or(false);
+            if already { None } else { Some((idx, value)) }
+        })
+        .collect();
+    let template_name_owned = template_name.to_string();
+
     // Write via transport (best-effort)
     match app.transport.create_file(&vault_path, &content).await {
         Ok(()) => {
@@ -613,6 +680,21 @@ async fn handle_create_from_template(
             // created, so a hook failure does not block the user — swallow silently.
             if let Some(ref cmd) = post_command {
                 let _ = app.transport.execute_command(cmd).await;
+            }
+
+            // Persist novel template-field options (both in-memory and on-disk).
+            for (field_idx, value) in &template_option_appends {
+                if let Some(templates) = app.config.templates.as_mut()
+                    && let Some(tpl) = templates.get_mut(&template_name_owned)
+                    && let Some(tf) = tpl.fields.get_mut(*field_idx)
+                {
+                    tf.options.get_or_insert_with(Vec::new).push(value.clone());
+                }
+                let _ = pour::config::Config::append_option_to_template_field_on_disk(
+                    &template_name_owned,
+                    *field_idx,
+                    value,
+                );
             }
 
             // Update cache: derive source from the field config
@@ -834,6 +916,7 @@ fn handle_add_field(app: &mut App) {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: None,
         wikilink: None,
         create_template: None,
@@ -1140,6 +1223,7 @@ fn handle_save_new_module(app: &mut App) {
             target: None,
             sub_fields: None,
             callout: None,
+            callout_title: None,
             allow_create: None,
             wikilink: None,
             create_template: None,

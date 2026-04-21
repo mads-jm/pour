@@ -2,11 +2,13 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, FormState, PresetSaveDialog, SubFormState};
+use crate::app::{
+    App, CalloutTitleEdit, FormState, PresetDialogFocus, PresetSaveDialog, SubFormState,
+};
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 use crate::visibility::visible_field_indices;
 
@@ -81,7 +83,27 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::styled(" (y/n)", Style::default().fg(Color::Yellow)),
         ])
     } else {
-        Line::from(vec![
+        // Contextual hints: "t title" appears when focused on a textarea row
+        // that has an active callout and the editor is closed.
+        let visible = visible_field_indices(&module.fields, &form_state.field_values);
+        let active_field_cfg = if form_state.active_field >= 1
+            && form_state.active_field <= visible.len()
+        {
+            visible
+                .get(form_state.active_field - 1)
+                .and_then(|&ci| module.fields.get(ci))
+        } else {
+            None
+        };
+        let show_title_hint = !form_state.textarea_open
+            && active_field_cfg.is_some_and(|f| {
+                f.field_type == FieldType::Textarea
+                    && (form_state.callout_overrides.contains_key(&f.name)
+                        || f.callout.is_some()
+                        || form_state.callout_overrides.contains_key("_callout_type"))
+            });
+
+        let mut spans = vec![
             Span::styled(" s", Style::default().fg(Color::Yellow)),
             Span::raw(" save  "),
             Span::styled("d", Style::default().fg(Color::Yellow)),
@@ -92,9 +114,14 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" interact  "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" clear/back"),
-        ])
+        ];
+        if show_title_hint {
+            spans.push(Span::styled("t", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" title  "));
+        }
+        spans.push(Span::styled("Esc", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" clear/back"));
+        Line::from(spans)
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
@@ -102,6 +129,11 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Preset save overlay renders before sub-form overlay
     if let Some(ref overlay) = form_state.preset_overlay {
         render_preset_save_overlay(frame, area, overlay);
+    }
+
+    // Callout-title edit overlay.
+    if let Some(ref edit) = form_state.callout_title_edit {
+        render_callout_title_overlay(frame, area, edit);
     }
 
     // Sub-form overlay renders LAST so it paints over footer and fields
@@ -158,11 +190,42 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         preset_name_display
     };
     let preset_indicator = if on_preset_row { "▸" } else { " " };
-    let preset_item = ListItem::new(Line::from(vec![
+    let preset_title_line = Line::from(vec![
         Span::styled(format!("{preset_indicator} "), preset_label_style),
         Span::styled("Preset: ", preset_label_style),
         Span::styled(preset_value_text, preset_value_style),
-    ]));
+    ]);
+
+    // Description subtitle: shown only when a real preset is selected and it
+    // has a non-empty description. Rendered dim, indented under the preset name.
+    let preset_description = if form_state.selected_preset > 0 {
+        form_state
+            .preset_descriptions
+            .get(form_state.selected_preset - 1)
+            .and_then(|d| d.clone())
+    } else {
+        None
+    };
+
+    let preset_item = if let Some(desc) = preset_description {
+        let subtitle_style = if on_preset_row {
+            Style::default()
+                .fg(Color::Gray)
+                .add_modifier(Modifier::ITALIC)
+        } else {
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC)
+        };
+        // Indent to align under the preset value (past "▸ Preset: ").
+        let subtitle_line = Line::from(vec![
+            Span::raw("          "),
+            Span::styled(desc, subtitle_style),
+        ]);
+        ListItem::new(Text::from(vec![preset_title_line, subtitle_line]))
+    } else {
+        ListItem::new(preset_title_line)
+    };
 
     let mut items: Vec<ListItem> = vec![preset_item];
 
@@ -220,31 +283,61 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
                 }
             }
             FieldType::Textarea => {
-                let callout_prefix = form_state
+                // Two display modes:
+                // - With active callout: dedicated header line `[!type] title`,
+                //   content preview on a second line.
+                // - Without callout: single line with content preview.
+                let callout_type = form_state
                     .callout_overrides
                     .get(&field.name)
-                    .or_else(|| form_state.callout_overrides.get("_callout_type"))
-                    .map(|c| format!("[!{c}] "))
-                    .unwrap_or_default();
-                let label = if value.is_empty() {
-                    format!("{callout_prefix}<enter text>")
+                    .cloned()
+                    .or_else(|| field.callout.clone())
+                    .or_else(|| form_state.callout_overrides.get("_callout_type").cloned());
+                let content_preview = if value.is_empty() {
+                    "<enter text>".to_string()
                 } else {
                     let line_count = value.lines().count();
                     let first_line = value.lines().next().unwrap_or("");
                     if line_count > 1 {
-                        format!("{callout_prefix}{first_line} [{line_count} lines]")
+                        format!("{first_line} [{line_count} lines]")
                     } else {
-                        format!("{callout_prefix}{first_line}")
+                        first_line.to_string()
                     }
                 };
-                if is_active {
-                    if form_state.textarea_open {
-                        format!("{label} [^]")
+                if let Some(c) = callout_type {
+                    let title = form_state
+                        .callout_titles
+                        .get(&field.name)
+                        .cloned()
+                        .or_else(|| field.callout_title.clone())
+                        .unwrap_or_default();
+                    let header = if title.trim().is_empty() {
+                        format!("[!{c}]")
                     } else {
-                        format!("{label} [v]")
-                    }
+                        format!("[!{c}] {title}")
+                    };
+                    let header_with_chevron = if is_active {
+                        if form_state.textarea_open {
+                            format!("{header} [^]")
+                        } else {
+                            format!("{header} [v]")
+                        }
+                    } else {
+                        header
+                    };
+                    // Marker used below to split header vs body across two lines.
+                    format!("{header_with_chevron}\n{content_preview}")
                 } else {
-                    label
+                    let label = content_preview;
+                    if is_active {
+                        if form_state.textarea_open {
+                            format!("{label} [^]")
+                        } else {
+                            format!("{label} [v]")
+                        }
+                    } else {
+                        label
+                    }
                 }
             }
             FieldType::CompositeArray => {
@@ -306,16 +399,37 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
             .map(|i| format!("{i} "))
             .unwrap_or_default();
 
-        let line = Line::from(vec![
-            Span::styled(format!("{indicator} "), prompt_style),
-            Span::styled(
-                format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
-                prompt_style,
-            ),
-            Span::styled(value_display, value_style),
-        ]);
-
-        ListItem::new(line)
+        // Multi-line value_display (used by textarea + callout) renders across
+        // two rows: header on the prompt line, body preview on a second row
+        // indented to align under the value column.
+        if let Some((header, body)) = value_display.split_once('\n') {
+            let indent_width = 2 + icon_prefix.chars().count() + field.prompt.chars().count() + 3;
+            let indent: String = " ".repeat(indent_width);
+            let header_line = Line::from(vec![
+                Span::styled(format!("{indicator} "), prompt_style),
+                Span::styled(
+                    format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
+                    prompt_style,
+                ),
+                Span::styled(header.to_string(), value_style),
+            ]);
+            let body_style = Style::default().fg(Color::DarkGray);
+            let body_line = Line::from(vec![
+                Span::raw(indent),
+                Span::styled(body.to_string(), body_style),
+            ]);
+            ListItem::new(Text::from(vec![header_line, body_line]))
+        } else {
+            let line = Line::from(vec![
+                Span::styled(format!("{indicator} "), prompt_style),
+                Span::styled(
+                    format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
+                    prompt_style,
+                ),
+                Span::styled(value_display, value_style),
+            ]);
+            ListItem::new(line)
+        }
     }));
 
     // Submit button row (now at visual index visible_count + 1, because preset row is at 0)
@@ -407,8 +521,9 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 }
 
 /// Render the centered overlay for naming a preset before saving.
-fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSaveDialog) {
-    if area.height < 8 || area.width < 30 {
+/// Render a compact centered modal for editing a textarea field's callout title.
+fn render_callout_title_overlay(frame: &mut Frame, area: Rect, edit: &CalloutTitleEdit) {
+    if area.height < 7 || area.width < 30 {
         return;
     }
 
@@ -416,6 +531,142 @@ fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSav
         .max(40)
         .min(area.width.saturating_sub(4));
     let modal_height = 5u16;
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    frame.render_widget(Clear, modal_area);
+    let title = format!(" Callout Title — {} ", edit.field_name);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, modal_area);
+
+    let inner = Rect::new(
+        modal_area.x + 1,
+        modal_area.y + 1,
+        modal_area.width.saturating_sub(2),
+        modal_area.height.saturating_sub(2),
+    );
+
+    let label_style = Style::default().fg(Color::Cyan);
+    let placeholder_style = Style::default().fg(Color::DarkGray);
+    let value_style = Style::default().fg(Color::White);
+
+    let text_area = Rect::new(inner.x, inner.y, inner.width, 1);
+    let (text, text_style) = if edit.buffer.is_empty() {
+        ("<title — blank to clear>".to_string(), placeholder_style)
+    } else {
+        (edit.buffer.clone(), value_style)
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Title: ", label_style),
+            Span::styled(text, text_style),
+        ])),
+        text_area,
+    );
+
+    let hint_area = Rect::new(inner.x, inner.y + 2, inner.width, 1);
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(" save  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" cancel"),
+    ]));
+    frame.render_widget(hint, hint_area);
+
+    let cx = inner.x + 7 + edit.cursor as u16;
+    if cx < modal_area.x + modal_area.width - 1 {
+        frame.set_cursor_position(Position::new(cx, inner.y));
+    }
+}
+
+/// Handle key events when the callout-title edit overlay is open.
+///
+/// Enter commits the buffer (trimmed) into `callout_titles`; an empty trimmed
+/// value removes the entry so the config default takes over. Esc cancels
+/// without saving.
+fn handle_callout_title_key(
+    form_state: &mut FormState,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crossterm::event::KeyCode;
+
+    let edit = match &mut form_state.callout_title_edit {
+        Some(e) => e,
+        None => return FormAction::None,
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            form_state.callout_title_edit = None;
+        }
+        KeyCode::Enter => {
+            let field_name = edit.field_name.clone();
+            let trimmed = edit.buffer.trim().to_string();
+            if trimmed.is_empty() {
+                form_state.callout_titles.remove(&field_name);
+            } else {
+                form_state.callout_titles.insert(field_name, trimmed);
+            }
+            form_state.callout_title_edit = None;
+        }
+        KeyCode::Backspace => {
+            if edit.cursor > 0 {
+                let byte_pos = edit
+                    .buffer
+                    .char_indices()
+                    .nth(edit.cursor - 1)
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                edit.buffer.remove(byte_pos);
+                edit.cursor -= 1;
+            }
+        }
+        KeyCode::Left => {
+            if edit.cursor > 0 {
+                edit.cursor -= 1;
+            }
+        }
+        KeyCode::Right => {
+            if edit.cursor < edit.buffer.chars().count() {
+                edit.cursor += 1;
+            }
+        }
+        KeyCode::Home => {
+            edit.cursor = 0;
+        }
+        KeyCode::End => {
+            edit.cursor = edit.buffer.chars().count();
+        }
+        KeyCode::Char(c) => {
+            if edit.buffer.chars().count() < 120 {
+                let byte_pos = edit
+                    .buffer
+                    .char_indices()
+                    .nth(edit.cursor)
+                    .map(|(i, _)| i)
+                    .unwrap_or(edit.buffer.len());
+                edit.buffer.insert(byte_pos, c);
+                edit.cursor += 1;
+            }
+        }
+        _ => {}
+    }
+    FormAction::None
+}
+
+fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSaveDialog) {
+    if area.height < 10 || area.width < 30 {
+        return;
+    }
+
+    let modal_width = (area.width * 3 / 5)
+        .max(40)
+        .min(area.width.saturating_sub(4));
+    let modal_height = 7u16;
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -434,39 +685,60 @@ fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSav
         modal_area.height.saturating_sub(2),
     );
 
+    let label_style = Style::default().fg(Color::Cyan);
+    let placeholder_style = Style::default().fg(Color::DarkGray);
+    let value_style = Style::default().fg(Color::White);
+
     // Name input line
     let name_area = Rect::new(inner.x, inner.y, inner.width, 1);
-    let name_text = if overlay.name_buffer.is_empty() {
-        "<name>".to_string()
+    let (name_text, name_style) = if overlay.name_buffer.is_empty() {
+        ("<name>".to_string(), placeholder_style)
     } else {
-        overlay.name_buffer.clone()
+        (overlay.name_buffer.clone(), value_style)
     };
-    let name_style = if overlay.name_buffer.is_empty() {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let name_widget = Paragraph::new(Line::from(vec![
-        Span::styled("Name: ", Style::default().fg(Color::Cyan)),
-        Span::styled(name_text, name_style),
-    ]));
-    frame.render_widget(name_widget, name_area);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Name: ", label_style),
+            Span::styled(name_text, name_style),
+        ])),
+        name_area,
+    );
 
-    // Hint line
-    let hint_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    // Description input line
+    let desc_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    let (desc_text, desc_style) = if overlay.description_buffer.is_empty() {
+        ("<description — optional>".to_string(), placeholder_style)
+    } else {
+        (overlay.description_buffer.clone(), value_style)
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Desc: ", label_style),
+            Span::styled(desc_text, desc_style),
+        ])),
+        desc_area,
+    );
+
+    // Hint line (two rows below inputs leaves a visual gap)
+    let hint_area = Rect::new(inner.x, inner.y + 3, inner.width, 1);
     let hint = Paragraph::new(Line::from(vec![
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(" save  "),
+        Span::styled("Tab", Style::default().fg(Color::Yellow)),
+        Span::raw(" switch  "),
         Span::styled("Esc", Style::default().fg(Color::Yellow)),
         Span::raw(" cancel"),
     ]));
     frame.render_widget(hint, hint_area);
 
-    // Place cursor inside the name input
-    let cx = inner.x + 6 + overlay.cursor_position as u16; // "Name: " = 6 chars
-    let cy = inner.y;
+    // Place cursor inside the focused input ("Name: " / "Desc: " are both 6 chars)
+    let (cursor_row, cursor_col) = match overlay.focus {
+        PresetDialogFocus::Name => (inner.y, overlay.cursor_position),
+        PresetDialogFocus::Description => (inner.y + 1, overlay.description_cursor),
+    };
+    let cx = inner.x + 6 + cursor_col as u16;
     if cx < modal_area.x + modal_area.width - 1 {
-        frame.set_cursor_position(Position::new(cx, cy));
+        frame.set_cursor_position(Position::new(cx, cursor_row));
     }
 }
 
@@ -998,9 +1270,15 @@ fn render_sub_form(
         let value_area = Rect::new(value_x, row_y, value_width, 1);
 
         let (display_val, value_style) = if tfield.field_type == TemplateFieldType::StaticSelect {
+            let extensible = tfield.allow_create.unwrap_or(false);
             let inner_val = if value.is_empty() { "select" } else { value };
-            let text = if is_active {
+            // Extensible active fields render as plain text so the cursor has
+            // room to land — the ◂ ▸ chevrons imply cycle-only input and
+            // mislead users who need to type a novel value.
+            let text = if is_active && !extensible {
                 format!("◂ {inner_val} ▸")
+            } else if is_active && extensible {
+                inner_val.to_string()
             } else {
                 inner_val.to_string()
             };
@@ -1030,8 +1308,13 @@ fn render_sub_form(
         let val_widget = Paragraph::new(Line::from(Span::styled(display_val, value_style)));
         frame.render_widget(val_widget, value_area);
 
-        // Place cursor for active text/number fields
-        if is_active && tfield.field_type != TemplateFieldType::StaticSelect {
+        // Place cursor for active text/number fields, and for extensible
+        // static_select fields (allow_create) so the user can see where typing
+        // will land.
+        let extensible_static = tfield.field_type == TemplateFieldType::StaticSelect
+            && tfield.allow_create.unwrap_or(false);
+        if is_active && (tfield.field_type != TemplateFieldType::StaticSelect || extensible_static)
+        {
             let cx = value_x + sub_form.cursor_position as u16;
             if cx < value_x + value_width {
                 frame.set_cursor_position(Position::new(cx, row_y));
@@ -1068,20 +1351,34 @@ fn render_sub_form(
         }
     }
 
-    // Hint line
+    // Hint line — adapt wording when on an extensible static_select so the user
+    // knows they can type a novel value instead of only cycling options.
+    let active_tfield = template.fields.get(sub_form.active_field);
+    let on_extensible_static = active_tfield.is_some_and(|tf| {
+        tf.field_type == TemplateFieldType::StaticSelect && tf.allow_create.unwrap_or(false)
+    });
     let hint_y = inner.y + inner.height.saturating_sub(1);
     if hint_y > inner.y {
         let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
-        let hint = Paragraph::new(Line::from(vec![
+        let mut spans = vec![
             Span::styled(" ↑↓", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
             Span::styled("←→", Style::default().fg(Color::Yellow)),
-            Span::raw(" select  "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(" submit  "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(" cancel"),
-        ]));
+            Span::raw(if on_extensible_static {
+                " cycle  "
+            } else {
+                " select  "
+            }),
+        ];
+        if on_extensible_static {
+            spans.push(Span::styled("type", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" add new  "));
+        }
+        spans.push(Span::styled("Enter", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" submit  "));
+        spans.push(Span::styled("Esc", Style::default().fg(Color::Yellow)));
+        spans.push(Span::raw(" cancel"));
+        let hint = Paragraph::new(Line::from(spans));
         frame.render_widget(hint, hint_area);
     }
 }
@@ -1230,6 +1527,18 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     let is_dynamic_allow_create = active_field
         .map(|f| f.field_type == FieldType::DynamicSelect && f.allow_create.unwrap_or(false))
         .unwrap_or(false);
+    // True for static_select fields that opt in to typing novel values.
+    // Novel values are appended to the field's options list in-memory and on disk.
+    let is_static_allow_create = active_field
+        .map(|f| f.field_type == FieldType::StaticSelect && f.allow_create.unwrap_or(false))
+        .unwrap_or(false);
+    // Union gate: any select-type field that accepts novel typed values.
+    let is_select_allow_create = is_dynamic_allow_create || is_static_allow_create;
+
+    // Callout-title edit overlay intercepts ALL keys when open.
+    if form_state.callout_title_edit.is_some() {
+        return handle_callout_title_key(form_state, key);
+    }
 
     // Preset save overlay intercepts ALL keys when open (before sub-form check)
     if form_state.preset_overlay.is_some() {
@@ -1267,6 +1576,40 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         return handle_composite_key(form_state, active_field.unwrap(), key);
     }
 
+    // Open callout-title editor for the currently-active textarea field,
+    // provided it has an active callout type (per-field override or module default).
+    // Bare `t` is the primary binding — safe here because the textarea editor
+    // is closed, so no text input is active. We intentionally avoid Ctrl+T:
+    // some IDEs/terminals swallow Ctrl-letter chords before they reach the TUI.
+    if matches!(key.code, KeyCode::Char('t') | KeyCode::Char('T'))
+        && !form_state.textarea_open
+        && let Some(field) = active_field
+        && field.field_type == FieldType::Textarea
+    {
+        let has_callout = form_state.callout_overrides.contains_key(&field.name)
+            || (field.callout.is_some()
+                && !form_state
+                    .callout_overrides
+                    .get(&field.name)
+                    .is_some_and(|s| s.is_empty()))
+            || form_state.callout_overrides.contains_key("_callout_type");
+        if has_callout {
+            let prefill = form_state
+                .callout_titles
+                .get(&field.name)
+                .cloned()
+                .or_else(|| field.callout_title.clone())
+                .unwrap_or_default();
+            let cursor = prefill.chars().count();
+            form_state.callout_title_edit = Some(CalloutTitleEdit {
+                field_name: field.name.clone(),
+                buffer: prefill,
+                cursor,
+            });
+            return FormAction::None;
+        }
+    }
+
     // Save preset: bare 's' on preset/submit row, or Ctrl+S from any non-editing context.
     // Bare 's' is safe on preset/submit rows because no text input is active there.
     // Ctrl+S covers the case where the user is on a field row but not inside an overlay.
@@ -1278,19 +1621,31 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::CONTROL))
     {
-        let prefill = if form_state.selected_preset > 0 {
-            form_state
+        let (prefill_name, prefill_desc) = if form_state.selected_preset > 0 {
+            let idx = form_state.selected_preset - 1;
+            let name = form_state
                 .preset_names
-                .get(form_state.selected_preset - 1)
+                .get(idx)
                 .cloned()
-                .unwrap_or_default()
+                .unwrap_or_default();
+            let desc = form_state
+                .preset_descriptions
+                .get(idx)
+                .cloned()
+                .flatten()
+                .unwrap_or_default();
+            (name, desc)
         } else {
-            String::new()
+            (String::new(), String::new())
         };
-        let cursor_position = prefill.chars().count();
+        let cursor_position = prefill_name.chars().count();
+        let description_cursor = prefill_desc.chars().count();
         form_state.preset_overlay = Some(PresetSaveDialog {
-            name_buffer: prefill,
+            name_buffer: prefill_name,
             cursor_position,
+            description_buffer: prefill_desc,
+            description_cursor,
+            focus: PresetDialogFocus::Name,
         });
         return FormAction::None;
     }
@@ -1431,7 +1786,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         //   3. field already empty → cancel form (back to dashboard)
         KeyCode::Esc => {
             // If the search buffer has content, clear it first (without closing dropdown).
-            if is_dynamic_allow_create
+            if is_select_allow_create
                 && let Some(field) = active_field
                 && form_state
                     .search_buffers
@@ -1520,7 +1875,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Up => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    let search = if is_dynamic_allow_create {
+                    let search = if is_select_allow_create {
                         form_state
                             .search_buffers
                             .get(&field.name)
@@ -1567,7 +1922,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         KeyCode::Down => {
             if is_select && form_state.dropdown_open {
                 if let Some(field) = active_field {
-                    let search = if is_dynamic_allow_create {
+                    let search = if is_select_allow_create {
                         form_state
                             .search_buffers
                             .get(&field.name)
@@ -1616,7 +1971,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             if on_submit_button {
                 FormAction::Submit
             } else if is_select {
-                if is_dynamic_allow_create && let Some(field) = active_field {
+                if is_select_allow_create && let Some(field) = active_field {
                     let search = form_state
                         .search_buffers
                         .get(&field.name)
@@ -1665,6 +2020,30 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                                         return FormAction::None;
                                     }
                                 }
+                            }
+                            // For static_select, append the novel option to
+                            // both the in-memory options list and persist to
+                            // disk so it's available next session.
+                            if is_static_allow_create {
+                                let fname = field.name.clone();
+                                if let Some(opts) = form_state.field_options.get_mut(&fname) {
+                                    if !opts.iter().any(|o| o == &search) {
+                                        opts.push(search.clone());
+                                    }
+                                }
+                                let field_index = form_state.active_config_idx;
+                                form_state
+                                    .field_values
+                                    .insert(fname.clone(), search.clone());
+                                form_state.search_buffers.remove(&fname);
+                                form_state.dropdown_open = false;
+                                if let Some(idx) = field_index {
+                                    return FormAction::AppendStaticOption {
+                                        field_index: idx,
+                                        value: search,
+                                    };
+                                }
+                                return FormAction::None;
                             }
                             // Fallback: accept typed text as novel value (bare stub creation)
                             let fname = field.name.clone();
@@ -1733,8 +2112,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Char(c) => {
-            // For allow_create dynamic_select fields, route typing into the search buffer.
-            if is_dynamic_allow_create && let Some(field) = active_field {
+            // For allow_create select fields (static or dynamic), route typing into the search buffer.
+            if is_select_allow_create && let Some(field) = active_field {
                 let buf = form_state
                     .search_buffers
                     .entry(field.name.clone())
@@ -1787,8 +2166,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         }
 
         KeyCode::Backspace => {
-            // For allow_create dynamic_select, backspace trims the search buffer.
-            if is_dynamic_allow_create && let Some(field) = active_field {
+            // For allow_create select fields (static or dynamic), backspace trims the search buffer.
+            if is_select_allow_create && let Some(field) = active_field {
                 let buf = form_state
                     .search_buffers
                     .entry(field.name.clone())
@@ -2003,6 +2382,7 @@ pub enum FormAction {
     /// Save a preset with the given name and field values for the current module.
     SavePreset {
         name: String,
+        description: Option<String>,
         values: std::collections::HashMap<String, String>,
     },
     /// Delete the preset with the given name for the current module.
@@ -2013,6 +2393,13 @@ pub enum FormAction {
     ReorderPreset {
         name: String,
         direction: i32,
+    },
+    /// Append a novel option to a static_select field's `options` list,
+    /// persisting the change to config.toml. The field value has already
+    /// been set in-memory; this action only handles persistence.
+    AppendStaticOption {
+        field_index: usize,
+        value: String,
     },
 }
 
@@ -2130,6 +2517,12 @@ fn handle_preset_overlay_key(
         None => return FormAction::None,
     };
 
+    // Borrow helpers: operate on (buffer, cursor) for the focused input.
+    let max_len = |focus: PresetDialogFocus| match focus {
+        PresetDialogFocus::Name => 50,
+        PresetDialogFocus::Description => 120,
+    };
+
     match key.code {
         KeyCode::Esc => {
             form_state.preset_overlay = None;
@@ -2140,6 +2533,14 @@ fn handle_preset_overlay_key(
             if name.is_empty() {
                 return FormAction::None;
             }
+            let description = {
+                let trimmed = overlay.description_buffer.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            };
             // Collect values from visible, non-excluded, non-composite fields
             let visible_indices =
                 crate::visibility::visible_field_indices(&module.fields, &form_state.field_values);
@@ -2161,54 +2562,80 @@ fn handle_preset_overlay_key(
                     values.insert(field.name.clone(), val);
                 }
             }
-            // Also include non-visible field values for excluded-from-visibility fields
-            // (only visible fields are written — skip non-visible intentionally)
-            let _ = module_key; // used by caller when handling FormAction::SavePreset
+            let _ = module_key;
             form_state.preset_overlay = None;
-            FormAction::SavePreset { name, values }
+            FormAction::SavePreset {
+                name,
+                description,
+                values,
+            }
+        }
+        KeyCode::Tab | KeyCode::Up | KeyCode::Down | KeyCode::BackTab => {
+            overlay.focus = match overlay.focus {
+                PresetDialogFocus::Name => PresetDialogFocus::Description,
+                PresetDialogFocus::Description => PresetDialogFocus::Name,
+            };
+            FormAction::None
         }
         KeyCode::Backspace => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.cursor_position > 0 {
-                // Convert char-based cursor to byte offset for safe removal.
-                let byte_pos = overlay
-                    .name_buffer
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&mut overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => (
+                    &mut overlay.description_buffer,
+                    &mut overlay.description_cursor,
+                ),
+            };
+            if *cursor > 0 {
+                let byte_pos = buffer
                     .char_indices()
-                    .nth(overlay.cursor_position - 1)
+                    .nth(*cursor - 1)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
-                overlay.name_buffer.remove(byte_pos);
-                overlay.cursor_position -= 1;
+                buffer.remove(byte_pos);
+                *cursor -= 1;
             }
             FormAction::None
         }
         KeyCode::Left => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.cursor_position > 0 {
-                overlay.cursor_position -= 1;
+            let cursor = match overlay.focus {
+                PresetDialogFocus::Name => &mut overlay.cursor_position,
+                PresetDialogFocus::Description => &mut overlay.description_cursor,
+            };
+            if *cursor > 0 {
+                *cursor -= 1;
             }
             FormAction::None
         }
         KeyCode::Right => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            let char_count = overlay.name_buffer.chars().count();
-            if overlay.cursor_position < char_count {
-                overlay.cursor_position += 1;
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => {
+                    (&overlay.description_buffer, &mut overlay.description_cursor)
+                }
+            };
+            let char_count = buffer.chars().count();
+            if *cursor < char_count {
+                *cursor += 1;
             }
             FormAction::None
         }
         KeyCode::Char(c) => {
-            let overlay = form_state.preset_overlay.as_mut().unwrap();
-            if overlay.name_buffer.chars().count() < 50 {
-                // Convert char-based cursor to byte offset for safe insertion.
-                let byte_pos = overlay
-                    .name_buffer
+            let limit = max_len(overlay.focus);
+            let (buffer, cursor) = match overlay.focus {
+                PresetDialogFocus::Name => (&mut overlay.name_buffer, &mut overlay.cursor_position),
+                PresetDialogFocus::Description => (
+                    &mut overlay.description_buffer,
+                    &mut overlay.description_cursor,
+                ),
+            };
+            if buffer.chars().count() < limit {
+                let byte_pos = buffer
                     .char_indices()
-                    .nth(overlay.cursor_position)
+                    .nth(*cursor)
                     .map(|(i, _)| i)
-                    .unwrap_or(overlay.name_buffer.len());
-                overlay.name_buffer.insert(byte_pos, c);
-                overlay.cursor_position += 1;
+                    .unwrap_or(buffer.len());
+                buffer.insert(byte_pos, c);
+                *cursor += 1;
             }
             FormAction::None
         }
@@ -2251,6 +2678,8 @@ fn handle_sub_form_key(
     let is_static_select = active_tfield
         .map(|f| f.field_type == TemplateFieldType::StaticSelect)
         .unwrap_or(false);
+    let is_static_select_extensible =
+        is_static_select && active_tfield.and_then(|f| f.allow_create).unwrap_or(false);
 
     // Helper: advance cursor to end of the current field value after navigation
     let sync_cursor = |sf: &mut SubFormState, tmpl: &crate::config::TemplateConfig| {
@@ -2369,7 +2798,7 @@ fn handle_sub_form_key(
 
         // ── Text / number input ───────────────────────────────────────────────
         KeyCode::Char(c) => {
-            if on_submit_button || is_static_select {
+            if on_submit_button || (is_static_select && !is_static_select_extensible) {
                 return FormAction::None;
             }
             if let Some(tf) = active_tfield {
@@ -2380,6 +2809,28 @@ fn handle_sub_form_key(
                     && c != '-'
                 {
                     return FormAction::None;
+                }
+                // Extensible static_select: if the current value is one of the
+                // existing options (i.e. came from cycling or initial default),
+                // clear it on first keystroke so the user types a fresh novel
+                // value instead of appending to "Ethiopia" → "EthiopiaH".
+                if is_static_select_extensible {
+                    let is_existing_option = sub_form
+                        .field_options
+                        .get(&tf.name)
+                        .map(|opts| {
+                            let current = sub_form
+                                .field_values
+                                .get(&tf.name)
+                                .cloned()
+                                .unwrap_or_default();
+                            !current.is_empty() && opts.iter().any(|o| o == &current)
+                        })
+                        .unwrap_or(false);
+                    if is_existing_option {
+                        sub_form.field_values.insert(tf.name.clone(), String::new());
+                        sub_form.cursor_position = 0;
+                    }
                 }
                 let value = sub_form.field_values.entry(tf.name.clone()).or_default();
                 // cursor_position is a char index — convert to byte offset
@@ -2395,7 +2846,7 @@ fn handle_sub_form_key(
         }
 
         KeyCode::Backspace => {
-            if on_submit_button || is_static_select {
+            if on_submit_button || (is_static_select && !is_static_select_extensible) {
                 return FormAction::None;
             }
             if let Some(tf) = active_tfield {

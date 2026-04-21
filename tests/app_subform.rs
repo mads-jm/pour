@@ -11,6 +11,7 @@ fn make_template() -> TemplateConfig {
                 prompt: "Origin".to_string(),
                 options: None,
                 default: Some("Unknown".to_string()),
+                allow_create: None,
             },
             TemplateFieldConfig {
                 name: "roast".to_string(),
@@ -22,6 +23,7 @@ fn make_template() -> TemplateConfig {
                     "Dark".to_string(),
                 ]),
                 default: None,
+                allow_create: None,
             },
             TemplateFieldConfig {
                 name: "rating".to_string(),
@@ -29,6 +31,7 @@ fn make_template() -> TemplateConfig {
                 prompt: "Rating".to_string(),
                 options: None,
                 default: None,
+                allow_create: None,
             },
         ],
     }

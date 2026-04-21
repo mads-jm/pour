@@ -21,13 +21,19 @@ pub async fn write_create(
     composite_data: &CompositeData,
     date_format: Option<&str>,
     callout_overrides: &HashMap<String, String>,
+    callout_titles: &HashMap<String, String>,
 ) -> Result<String> {
     if module.mode != WriteMode::Create {
         bail!("write_create called on a non-create module");
     }
 
-    let (mut fm_fields, fm_composites, body_parts) =
-        partition_fields(module, field_values, composite_data, callout_overrides);
+    let (mut fm_fields, fm_composites, body_parts) = partition_fields(
+        module,
+        field_values,
+        composite_data,
+        callout_overrides,
+        callout_titles,
+    );
 
     if let Some(ref icon) = module.icon {
         // Only inject if no user field is already named "icon" (avoid duplicate YAML keys).
@@ -88,6 +94,7 @@ pub async fn write_append(
     composite_data: &CompositeData,
     date_format: Option<&str>,
     callout_overrides: &HashMap<String, String>,
+    callout_titles: &HashMap<String, String>,
 ) -> Result<String> {
     if module.mode != WriteMode::Append {
         bail!("write_append called on a non-append module");
@@ -102,11 +109,17 @@ pub async fn write_append(
             module,
             composite_data,
             callout_overrides,
+            callout_titles,
         ),
         None => {
             // Fallback: join all body-target fields with newlines.
-            let (_, _, body_parts) =
-                partition_fields(module, field_values, composite_data, callout_overrides);
+            let (_, _, body_parts) = partition_fields(
+                module,
+                field_values,
+                composite_data,
+                callout_overrides,
+                callout_titles,
+            );
             body_parts.join("\n")
         }
     };
@@ -139,6 +152,7 @@ fn partition_fields<'a>(
     field_values: &HashMap<String, String>,
     composite_data: &CompositeData,
     callout_overrides: &HashMap<String, String>,
+    callout_titles: &HashMap<String, String>,
 ) -> (
     Vec<(String, String)>,
     Vec<FrontmatterComposite<'a>>,
@@ -229,8 +243,17 @@ fn partition_fields<'a>(
                         .get(&field_cfg.name)
                         .or(field_cfg.callout.as_ref());
                     if let Some(callout) = callout {
+                        let title = callout_titles
+                            .get(&field_cfg.name)
+                            .map(|s| s.as_str())
+                            .or(field_cfg.callout_title.as_deref())
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty());
                         // Wrap in Obsidian callout: prefix each line with "> "
-                        let mut block = format!("> [!{callout}]");
+                        let mut block = match title {
+                            Some(t) => format!("> [!{callout}] {t}"),
+                            None => format!("> [!{callout}]"),
+                        };
                         for line in value.lines() {
                             block.push_str("\n> ");
                             block.push_str(line);

@@ -126,6 +126,7 @@ fn dynamic_field(name: &str, source: &str, allow_create: bool) -> FieldConfig {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: Some(allow_create),
         wikilink: None,
         create_template: None,
@@ -322,6 +323,7 @@ async fn transport_error_does_not_block_and_returns_empty() {
         target: None,
         sub_fields: None,
         callout: None,
+        callout_title: None,
         allow_create: Some(true),
         wikilink: None,
         create_template: None,
@@ -455,6 +457,7 @@ fn make_template() -> TemplateConfig {
                 prompt: "Origin".to_string(),
                 options: None,
                 default: None,
+                allow_create: None,
             },
             TemplateFieldConfig {
                 name: "roast".to_string(),
@@ -466,6 +469,7 @@ fn make_template() -> TemplateConfig {
                     "Dark".to_string(),
                 ]),
                 default: Some("Medium".to_string()),
+                allow_create: None,
             },
             TemplateFieldConfig {
                 name: "rating".to_string(),
@@ -473,6 +477,7 @@ fn make_template() -> TemplateConfig {
                 prompt: "Rating".to_string(),
                 options: None,
                 default: None,
+                allow_create: None,
             },
         ],
     }
