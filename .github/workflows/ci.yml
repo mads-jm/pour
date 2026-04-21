@@ -1,0 +1,109 @@
+name: ci
+
+# PR gate. Must pass before a PR is merge-able.
+#
+# Also runs on pushes to `main` as a belt-and-suspenders check against
+# direct pushes that bypass PR review. The `release.yml` workflow re-runs
+# the test suite as part of its own pipeline, so this isn't load-bearing
+# for releases.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Cancel superseded runs on the same PR / branch. Saves runner minutes when
+# contributors push multiple commits in quick succession.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  # ─── Format ────────────────────────────────────────────────────────────────
+  # Cheap, fails fast — runs standalone on Linux so the whole matrix doesn't
+  # spin up for a trailing-whitespace issue.
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  # ─── Clippy ────────────────────────────────────────────────────────────────
+  # Lint with warnings-as-errors. Run on both Linux and Windows because
+  # some cfg-gated code (Windows-only path handling) only lints on that OS.
+  clippy:
+    name: clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy-${{ matrix.os }}
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # ─── Tests ─────────────────────────────────────────────────────────────────
+  # Full suite on both supported platforms. `--locked` ensures the committed
+  # Cargo.lock satisfies the manifest — catches forgotten lockfile updates.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.os }}
+      - run: cargo test --all-features --locked
+
+  # ─── Rustdoc ───────────────────────────────────────────────────────────────
+  # Catch broken intra-doc links, undocumented public items flagged by the
+  # compiler, and malformed doctests. `-D warnings` promotes rustdoc warnings
+  # to failures.
+  doc:
+    name: doc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: doc
+      - run: cargo doc --no-deps --all-features
+
+  # ─── Summary gate ──────────────────────────────────────────────────────────
+  # Single required check for branch protection. GitHub's PR UI lets you
+  # require `ci / all` as the only status check instead of pinning every
+  # matrix cell individually (which breaks if the matrix changes).
+  all:
+    name: all
+    if: always()
+    needs: [fmt, clippy, test, doc]
+    runs-on: ubuntu-latest
+    steps:
+      - name: verify all jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          echo "$results"
+          echo "$results" | jq -e 'to_entries | all(.value.result == "success")'

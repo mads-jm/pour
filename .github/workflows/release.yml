@@ -1,0 +1,154 @@
+name: release
+
+# Pipeline: test → build → publish.
+#
+# Release is keyed off the `version` field in Cargo.toml. A push to `main`
+# that bumps the version to one with no matching `v<version>` git tag cuts a
+# new GitHub release; pushes that don't change the version are a no-op for
+# the publish job.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ─── Test ──────────────────────────────────────────────────────────────────
+  # Runs fmt, clippy, and the full test suite on Linux + Windows. All three
+  # must pass before anything gets built or released.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets --all-features
+      - name: test
+        run: cargo test --all-features
+
+  # ─── Decide whether to release ─────────────────────────────────────────────
+  # Reads Cargo.toml and checks whether the tag `v<version>` already exists.
+  # The build + publish jobs gate on `should_release == true`.
+  check-version:
+    name: check version
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      should_release: ${{ steps.meta.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: meta
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.+)"/\1/')
+          tag="v${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "tag ${tag} already exists — skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag ${tag} is new — will release"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Build release binaries ────────────────────────────────────────────────
+  # Produces per-target archives under target/<triple>/release/. Artifacts
+  # are uploaded and consumed by the publish job.
+  build:
+    name: build (${{ matrix.target }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: package
+        shell: bash
+        run: |
+          version="${{ needs.check-version.outputs.version }}"
+          name="pour-${version}-${{ matrix.target }}"
+          staging="dist/${name}"
+          mkdir -p "${staging}"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "target/${{ matrix.target }}/release/pour.exe" "${staging}/"
+          else
+            cp "target/${{ matrix.target }}/release/pour" "${staging}/"
+          fi
+          cp README.md "${staging}/" 2>/dev/null || true
+          cp resources/mads_config.toml "${staging}/config.toml.example" 2>/dev/null || true
+          cd dist
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a "${name}.zip" "${name}"
+          else
+            tar czf "${name}.tar.gz" "${name}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pour-${{ matrix.target }}
+          path: dist/pour-*.${{ matrix.archive }}
+          if-no-files-found: error
+
+  # ─── Publish GitHub release ────────────────────────────────────────────────
+  # Downloads every build artifact, tags the commit, and attaches the archives
+  # to a new GitHub release.
+  publish:
+    name: publish
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: list artifacts
+        run: ls -R dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-version.outputs.tag }}
+          name: ${{ needs.check-version.outputs.tag }}
+          generate_release_notes: true
+          files: dist/pour-*
+          fail_on_unmatched_files: true
