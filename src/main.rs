@@ -1166,10 +1166,8 @@ fn handle_save_new_module(app: &mut App) {
     for setting in &state.settings {
         match setting.key.as_str() {
             "module_key" => module_key = setting.value.clone(),
-            "display_name" => {
-                if !setting.value.is_empty() {
-                    display_name = Some(setting.value.clone());
-                }
+            "display_name" if !setting.value.is_empty() => {
+                display_name = Some(setting.value.clone());
             }
             "mode" => {
                 mode = if setting.value == "append" {
@@ -1547,10 +1545,8 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
 fn validate_vault_settings(state: &pour::app::ConfigureState) -> Result<(), String> {
     for setting in &state.settings {
         match setting.key.as_str() {
-            "base_path" => {
-                if setting.value.trim().is_empty() {
-                    return Err("Base Path must not be empty".to_string());
-                }
+            "base_path" if setting.value.trim().is_empty() => {
+                return Err("Base Path must not be empty".to_string());
             }
             "api_port" => {
                 let trimmed = setting.value.trim();
