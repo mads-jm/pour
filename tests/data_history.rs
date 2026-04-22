@@ -173,9 +173,15 @@ fn format_relative_just_now() {
 
 #[test]
 fn format_relative_today_with_time() {
-    let ts = today_noon_utc() - Duration::hours(3);
-    let result = format_relative(ts);
-    // Should be HH:MM format
+    // Need a timestamp that is (a) today-local and (b) at least 1 hour before
+    // now-local, so `format_relative` returns HH:MM rather than "just now".
+    // In the first hour of the local day no such timestamp exists; skip then.
+    let now = Local::now();
+    let ts_local = now - Duration::hours(2);
+    if ts_local.date_naive() != now.date_naive() {
+        return;
+    }
+    let result = format_relative(ts_local.with_timezone(&Utc));
     assert!(result.contains(':'), "expected HH:MM, got: {result}");
 }
 

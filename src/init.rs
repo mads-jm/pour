@@ -228,6 +228,7 @@ fn prompt_vault_path() -> Result<String> {
 fn detect_obsidian_vaults() -> Vec<PathBuf> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
 
+    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
     let mut search_roots = vec![home.join("Documents"), home.clone()];
 
     // Windows: also check OneDrive Documents
