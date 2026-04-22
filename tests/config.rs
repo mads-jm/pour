@@ -63,7 +63,9 @@ target = "body"
 #[test]
 fn round_trip_sample_config() {
     // Hold the env lock to prevent POUR_API_KEY leaking from concurrent tests.
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let config = Config::from_toml(SAMPLE_TOML).expect("should parse sample TOML");
 
     // Vault
@@ -315,7 +317,9 @@ fn invalid_toml_produces_parse_error() {
 fn api_key_env_var_overrides_config() {
     use tempfile::tempdir;
     // Shares SECRETS_ENV_LOCK to prevent racing with other env-var tests.
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -339,6 +343,9 @@ fn api_key_env_var_overrides_config() {
 
 #[test]
 fn load_with_pour_config_env_var_nonexistent_file() {
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     unsafe {
         std::env::set_var("POUR_CONFIG", "/nonexistent/path/config.toml");
     }
@@ -357,6 +364,9 @@ fn load_with_pour_config_env_var_nonexistent_file() {
 
 #[test]
 fn load_from_pour_config_env_var() {
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     // Write a temp config file and point POUR_CONFIG at it
     let dir = std::env::temp_dir().join("pour_test_load");
     std::fs::create_dir_all(&dir).unwrap();
@@ -1745,7 +1755,9 @@ static SECRETS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[test]
 fn secrets_path_is_sibling_of_config() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1765,7 +1777,9 @@ fn secrets_path_is_sibling_of_config() {
 #[test]
 fn read_secret_api_key_returns_none_when_file_absent() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1782,7 +1796,9 @@ fn read_secret_api_key_returns_none_when_file_absent() {
 #[test]
 fn write_and_read_secret_api_key_round_trips() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1802,7 +1818,9 @@ fn write_and_read_secret_api_key_round_trips() {
 #[test]
 fn write_secret_api_key_none_removes_key() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1823,7 +1841,9 @@ fn write_secret_api_key_none_removes_key() {
 #[test]
 fn secrets_toml_overrides_config_toml_api_key() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1850,7 +1870,9 @@ fn secrets_toml_overrides_config_toml_api_key() {
 #[test]
 fn env_var_overrides_secrets_toml() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1886,7 +1908,9 @@ fn env_var_overrides_secrets_toml() {
 fn update_vault_on_disk_writes_api_key_to_secrets() {
     use pour::config::VaultUpdates;
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
@@ -1925,7 +1949,9 @@ fn update_vault_on_disk_writes_api_key_to_secrets() {
 #[test]
 fn migrate_api_key_moves_key_from_config_to_secrets() {
     use tempfile::tempdir;
-    let _lock = SECRETS_ENV_LOCK.lock().unwrap();
+    let _lock = SECRETS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempdir().unwrap();
     let config_path = dir.path().join("config.toml");
