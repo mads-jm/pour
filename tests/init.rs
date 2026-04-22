@@ -86,5 +86,5 @@ fn default_modules_structure() {
 
     let coffee = &config.modules["coffee"];
     assert_eq!(coffee.mode, WriteMode::Create);
-    assert_eq!(coffee.fields.len(), 19);
+    assert_eq!(coffee.fields.len(), 20);
 }
