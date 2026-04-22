@@ -194,6 +194,10 @@ target = "frontmatter"
 icon = "🫘"
 wikilink = true
 allow_create = true
+# Typing a novel bean opens the sub-form overlay defined by [templates.bean]
+# below, and fires the Obsidian Templater command after the note is written.
+create_template = "bean"
+post_create_command = "templater:run"
 
 [[modules.coffee.fields]]
 name = "grinder"
@@ -256,6 +260,18 @@ default = "96"
 target = "frontmatter"
 show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
 
+# Filter material — uses a closed static_select with `allow_create = true` so
+# typing a novel value at capture time appends it to this list and persists it
+# back to config.toml, making it available next session.
+[[modules.coffee.fields]]
+name = "filter"
+field_type = "static_select"
+prompt = "Filter"
+options = ["Paper", "Cloth", "Metal"]
+target = "frontmatter"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+allow_create = true
+
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
 name = "recipe"
@@ -316,9 +332,53 @@ preset_exclude = true      # excluded from saved presets (changes every entry)
 
 # ─── Templates ───────────────────────────────────────────────────────────────
 # Templates define the note structure created when a user adds a new entry via
-# a dynamic_select field with `allow_create = true`. The `path` is relative to
-# the vault base_path and supports {{name}} as the value the user typed.
+# a dynamic_select field with `allow_create = true` and `create_template` set.
+# The `path` is relative to the vault base_path and supports `{{name}}` (the
+# value the user typed) plus any template field as `{{field_name}}`.
+#
+# Template fields are restricted to text, number, and static_select.
+# The names `date` and `name` are reserved (auto-generated in frontmatter).
 
+[templates.bean]
+# `{{name}}` resolves to the typed value, sanitized for filesystem safety.
+path = "Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster"
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Yemen"]
+# allow_create also works on template static_selects — novel values persist
+# back to this options list after the templated note is successfully written.
+allow_create = true
+
+[[templates.bean.fields]]
+name = "process"
+field_type = "static_select"
+prompt = "Process"
+options = ["Washed", "Natural", "Honey", "Anaerobic", "Wet Hulled"]
+default = "Washed"
+
+[[templates.bean.fields]]
+name = "roast_level"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Light-Medium", "Medium", "Medium-Dark", "Dark"]
+default = "Light"
+
+[[templates.bean.fields]]
+name = "bag_weight_g"
+field_type = "number"
+prompt = "Bag weight (g)"
+default = "250"
+
+# The `{{category}}` field routes the created note into a per-category subfolder
+# so each brewer type's notes stay grouped.
 [templates.brewer]
 path = "Coffee/Brewers/{{category}}/{{name}}.md"
 

@@ -114,7 +114,15 @@ jobs:
             cp "target/${{ matrix.target }}/release/pour" "${staging}/"
           fi
           cp README.md "${staging}/" 2>/dev/null || true
-          cp resources/mads_config.toml "${staging}/config.toml.example" 2>/dev/null || true
+          # Sample configs, AI-agent reference, and vault-structure guide.
+          # Shipped as a sibling `resources/` folder so users can adapt them
+          # after first install without hunting around the repo.
+          mkdir -p "${staging}/resources"
+          cp resources/default_config.toml "${staging}/resources/" 2>/dev/null || true
+          cp resources/mads_config.toml "${staging}/resources/" 2>/dev/null || true
+          cp resources/mads_vault_structure.md "${staging}/resources/" 2>/dev/null || true
+          cp resources/presets.json "${staging}/resources/" 2>/dev/null || true
+          cp resources/POUR.md "${staging}/resources/" 2>/dev/null || true
           cd dist
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
             7z a "${name}.zip" "${name}"
