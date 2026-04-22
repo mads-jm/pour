@@ -612,27 +612,21 @@ fn handle_callout_title_key(
             }
             form_state.callout_title_edit = None;
         }
-        KeyCode::Backspace => {
-            if edit.cursor > 0 {
-                let byte_pos = edit
-                    .buffer
-                    .char_indices()
-                    .nth(edit.cursor - 1)
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                edit.buffer.remove(byte_pos);
-                edit.cursor -= 1;
-            }
+        KeyCode::Backspace if edit.cursor > 0 => {
+            let byte_pos = edit
+                .buffer
+                .char_indices()
+                .nth(edit.cursor - 1)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            edit.buffer.remove(byte_pos);
+            edit.cursor -= 1;
         }
-        KeyCode::Left => {
-            if edit.cursor > 0 {
-                edit.cursor -= 1;
-            }
+        KeyCode::Left if edit.cursor > 0 => {
+            edit.cursor -= 1;
         }
-        KeyCode::Right => {
-            if edit.cursor < edit.buffer.chars().count() {
-                edit.cursor += 1;
-            }
+        KeyCode::Right if edit.cursor < edit.buffer.chars().count() => {
+            edit.cursor += 1;
         }
         KeyCode::Home => {
             edit.cursor = 0;
@@ -640,17 +634,15 @@ fn handle_callout_title_key(
         KeyCode::End => {
             edit.cursor = edit.buffer.chars().count();
         }
-        KeyCode::Char(c) => {
-            if edit.buffer.chars().count() < 120 {
-                let byte_pos = edit
-                    .buffer
-                    .char_indices()
-                    .nth(edit.cursor)
-                    .map(|(i, _)| i)
-                    .unwrap_or(edit.buffer.len());
-                edit.buffer.insert(byte_pos, c);
-                edit.cursor += 1;
-            }
+        KeyCode::Char(c) if edit.buffer.chars().count() < 120 => {
+            let byte_pos = edit
+                .buffer
+                .char_indices()
+                .nth(edit.cursor)
+                .map(|(i, _)| i)
+                .unwrap_or(edit.buffer.len());
+            edit.buffer.insert(byte_pos, c);
+            edit.cursor += 1;
         }
         _ => {}
     }
