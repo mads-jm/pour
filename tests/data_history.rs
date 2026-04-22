@@ -1,4 +1,4 @@
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 use pour::data::history::{History, HistoryEntry, format_relative};
 use std::io::Write;
 
@@ -17,10 +17,23 @@ fn history_with_entries(entries: Vec<HistoryEntry>) -> (History, tempfile::TempD
     (History::load_from(path), dir)
 }
 
+// Anchor test timestamps to today-noon-local (converted to UTC) so small
+// hour/day offsets stay inside their intended local calendar day regardless
+// of what time-of-day CI fires the suite. Production code buckets by
+// `Local::now().date_naive()`; anchoring on `Utc::now()` straddled midnight.
+fn today_noon_utc() -> DateTime<Utc> {
+    let today = Local::now().date_naive();
+    Local
+        .from_local_datetime(&today.and_hms_opt(12, 0, 0).unwrap())
+        .single()
+        .expect("noon today is unambiguous")
+        .with_timezone(&Utc)
+}
+
 fn entry(module: &str, hours_ago: i64) -> HistoryEntry {
     HistoryEntry {
         module_key: module.to_string(),
-        timestamp: Utc::now() - Duration::hours(hours_ago),
+        timestamp: today_noon_utc() - Duration::hours(hours_ago),
         vault_path: format!("test/{module}.md"),
         first_field: None,
     }
@@ -29,7 +42,7 @@ fn entry(module: &str, hours_ago: i64) -> HistoryEntry {
 fn entry_days_ago(module: &str, days: i64) -> HistoryEntry {
     HistoryEntry {
         module_key: module.to_string(),
-        timestamp: Utc::now() - Duration::days(days),
+        timestamp: today_noon_utc() - Duration::days(days),
         vault_path: format!("test/{module}.md"),
         first_field: None,
     }
@@ -160,7 +173,7 @@ fn format_relative_just_now() {
 
 #[test]
 fn format_relative_today_with_time() {
-    let ts = Utc::now() - Duration::hours(3);
+    let ts = today_noon_utc() - Duration::hours(3);
     let result = format_relative(ts);
     // Should be HH:MM format
     assert!(result.contains(':'), "expected HH:MM, got: {result}");
@@ -180,13 +193,13 @@ fn format_relative_yesterday() {
 
 #[test]
 fn format_relative_days_ago() {
-    let ts = Utc::now() - Duration::days(4);
+    let ts = today_noon_utc() - Duration::days(4);
     assert_eq!(format_relative(ts), "4d ago");
 }
 
 #[test]
 fn format_relative_weeks_ago() {
-    let ts = Utc::now() - Duration::days(14);
+    let ts = today_noon_utc() - Duration::days(14);
     assert_eq!(format_relative(ts), "2w ago");
 }
 
