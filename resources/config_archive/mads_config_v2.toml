@@ -5,7 +5,7 @@
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
 # Schema version — used for migration support when the config format changes.
-config_version = "0.3.0"
+config_version = "0.2.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
 module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "book"]

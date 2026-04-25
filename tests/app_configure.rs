@@ -494,3 +494,98 @@ fn sub_field_static_select_has_options() {
     assert!(matches!(opts.kind, SettingKind::ListEditor));
     assert_eq!(opts.value, "Bloom\nSpiral");
 }
+
+// ── mobile_visible toggle smoke test ──
+
+#[test]
+fn mobile_visible_setting_row_exists_in_module_settings() {
+    let app = make_app();
+    let state = app.init_configure("coffee").unwrap();
+
+    let mv = state
+        .settings
+        .iter()
+        .find(|s| s.key == "mobile_visible")
+        .expect("Mobile Visible setting must be present in module settings");
+
+    assert_eq!(mv.label, "Mobile Visible");
+}
+
+#[test]
+fn mobile_visible_setting_has_expected_initial_value_when_unset() {
+    // coffee module has no mobile_visible key → defaults to visible → value is ""
+    let app = make_app();
+    let state = app.init_configure("coffee").unwrap();
+
+    let mv = state
+        .settings
+        .iter()
+        .find(|s| s.key == "mobile_visible")
+        .unwrap();
+
+    // "" means "default visible" — the toggle's zero-index value
+    assert_eq!(mv.value, "", "unset mobile_visible should be empty string (visible)");
+}
+
+#[test]
+fn mobile_visible_setting_has_false_value_when_explicitly_false() {
+    let toml = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.hidden]
+mode = "create"
+path = "Hidden/%Y%m%d.md"
+mobile_visible = false
+
+[[modules.hidden.fields]]
+name = "note"
+field_type = "text"
+prompt = "Note"
+"####;
+    let config = Config::from_toml(toml).expect("parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/test-mv-history.json")),
+        Presets::empty(),
+        FieldPresets::empty(),
+    );
+
+    let state = app.init_configure("hidden").unwrap();
+    let mv = state
+        .settings
+        .iter()
+        .find(|s| s.key == "mobile_visible")
+        .unwrap();
+
+    assert_eq!(mv.value, "false", "explicit mobile_visible=false should be reflected in setting value");
+}
+
+#[test]
+fn mobile_visible_setting_is_toggle_kind() {
+    let app = make_app();
+    let state = app.init_configure("coffee").unwrap();
+
+    let mv = state
+        .settings
+        .iter()
+        .find(|s| s.key == "mobile_visible")
+        .unwrap();
+
+    // Must be a Toggle so it can be cycled with Left/Right
+    match &mv.kind {
+        SettingKind::Toggle(options) => {
+            assert!(
+                options.contains(&String::new()),
+                "Toggle options must include empty string (visible)"
+            );
+            assert!(
+                options.contains(&"false".to_string()),
+                "Toggle options must include 'false' (hidden)"
+            );
+        }
+        other => panic!("expected SettingKind::Toggle, got {other:?}"),
+    }
+}

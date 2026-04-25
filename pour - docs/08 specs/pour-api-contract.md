@@ -175,7 +175,6 @@ Returns the full module/field/template schema. The PWA renders forms from this.
       "display_name": "Coffee",
       "icon": "☕",
       "mode": "create",
-      "mobile_visible": true,
       "fields": [ /* see §7 */ ],
       "callout_type": null,
       "append_under_header": null,
@@ -195,12 +194,13 @@ Returns the full module/field/template schema. The PWA renders forms from this.
     "date_format": "%Y%m%d",
     "transport_mode": "API"
   },
-  "config_version": "0.2.0"
+  "config_version": "0.3.0"
 }
 ```
 
 - `modules` is an **array, not a map**, ordered per `module_order` with unlisted modules sorted alphabetically. Order matters for dashboard tile rendering.
-- `mobile_visible` defaults to `true`. A module with `mobile_visible = false` in `config.toml` is omitted from this response entirely (not included with the flag set false). The PWA cannot reveal hidden modules.
+- `mobile_visible` defaults to `true`. A module with `mobile_visible = false` in `config.toml` is omitted from this response entirely (not included with the flag set false). The PWA cannot reveal hidden modules. **Note: `mobile_visible` is NOT echoed in the module object** — it controls inclusion, not data. Clients must not depend on its presence.
+- `module_order` echoes only the keys that survive the `mobile_visible` filter. A hidden module is removed from both `modules` AND `module_order`. This guarantees the rendering order has no phantom keys.
 - `field_type` strings are the lowercase `snake_case` enum names: `"text"`, `"textarea"`, `"number"`, `"static_select"`, `"dynamic_select"`, `"composite_array"`.
 - `target` is `"frontmatter"` or `"body"` or `null` (use field-type default).
 - `show_when` rules ship verbatim — the client evaluates them (see §8).

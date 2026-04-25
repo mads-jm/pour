@@ -87,7 +87,7 @@ All Pour state lives under `~/.pour/` (override with `POUR_HOME`):
 **2. Point it at your vault**
 
 ```toml
-config_version = "0.2.0"
+config_version = "0.3.0"
 
 [vault]
 base_path = "/path/to/your/vault"

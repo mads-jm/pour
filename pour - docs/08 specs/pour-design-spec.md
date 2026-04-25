@@ -115,6 +115,22 @@ __`preset_exclude`__ — a boolean field-level config key (`Option<bool>`, defau
 
 Append vs. create modes, and how fields map to frontmatter/body.
 
+### __3.6 Mobile Visibility (`mobile_visible`)__
+
+*[Deviation: not in original spec. Added in Step B of the mobile/PWA initiative alongside `/api/v1/config` to support per-module opt-out from the phone interface.]*
+
+An optional boolean key on each module section:
+
+```toml
+[modules.secret]
+mobile_visible = false   # hides this module from the PWA
+```
+
+- __Default:__ `true` — all modules are mobile-visible unless explicitly opted out.
+- __Effect:__ When `false`, the module is entirely omitted from the `GET /api/v1/config` response. The PWA cannot see or submit to hidden modules.
+- __Persistence:__ Togglable from the module configure screen (Left/Right cycling with `◂ ▸` indicators). Persisted via `update_module_on_disk`.
+- __Getter:__ `ModuleConfig::is_mobile_visible()` returns `mobile_visible.unwrap_or(true)` — call sites never need to handle `None` vs `Some(true)` distinctly.
+
 #### Wikilink Output (`wikilink`)
 
 When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, the output value is wrapped in Obsidian wikilink syntax (`[[value]]`) before being written to frontmatter. This creates graph edges between the current note and the named note. For comma-separated multi-values, each item is wrapped individually. *[Deviation: wikilink wrapping was not in the original field spec; added alongside inline creation.]*
@@ -128,13 +144,21 @@ Full TOML schema, field type reference, and validation rules — see config sche
 An optional top-level string field in `config.toml` that declares the schema version the file was written against.
 
 ```toml
-config_version = "0.2.0"
+config_version = "0.3.0"
 ```
 
-- __Format:__ Semver string (e.g. `"0.2.0"`). Non-semver values are rejected at config load.
+- __Format:__ Semver string (e.g. `"0.3.0"`). Non-semver values are rejected at config load.
 - __Default:__ When absent, Pour treats the file as `"0.1.0"` — all existing configs without this field continue to work unchanged.
-- __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`). The current version is `0.2.0`.
+- __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`, `0.3.0`). The current version is `0.3.0`.
 - __Purpose:__ Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. *[Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.]*
+
+#### Version history
+
+| Version | Changes |
+|---------|---------|
+| `0.1.0` | Initial schema. |
+| `0.2.0` | Added `mobile_token` to `secrets.toml`, `pour serve` command, `/api/health` endpoint (Step A). |
+| `0.3.0` | Added `mobile_visible` module-level key. Bumped alongside `/api/v1/config` (Step B). |
 
 ## __5. Technical Stack__
 

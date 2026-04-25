@@ -457,7 +457,7 @@ MyVault/
 Your config might be:
 
 ```toml
-config_version = "0.2.0"
+config_version = "0.3.0"
 module_order = ["journal", "recipe", "note"]
 
 [vault]

@@ -427,12 +427,16 @@ These keys are set on the module itself, not on individual fields:
 | `append_under_header` | string | conditional | Required when `mode = "append"`. The Markdown heading to append under |
 | `append_template` | string | no | Template for append-mode content. Supports `{{time}}`, `{{date}}`, `{{callout}}`, and field name placeholders |
 | `callout_type` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). Resolved as `{{callout}}` in `append_template` |
+| `icon` | string | no | Unicode emoji shown in the TUI dashboard and written to frontmatter in create-mode output |
+| `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note |
+| `append_shallow` | boolean | no | When `true` (append mode only), treats any subsequent heading as a section boundary — prevents sub-headings from being absorbed into the append target |
+| `mobile_visible` | boolean | no | When `false`, this module is hidden from the mobile PWA (`/api/v1/config` omits it entirely). Defaults to `true`. Togglable from the module configure screen. |
 
 ## Top-Level Config Keys
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"0.2.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. |
+| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"0.3.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. Current version: `"0.3.0"`. |
 | `[vault].base_path` | string | Absolute path to the Obsidian vault root |
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |

@@ -190,7 +190,7 @@ async fn main() {
             }
         }
 
-        if let Err(e) = pour::server::run(transport, port, token).await {
+        if let Err(e) = pour::server::run(config, transport, port, token).await {
             eprintln!("pour serve: {e}");
             process::exit(1);
         }
@@ -1393,6 +1393,7 @@ fn handle_save_new_module(app: &mut App) {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1647,6 +1648,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut icon: Option<Option<String>> = None;
     let mut daily_link: Option<Option<bool>> = None;
     let mut append_shallow: Option<Option<bool>> = None;
+    let mut mobile_visible: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1700,6 +1702,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     None
                 });
             }
+            "mobile_visible" => {
+                mobile_visible = Some(if setting.value == "false" {
+                    Some(false)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -1713,6 +1722,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         icon,
         daily_link,
         append_shallow,
+        mobile_visible,
     }
 }
 

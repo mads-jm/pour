@@ -6,12 +6,12 @@ This file helps LLM agents (Claude, GPT, Copilot, etc.) assist users in creating
 
 Pour is a TUI capture tool that writes structured data into an Obsidian vault. All behavior is defined in `~/.config/pour/config.toml`. There is no hardcoded module logic — the config IS the product.
 
-## Config Schema (v0.2.0)
+## Config Schema (v0.3.0)
 
 ### Top-Level Structure
 
 ```toml
-config_version = "0.2.0"
+config_version = "0.3.0"
 module_order = ["me", "todo", "note", "coffee"]   # dashboard order
 
 [vault]
@@ -209,7 +209,7 @@ path = "Coffee/Beans/{{name}}.md"
 
 Before presenting a config to the user, verify:
 
-- [ ] `config_version = "0.2.0"` is present
+- [ ] `config_version = "0.3.0"` is present
 - [ ] `vault.base_path` is an absolute path
 - [ ] Every module has at least one field
 - [ ] Append modules have `append_under_header`

@@ -28,7 +28,7 @@ API-key precedence: `POUR_API_KEY` env var > `secrets.toml` > `config.toml [vaul
 ## Top-level config structure
 
 ```toml
-config_version = "0.2.0"                           # schema version
+config_version = "0.3.0"                           # schema version
 module_order = ["me", "note", "coffee"]             # dashboard display order
 
 [vault]

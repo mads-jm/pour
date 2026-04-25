@@ -631,6 +631,19 @@ impl App {
             });
         }
 
+        settings.push(ConfigSetting {
+            label: "Mobile Visible".to_string(),
+            key: "mobile_visible".to_string(),
+            // Default is true (visible). Show "false" only when explicitly set false.
+            value: if module.mobile_visible == Some(false) {
+                "false".to_string()
+            } else {
+                String::new()
+            },
+            // Cycles: "" (default / visible) ◂ ▸ "false" (hidden)
+            kind: SettingKind::Toggle(vec![String::new(), "false".to_string()]),
+        });
+
         // Navigation link to the field list
         let field_count = module.fields.len();
         settings.push(ConfigSetting {

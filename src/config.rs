@@ -66,6 +66,20 @@ pub struct ModuleConfig {
     /// `#### Completed` sub-headings).
     #[serde(default)]
     pub append_shallow: Option<bool>,
+    /// When `false`, this module is hidden from the mobile PWA (`/api/v1/config`
+    /// omits it entirely). Defaults to `true` — all modules are mobile-visible
+    /// unless explicitly opted out.
+    #[serde(default)]
+    pub mobile_visible: Option<bool>,
+}
+
+impl ModuleConfig {
+    /// Returns whether this module should be included in the mobile PWA config response.
+    ///
+    /// `None` and `Some(true)` both mean visible; only `Some(false)` hides it.
+    pub fn is_mobile_visible(&self) -> bool {
+        self.mobile_visible.unwrap_or(true)
+    }
 }
 
 /// Whether a module appends to an existing note or creates a new one.
@@ -239,6 +253,8 @@ pub struct ModuleUpdates {
     pub daily_link: Option<Option<bool>>,
     /// New append_shallow value. `Some(None)` removes the key.
     pub append_shallow: Option<Option<bool>>,
+    /// New mobile_visible value. `Some(None)` removes the key (treated as true).
+    pub mobile_visible: Option<Option<bool>>,
 }
 
 /// Partial updates to apply to the vault section of the config file.
@@ -377,7 +393,7 @@ fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
 
 impl Config {
     /// The config schema version this build of Pour understands.
-    pub const CURRENT_CONFIG_VERSION: &'static str = "0.2.0";
+    pub const CURRENT_CONFIG_VERSION: &'static str = "0.3.0";
 
     /// Load and validate the configuration.
     ///
@@ -748,6 +764,17 @@ impl Config {
                 }
                 None => {
                     module.remove("append_shallow");
+                }
+            }
+        }
+
+        if let Some(ref mobile_visible_update) = updates.mobile_visible {
+            match mobile_visible_update {
+                Some(v) => {
+                    module["mobile_visible"] = toml_edit::value(*v);
+                }
+                None => {
+                    module.remove("mobile_visible");
                 }
             }
         }
