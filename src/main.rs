@@ -47,6 +47,156 @@ async fn main() {
         }
     }
 
+    // Handle `pour serve [--port <N>]` before config loading (mirrors `pour init` pattern)
+    if args.get(1).map(|s| s.as_str()) == Some("serve") {
+        // Strict flag parsing — reject unknown flags and malformed --port values.
+        // Accepted: --port <N>  (where N is 1–65535)
+        let mut port_raw: Option<&str> = None;
+        let mut i = 2usize;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--port" => {
+                    match args.get(i + 1) {
+                        Some(v) if !v.starts_with('-') => {
+                            port_raw = Some(v.as_str());
+                            i += 2;
+                        }
+                        _ => {
+                            eprintln!("pour serve: --port requires a value (e.g. --port 8421)");
+                            process::exit(1);
+                        }
+                    }
+                }
+                flag if flag.starts_with('-') => {
+                    eprintln!(
+                        "pour serve: unknown flag '{flag}'\n\
+                         accepted flags: --port <port>"
+                    );
+                    process::exit(1);
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+
+        // Default port 8421 — chosen to avoid common dev ports (3000/8080/8000/5000)
+        // while being memorable as a Pour-specific port.
+        let port: u16 = match port_raw {
+            None => 8421,
+            Some(s) => {
+                let n: u32 = s.parse().unwrap_or_else(|_| {
+                    eprintln!(
+                        "pour serve: --port value must be a number (1–65535), got '{s}'"
+                    );
+                    process::exit(1);
+                });
+                if n == 0 {
+                    eprintln!(
+                        "pour serve: port 0 is not allowed (OS-assigned ports are surprising);\
+                        \n             use an explicit port, e.g. --port 8421"
+                    );
+                    process::exit(1);
+                }
+                if n > 65535 {
+                    eprintln!(
+                        "pour serve: --port value must be 1–65535, got {n}"
+                    );
+                    process::exit(1);
+                }
+                n as u16
+            }
+        };
+
+        let config = match pour::config::Config::load() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("pour serve: {e}");
+                process::exit(1);
+            }
+        };
+
+        let transport = pour::transport::Transport::connect(&config).await;
+
+        // Resolve or generate the mobile auth token.
+        // Precedence: POUR_MOBILE_TOKEN env var > secrets.toml > generate new.
+        let token = match pour::config::Config::read_mobile_token() {
+            Some(t) => t,
+            None => {
+                // Generate 32 bytes of entropy, encode as URL-safe base64 (no padding).
+                // uuid v4 gives 122 bits of randomness — more than enough; we use it
+                // because it's already a dep and produces a clean URL-safe string.
+                let token = uuid::Uuid::new_v4().simple().to_string();
+                if let Err(e) = pour::config::Config::write_mobile_token(&token) {
+                    eprintln!("pour serve: warning: could not persist mobile token: {e}");
+                } else {
+                    eprintln!("pour serve: new mobile token generated and saved to secrets.toml");
+                }
+                token
+            }
+        };
+
+        // Determine the LAN IP for the QR URL.
+        // TODO: add --host flag to let users specify a known IP when auto-detection fails.
+        match local_ip_address::local_ip() {
+            Ok(ip) => {
+                let lan_ip = ip.to_string();
+                let url = format!("http://{lan_ip}:{port}/?token={token}");
+
+                // Print QR code using Dense1x2 unicode renderer (renders cleanly in most terminals).
+                use qrcode::QrCode;
+                use qrcode::render::unicode;
+                match QrCode::new(url.as_bytes()) {
+                    Ok(code) => {
+                        let image = code
+                            .render::<unicode::Dense1x2>()
+                            .dark_color(unicode::Dense1x2::Dark)
+                            .light_color(unicode::Dense1x2::Light)
+                            .build();
+                        println!("\n{image}");
+                    }
+                    Err(e) => {
+                        eprintln!("pour serve: warning: could not render QR code: {e}");
+                    }
+                }
+
+                println!("Scan the QR code or open: {url}");
+                println!(
+                    "Transport: {}  |  Listening on 0.0.0.0:{port}",
+                    transport.mode()
+                );
+            }
+            Err(e) => {
+                // LAN IP detection failed — the QR code would encode 127.0.0.1, which a
+                // phone cannot reach. Skip QR rendering entirely and print a loud banner.
+                eprintln!();
+                eprintln!("┌─────────────────────────────────────────────────────────────────┐");
+                eprintln!("│  WARNING: LAN IP could not be detected ({e})");
+                eprintln!("│");
+                eprintln!("│  The QR code has been skipped — it would encode 127.0.0.1,");
+                eprintln!("│  which is unreachable from a phone on the same network.");
+                eprintln!("│");
+                eprintln!("│  Local testing URL (same machine only):");
+                eprintln!("│    http://127.0.0.1:{port}/?token={token}");
+                eprintln!("│");
+                eprintln!("│  To fix: specify your LAN IP explicitly once --host is available.");
+                eprintln!("│  (TODO: add --host flag to bind a known IP)");
+                eprintln!("└─────────────────────────────────────────────────────────────────┘");
+                eprintln!();
+                println!(
+                    "Transport: {}  |  Listening on 0.0.0.0:{port}",
+                    transport.mode()
+                );
+            }
+        }
+
+        if let Err(e) = pour::server::run(transport, port, token).await {
+            eprintln!("pour serve: {e}");
+            process::exit(1);
+        }
+        process::exit(0);
+    }
+
     let fast_path_module = args.get(1).cloned();
 
     // Load config — exit with user-friendly error on failure

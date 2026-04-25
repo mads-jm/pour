@@ -5,6 +5,7 @@ pub mod data;
 pub mod init;
 pub mod output;
 pub mod paths;
+pub mod server;
 pub mod transport;
 pub mod tui;
 pub mod util;
