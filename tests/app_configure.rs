@@ -1,5 +1,6 @@
 use pour::app::{App, ConfigureLevel, SettingKind};
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::transport::Transport;
@@ -86,6 +87,7 @@ fn make_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-cfg-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
@@ -325,6 +327,9 @@ fn make_form_state(
         selected_preset: 0,
         preset_overlay: None,
         confirm_delete_preset: false,
+        field_preset_picker: None,
+        last_applied_field_preset: HashMap::new(),
+        composite_status: None,
     }
 }
 

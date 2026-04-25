@@ -10,6 +10,7 @@ use pour::config::{
 };
 use pour::data::cache::Cache;
 use pour::data::fetch_options;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::output;
@@ -65,9 +66,10 @@ async fn main() {
 
     // Load saved presets
     let presets = Presets::load();
+    let field_presets = FieldPresets::load();
 
     // Build app state
-    let mut app = App::new(config, transport, history, presets);
+    let mut app = App::new(config, transport, history, presets, field_presets);
 
     // Check for path issues at startup; shown as a dismissable overlay on the dashboard
     app.startup_warnings = app
@@ -320,6 +322,29 @@ async fn run_loop(
 
                 tui::Action::AppendStaticOption { field_index, value } => {
                     handle_append_static_option(app, field_index, &value);
+                }
+
+                tui::Action::SaveFieldPreset {
+                    field_name,
+                    name,
+                    description,
+                    rows,
+                } => {
+                    app.save_field_preset(&field_name, &name, description, rows);
+                }
+
+                tui::Action::ApplyFieldPreset {
+                    field_name,
+                    preset_name,
+                } => {
+                    app.apply_field_preset(&field_name, &preset_name);
+                }
+
+                tui::Action::DeleteFieldPreset {
+                    field_name,
+                    preset_name,
+                } => {
+                    app.delete_field_preset(&field_name, &preset_name);
                 }
 
                 tui::Action::None => {}

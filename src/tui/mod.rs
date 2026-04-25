@@ -113,6 +113,23 @@ pub enum Action {
     ReorderPreset { name: String, direction: i32 },
     /// Append a novel option to a static_select module field's `options` list.
     AppendStaticOption { field_index: usize, value: String },
+    /// Save a per-field preset (composite_array rows) for the current module.
+    SaveFieldPreset {
+        field_name: String,
+        name: String,
+        description: Option<String>,
+        rows: Vec<Vec<String>>,
+    },
+    /// Apply a saved per-field preset, replacing the rows of the named field.
+    ApplyFieldPreset {
+        field_name: String,
+        preset_name: String,
+    },
+    /// Delete a saved per-field preset by name.
+    DeleteFieldPreset {
+        field_name: String,
+        preset_name: String,
+    },
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -196,6 +213,35 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             form::FormAction::AppendStaticOption { field_index, value } => {
                 Action::AppendStaticOption { field_index, value }
             }
+            form::FormAction::SaveFieldPreset {
+                field_name,
+                name,
+                description,
+                rows,
+            } => Action::SaveFieldPreset {
+                field_name,
+                name,
+                description,
+                rows,
+            },
+            form::FormAction::ApplyFieldPreset {
+                field_name,
+                preset_name,
+            } => Action::ApplyFieldPreset {
+                field_name,
+                preset_name,
+            },
+            form::FormAction::CycleFieldPreset { .. } => {
+                // Cycle is resolved to ApplyFieldPreset inside the form handler.
+                Action::None
+            }
+            form::FormAction::DeleteFieldPreset {
+                field_name,
+                preset_name,
+            } => Action::DeleteFieldPreset {
+                field_name,
+                preset_name,
+            },
             form::FormAction::None => Action::None,
         },
 

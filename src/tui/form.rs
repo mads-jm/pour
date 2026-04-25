@@ -8,7 +8,8 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
-    App, CalloutTitleEdit, FormState, PresetDialogFocus, PresetSaveDialog, SubFormState,
+    App, CalloutTitleEdit, FieldPresetPickerState, FormState, PresetDialogFocus,
+    PresetDialogTarget, PresetSaveDialog, SubFormState,
 };
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 use crate::visibility::visible_field_indices;
@@ -516,6 +517,11 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
         && field.field_type == FieldType::CompositeArray
     {
         render_composite_editor(frame, area, field, form_state);
+
+        // Render the per-field preset picker on top of the composite editor.
+        if let Some(picker) = &form_state.field_preset_picker {
+            render_field_preset_picker(frame, area, picker);
+        }
     }
 }
 
@@ -1143,18 +1149,56 @@ fn render_composite_editor(
         }
     }
 
+    // Status / preset subtitle: shows the last applied preset name (if any) or
+    // a transient status message (e.g. "preset shape adjusted").
+    if let Some(status) = &form_state.composite_status {
+        lines.push(Line::from(Span::styled(
+            format!(" {status}"),
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else if let Some(name) = form_state.last_applied_field_preset.get(&field.name) {
+        lines.push(Line::from(Span::styled(
+            format!(" preset: {name}"),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
     // Hint line
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         Span::styled(" Tab", Style::default().fg(Color::Yellow)),
         Span::raw(" next  "),
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(" add row  "),
+        Span::raw(" add  "),
         Span::styled("Del", Style::default().fg(Color::Yellow)),
         Span::raw(" remove  "),
+        Span::styled("s", Style::default().fg(Color::Yellow)),
+        Span::raw(" save  "),
+        Span::styled("l", Style::default().fg(Color::Yellow)),
+        Span::raw(" load  "),
+        Span::styled("p", Style::default().fg(Color::Yellow)),
+        Span::raw(" cycle  "),
         Span::styled("Esc", Style::default().fg(Color::Yellow)),
         Span::raw(" close"),
     ]));
+
+    // Extra row to fit the optional subtitle without clipping the hint.
+    let extra: u16 = if form_state.composite_status.is_some()
+        || form_state
+            .last_applied_field_preset
+            .contains_key(&field.name)
+    {
+        1
+    } else {
+        0
+    };
+    let editor_area = Rect {
+        height: editor_area.height.saturating_add(extra).min(
+            area.height
+                .saturating_sub(editor_area.y.saturating_sub(area.y)),
+        ),
+        ..editor_area
+    };
 
     let editor = Paragraph::new(lines).block(
         Block::default()
@@ -1164,6 +1208,83 @@ fn render_composite_editor(
     );
     frame.render_widget(Clear, editor_area);
     frame.render_widget(editor, editor_area);
+}
+
+/// Render the centered modal overlay listing saved per-field presets for a
+/// composite_array field. Shown on top of the composite editor when the user
+/// presses `l`. Mirrors the styling of the module-level preset save dialog.
+fn render_field_preset_picker(frame: &mut Frame, area: Rect, picker: &FieldPresetPickerState) {
+    if area.height < 10 || area.width < 30 {
+        return;
+    }
+
+    let modal_width = (area.width * 3 / 5)
+        .max(44)
+        .min(area.width.saturating_sub(4));
+    let row_count = picker.names.len().max(1) as u16;
+    let modal_height = (row_count + 5).min(area.height.saturating_sub(2));
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    frame.render_widget(Clear, modal_area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" Load Preset — {} ", picker.field_name))
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, modal_area);
+
+    let inner = Rect::new(
+        modal_area.x + 1,
+        modal_area.y + 1,
+        modal_area.width.saturating_sub(2),
+        modal_area.height.saturating_sub(2),
+    );
+
+    let mut lines: Vec<Line> = Vec::new();
+    if picker.names.is_empty() {
+        lines.push(Line::from(Span::styled(
+            " (no saved presets — press s in the editor to save one)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (i, name) in picker.names.iter().enumerate() {
+            let selected = i == picker.selected;
+            let marker = if selected { "▸ " } else { "  " };
+            let style = if selected {
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            let mut spans = vec![
+                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::styled(name.clone(), style),
+            ];
+            if let Some(Some(desc)) = picker.descriptions.get(i) {
+                spans.push(Span::raw("  "));
+                spans.push(Span::styled(
+                    format!("— {desc}"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+            lines.push(Line::from(spans));
+        }
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(" Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(" load  "),
+        Span::styled("Ctrl+D", Style::default().fg(Color::Yellow)),
+        Span::raw(" delete  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" cancel"),
+    ]));
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Render a centered modal overlay for template-driven inline note creation.
@@ -1562,7 +1683,13 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
 
     // Composite overlay has its own key handling
     if is_composite && form_state.composite_open {
-        return handle_composite_key(form_state, active_field.unwrap(), key);
+        return handle_composite_key(
+            form_state,
+            active_field.unwrap(),
+            &app.field_presets,
+            &module_key,
+            key,
+        );
     }
 
     // Open callout-title editor for the currently-active textarea field,
@@ -1635,6 +1762,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             description_buffer: prefill_desc,
             description_cursor,
             focus: PresetDialogFocus::Name,
+            target: PresetDialogTarget::Module,
         });
         return FormAction::None;
     }
@@ -2389,6 +2517,29 @@ pub enum FormAction {
         field_index: usize,
         value: String,
     },
+    /// Save the current rows of a composite_array field as a named preset.
+    SaveFieldPreset {
+        field_name: String,
+        name: String,
+        description: Option<String>,
+        rows: Vec<Vec<String>>,
+    },
+    /// Apply (replace rows with) a saved preset for a composite_array field.
+    ApplyFieldPreset {
+        field_name: String,
+        preset_name: String,
+    },
+    /// Quick-cycle to the next/previous saved preset for a composite_array field.
+    /// Direction is +1 (next) or -1 (previous). No-op if no presets are saved.
+    CycleFieldPreset {
+        field_name: String,
+        direction: i32,
+    },
+    /// Delete a saved preset for a composite_array field by name.
+    DeleteFieldPreset {
+        field_name: String,
+        preset_name: String,
+    },
 }
 
 /// Cycle the selected value within the subset of options matching `search`
@@ -2529,33 +2680,66 @@ fn handle_preset_overlay_key(
                     Some(trimmed.to_string())
                 }
             };
-            // Collect values from visible, non-excluded, non-composite fields
-            let visible_indices =
-                crate::visibility::visible_field_indices(&module.fields, &form_state.field_values);
-            let mut values = std::collections::HashMap::new();
-            for &ci in &visible_indices {
-                let field = &module.fields[ci];
-                if field.preset_exclude == Some(true) {
-                    continue;
+            // Branch on dialog target — composite-field saves use the rows of
+            // the named field; module-level saves collect a flat field-value
+            // map from visible non-excluded fields.
+            match &overlay.target {
+                PresetDialogTarget::CompositeField { field_name } => {
+                    let field_name = field_name.clone();
+                    // Strip rows that have no data; reject if everything is empty.
+                    let rows: Vec<Vec<String>> = form_state
+                        .composite_values
+                        .get(&field_name)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|r| r.iter().any(|c| !c.is_empty()))
+                        .collect();
+                    if rows.is_empty() {
+                        // Defensive — the open path already guards this.
+                        form_state.preset_overlay = None;
+                        return FormAction::None;
+                    }
+                    form_state.preset_overlay = None;
+                    let _ = module_key;
+                    FormAction::SaveFieldPreset {
+                        field_name,
+                        name,
+                        description,
+                        rows,
+                    }
                 }
-                if field.field_type == crate::config::FieldType::CompositeArray {
-                    continue;
+                PresetDialogTarget::Module => {
+                    let visible_indices = crate::visibility::visible_field_indices(
+                        &module.fields,
+                        &form_state.field_values,
+                    );
+                    let mut values = std::collections::HashMap::new();
+                    for &ci in &visible_indices {
+                        let field = &module.fields[ci];
+                        if field.preset_exclude == Some(true) {
+                            continue;
+                        }
+                        if field.field_type == crate::config::FieldType::CompositeArray {
+                            continue;
+                        }
+                        let val = form_state
+                            .field_values
+                            .get(&field.name)
+                            .cloned()
+                            .unwrap_or_default();
+                        if !val.is_empty() {
+                            values.insert(field.name.clone(), val);
+                        }
+                    }
+                    let _ = module_key;
+                    form_state.preset_overlay = None;
+                    FormAction::SavePreset {
+                        name,
+                        description,
+                        values,
+                    }
                 }
-                let val = form_state
-                    .field_values
-                    .get(&field.name)
-                    .cloned()
-                    .unwrap_or_default();
-                if !val.is_empty() {
-                    values.insert(field.name.clone(), val);
-                }
-            }
-            let _ = module_key;
-            form_state.preset_overlay = None;
-            FormAction::SavePreset {
-                name,
-                description,
-                values,
             }
         }
         KeyCode::Tab | KeyCode::Up | KeyCode::Down | KeyCode::BackTab => {
@@ -2855,9 +3039,72 @@ fn handle_sub_form_key(
     }
 }
 
+/// Handle key events while the per-field preset picker is open.
+///
+/// Up/Down navigate the list, Enter applies the selected preset (replaces
+/// rows silently), Ctrl+D deletes it, Esc cancels.
+fn handle_field_preset_picker_key(
+    form_state: &mut FormState,
+    field_name: &str,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    let picker = match &mut form_state.field_preset_picker {
+        Some(p) => p,
+        None => return FormAction::None,
+    };
+    let count = picker.names.len();
+
+    match key.code {
+        KeyCode::Esc => {
+            form_state.field_preset_picker = None;
+            FormAction::None
+        }
+        KeyCode::Up => {
+            if count > 0 {
+                picker.selected = (picker.selected + count - 1) % count;
+            }
+            FormAction::None
+        }
+        KeyCode::Down => {
+            if count > 0 {
+                picker.selected = (picker.selected + 1) % count;
+            }
+            FormAction::None
+        }
+        KeyCode::Enter => {
+            if count == 0 {
+                return FormAction::None;
+            }
+            let preset_name = picker.names[picker.selected].clone();
+            form_state.field_preset_picker = None;
+            FormAction::ApplyFieldPreset {
+                field_name: field_name.to_string(),
+                preset_name,
+            }
+        }
+        KeyCode::Char('d') | KeyCode::Char('D')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            if count == 0 {
+                return FormAction::None;
+            }
+            let preset_name = picker.names[picker.selected].clone();
+            FormAction::DeleteFieldPreset {
+                field_name: field_name.to_string(),
+                preset_name,
+            }
+        }
+        _ => FormAction::None,
+    }
+}
+
 fn handle_composite_key(
     form_state: &mut FormState,
     field: &FieldConfig,
+    field_presets: &crate::data::field_presets::FieldPresets,
+    module_key: &str,
     key: crossterm::event::KeyEvent,
 ) -> FormAction {
     use crossterm::event::KeyCode;
@@ -2869,13 +3116,104 @@ fn handle_composite_key(
     let col_count = sub_fields.len();
     let field_name = field.name.clone();
 
+    // Picker overlay intercepts ALL keys when open.
+    if form_state.field_preset_picker.is_some() {
+        return handle_field_preset_picker_key(form_state, &field_name, key);
+    }
+
+    let preset_storage_key = crate::data::field_presets::preset_key(module_key, &field_name);
+
     // Snapshot navigation state to avoid borrow issues
     let row = form_state.composite_row;
     let col = form_state.composite_col;
 
+    // ── per-field preset bindings ──────────────────────────────────────────
+    // `s` save: open the preset save dialog with CompositeField target.
+    // Empty editor → status message, no dialog.
+    if key.code == KeyCode::Char('s') {
+        let rows = form_state
+            .composite_values
+            .get(&field_name)
+            .cloned()
+            .unwrap_or_default();
+        let has_data = rows.iter().any(|r| r.iter().any(|c| !c.is_empty()));
+        if !has_data {
+            form_state.composite_status = Some("nothing to save".to_string());
+            return FormAction::None;
+        }
+        let prefill_name = form_state
+            .last_applied_field_preset
+            .get(&field_name)
+            .cloned()
+            .unwrap_or_default();
+        let cursor_position = prefill_name.chars().count();
+        form_state.composite_status = None;
+        form_state.preset_overlay = Some(PresetSaveDialog {
+            name_buffer: prefill_name,
+            cursor_position,
+            description_buffer: String::new(),
+            description_cursor: 0,
+            focus: PresetDialogFocus::Name,
+            target: PresetDialogTarget::CompositeField {
+                field_name: field_name.clone(),
+            },
+        });
+        return FormAction::None;
+    }
+
+    // `l` open load picker, populating names from the saved preset list.
+    if key.code == KeyCode::Char('l') {
+        form_state.composite_status = None;
+        let entries = field_presets.get(&preset_storage_key);
+        if entries.is_empty() {
+            form_state.composite_status = Some("no presets saved for this field".to_string());
+            return FormAction::None;
+        }
+        let names: Vec<String> = entries.iter().map(|p| p.name.clone()).collect();
+        let descriptions: Vec<Option<String>> =
+            entries.iter().map(|p| p.description.clone()).collect();
+        // Pre-select the most recently applied preset if any.
+        let selected = form_state
+            .last_applied_field_preset
+            .get(&field_name)
+            .and_then(|cur| names.iter().position(|n| n == cur))
+            .unwrap_or(0);
+        form_state.field_preset_picker = Some(FieldPresetPickerState {
+            field_name: field_name.clone(),
+            names,
+            descriptions,
+            selected,
+        });
+        return FormAction::None;
+    }
+
+    // `p` quick-cycle: pick the next preset in the saved list and apply it.
+    if key.code == KeyCode::Char('p') {
+        form_state.composite_status = None;
+        let entries = field_presets.get(&preset_storage_key);
+        if entries.is_empty() {
+            form_state.composite_status = Some("no presets saved for this field".to_string());
+            return FormAction::None;
+        }
+        let names: Vec<String> = entries.iter().map(|p| p.name.clone()).collect();
+        let cur_idx = form_state
+            .last_applied_field_preset
+            .get(&field_name)
+            .and_then(|cur| names.iter().position(|n| n == cur));
+        let next_idx = match cur_idx {
+            Some(i) => (i + 1) % names.len(),
+            None => 0,
+        };
+        return FormAction::ApplyFieldPreset {
+            field_name,
+            preset_name: names[next_idx].clone(),
+        };
+    }
+
     match key.code {
         KeyCode::Esc => {
             form_state.composite_open = false;
+            form_state.composite_status = None;
         }
 
         KeyCode::Enter => {

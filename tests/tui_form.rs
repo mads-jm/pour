@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::App;
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::transport::Transport;
@@ -61,6 +62,7 @@ fn make_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-form-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "test").unwrap();
     app.form_state = app.init_form("test");
@@ -655,6 +657,7 @@ fn make_app_allow_create() -> App {
             "/tmp/test-allow-create-history.json",
         )),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -790,6 +793,7 @@ source = "beans"
             "/tmp/test-no-allow-create-history.json",
         )),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -871,6 +875,7 @@ fn make_app_conditional() -> App {
             "/tmp/test-conditional-history.json",
         )),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
     app.form_state = app.init_form("brew");
@@ -1080,6 +1085,7 @@ fn make_app_callout() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-callout-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     app.selected_module = app.module_keys.iter().position(|k| k == "test").unwrap();
     app.form_state = app.init_form("test");

@@ -57,6 +57,13 @@ pub fn presets_path() -> PathBuf {
     pour_home().join("presets.json")
 }
 
+/// Path to `field_presets.json`. Stores per-field presets for
+/// `composite_array` fields, keyed by `"<module>.<field>"`. User-curated,
+/// not ephemeral.
+pub fn field_presets_path() -> PathBuf {
+    pour_home().join("field_presets.json")
+}
+
 /// Directory for ephemeral/regenerable cache files.
 pub fn cache_dir() -> PathBuf {
     pour_home().join("cache")

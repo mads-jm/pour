@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::{App, Screen, SummaryState};
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::transport::fs::FsWriter;
@@ -29,6 +30,7 @@ fn make_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dispatch-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 

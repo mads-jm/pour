@@ -1,5 +1,6 @@
 use pour::app::{App, Screen};
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::transport::Transport;
@@ -55,6 +56,7 @@ fn make_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
@@ -113,6 +115,7 @@ required = true
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     );
     assert_eq!(app.module_keys, vec!["me", "coffee"]);
 }
@@ -263,6 +266,7 @@ fn make_composite_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
@@ -403,6 +407,7 @@ fn make_visibility_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/pour-test-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 

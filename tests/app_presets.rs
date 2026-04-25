@@ -1,5 +1,6 @@
 use pour::app::App;
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::{PresetEntry, Presets};
 use pour::transport::Transport;
@@ -102,6 +103,7 @@ fn make_app_from_toml(toml: &str) -> App {
             "/tmp/test-preset-apply-history.json",
         )),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
@@ -159,6 +161,7 @@ fn init_form_preset_names_populated_from_saved_presets() {
             "/tmp/test-preset-names-history.json",
         )),
         presets,
+        FieldPresets::empty(),
     );
 
     let form = app.init_form("coffee").expect("module exists");

@@ -1,6 +1,7 @@
 use crate::config::{
     Config, FieldType, ModuleConfig, SubFieldType, TemplateConfig, TemplateFieldType, WriteMode,
 };
+use crate::data::field_presets::FieldPresets;
 use crate::data::history::History;
 use crate::data::presets::Presets;
 use crate::transport::{Transport, TransportMode, VaultEntry};
@@ -23,6 +24,18 @@ pub enum PresetDialogFocus {
     Description,
 }
 
+/// What kind of preset the save overlay is naming.
+///
+/// `Module` — saves a flat field-value map for the current module
+/// (default; preset row at `active_field == 0`).
+/// `CompositeField` — saves the current rows of the named composite_array
+/// field (opened from inside the composite overlay).
+#[derive(Debug, Clone)]
+pub enum PresetDialogTarget {
+    Module,
+    CompositeField { field_name: String },
+}
+
 /// Dialog state for naming a preset during a save operation.
 #[derive(Debug)]
 pub struct PresetSaveDialog {
@@ -36,6 +49,23 @@ pub struct PresetSaveDialog {
     pub description_cursor: usize,
     /// Which input row currently has focus.
     pub focus: PresetDialogFocus,
+    /// What kind of preset is being saved (module-level vs. composite-field).
+    pub target: PresetDialogTarget,
+}
+
+/// State for the in-overlay picker that lists saved presets for a single
+/// composite_array field. Shown when the user presses `l` inside the
+/// composite editor; loads on Enter, deletes on Ctrl+D.
+#[derive(Debug, Clone)]
+pub struct FieldPresetPickerState {
+    /// Field name the picker is bound to.
+    pub field_name: String,
+    /// Ordered preset names (mirrors saved order in `field_presets.json`).
+    pub names: Vec<String>,
+    /// Optional descriptions parallel to `names`.
+    pub descriptions: Vec<Option<String>>,
+    /// Currently highlighted index into `names`.
+    pub selected: usize,
 }
 
 /// State for the module entry form.
@@ -100,6 +130,16 @@ pub struct FormState {
     pub preset_overlay: Option<PresetSaveDialog>,
     /// Whether the delete-preset confirmation prompt is shown.
     pub confirm_delete_preset: bool,
+    /// Active per-field preset picker overlay (composite_array fields).
+    /// `Some` while the user is browsing saved row-sets inside the composite
+    /// editor; `None` otherwise.
+    pub field_preset_picker: Option<FieldPresetPickerState>,
+    /// Last preset applied per composite field, keyed by field name.
+    /// Drives the "preset: <name>" subtitle in the composite overlay.
+    pub last_applied_field_preset: HashMap<String, String>,
+    /// Transient status message shown in the composite overlay (e.g. after a
+    /// preset save or a schema-adjusted apply). Cleared on next user action.
+    pub composite_status: Option<String>,
 }
 
 /// Active callout-title edit session on a textarea field.
@@ -352,6 +392,9 @@ pub struct App {
     pub help_open: bool,
     /// Saved presets for all modules.
     pub presets: Presets,
+    /// Saved per-field presets for `composite_array` fields, keyed by
+    /// `"<module>.<field>"`.
+    pub field_presets: FieldPresets,
     /// Messages deferred from async tasks (e.g. autocreate) that must not be
     /// printed while TUI raw mode is active. Drained and written to stderr by
     /// main after `ratatui::restore()`.
@@ -364,7 +407,13 @@ impl App {
     /// Starts on the Dashboard screen with the first module selected.
     /// Module keys are ordered by `module_order` from config if present,
     /// with any unlisted modules appended alphabetically.
-    pub fn new(config: Config, transport: Transport, history: History, presets: Presets) -> Self {
+    pub fn new(
+        config: Config,
+        transport: Transport,
+        history: History,
+        presets: Presets,
+        field_presets: FieldPresets,
+    ) -> Self {
         let module_keys = match &config.module_order {
             Some(order) => {
                 let mut keys: Vec<String> = order
@@ -402,6 +451,7 @@ impl App {
             history,
             help_open: false,
             presets,
+            field_presets,
             deferred_stderr: Vec::new(),
         }
     }
@@ -492,6 +542,9 @@ impl App {
             selected_preset: 0,
             preset_overlay: None,
             confirm_delete_preset: false,
+            field_preset_picker: None,
+            last_applied_field_preset: HashMap::new(),
+            composite_status: None,
         })
     }
 
@@ -1003,6 +1056,124 @@ impl App {
             // Field became hidden — move to first visible field.
             form_state.active_field = 0;
             form_state.active_config_idx = visible.first().copied();
+        }
+    }
+
+    /// Save a per-field preset (composite_array rows) for the active module.
+    ///
+    /// Upserts by name into `field_presets`, persists to disk, and updates
+    /// `last_applied_field_preset` so the preset name appears as the
+    /// composite-overlay subtitle. Save errors are silently swallowed because
+    /// the TUI is in raw mode.
+    pub fn save_field_preset(
+        &mut self,
+        field_name: &str,
+        name: &str,
+        description: Option<String>,
+        rows: Vec<Vec<String>>,
+    ) {
+        let module_key = match self.module_keys.get(self.selected_module) {
+            Some(k) => k.clone(),
+            None => return,
+        };
+        let key = crate::data::field_presets::preset_key(&module_key, field_name);
+
+        let entry = crate::data::field_presets::FieldPresetEntry {
+            name: name.to_string(),
+            description,
+            rows,
+        };
+        self.field_presets.set(&key, entry);
+        let _ = self.field_presets.save();
+
+        if let Some(ref mut fs) = self.form_state {
+            fs.last_applied_field_preset
+                .insert(field_name.to_string(), name.to_string());
+            fs.composite_status = Some(format!("saved preset \u{201c}{name}\u{201d}"));
+        }
+    }
+
+    /// Apply a saved per-field preset to the named composite_array field.
+    ///
+    /// Replaces the rows of `field_name` silently (no confirm). Reconciles
+    /// the saved row shape against the current sub_field count, padding or
+    /// truncating cells as needed; sets a status message when adjusted.
+    /// No-op if the preset is not found or the form isn't open.
+    pub fn apply_field_preset(&mut self, field_name: &str, preset_name: &str) {
+        let module_key = match self.module_keys.get(self.selected_module) {
+            Some(k) => k.clone(),
+            None => return,
+        };
+        let key = crate::data::field_presets::preset_key(&module_key, field_name);
+        let entry = match self
+            .field_presets
+            .get(&key)
+            .into_iter()
+            .find(|p| p.name == preset_name)
+        {
+            Some(e) => e,
+            None => return,
+        };
+
+        let sub_field_count = self
+            .config
+            .modules
+            .get(&module_key)
+            .and_then(|m| m.fields.iter().find(|f| f.name == field_name))
+            .and_then(|f| f.sub_fields.as_ref())
+            .map(|s| s.len())
+            .unwrap_or(0);
+
+        let (rows, adjusted) =
+            crate::data::field_presets::reconcile_rows(entry.rows.clone(), sub_field_count);
+
+        if let Some(ref mut fs) = self.form_state {
+            fs.composite_values.insert(field_name.to_string(), rows);
+            fs.composite_row = 0;
+            fs.composite_col = 0;
+            fs.cursor_position = 0;
+            fs.last_applied_field_preset
+                .insert(field_name.to_string(), preset_name.to_string());
+            fs.composite_status = if adjusted {
+                Some("preset shape adjusted to current schema".to_string())
+            } else {
+                None
+            };
+        }
+    }
+
+    /// Delete a saved per-field preset by name. If the picker is open it is
+    /// re-populated; if the deleted preset was the last-applied one, that
+    /// marker is cleared so the subtitle stops referencing it.
+    pub fn delete_field_preset(&mut self, field_name: &str, preset_name: &str) {
+        let module_key = match self.module_keys.get(self.selected_module) {
+            Some(k) => k.clone(),
+            None => return,
+        };
+        let key = crate::data::field_presets::preset_key(&module_key, field_name);
+        self.field_presets.delete(&key, preset_name);
+        let _ = self.field_presets.save();
+
+        let entries = self.field_presets.get(&key);
+        if let Some(ref mut fs) = self.form_state {
+            if fs
+                .last_applied_field_preset
+                .get(field_name)
+                .map(|n| n == preset_name)
+                .unwrap_or(false)
+            {
+                fs.last_applied_field_preset.remove(field_name);
+            }
+            if let Some(picker) = &mut fs.field_preset_picker {
+                picker.names = entries.iter().map(|p| p.name.clone()).collect();
+                picker.descriptions = entries.iter().map(|p| p.description.clone()).collect();
+                if picker.names.is_empty() {
+                    fs.field_preset_picker = None;
+                    fs.composite_status = Some("preset deleted".to_string());
+                } else if picker.selected >= picker.names.len() {
+                    picker.selected = picker.names.len() - 1;
+                }
+            }
         }
     }
 

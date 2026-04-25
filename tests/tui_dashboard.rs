@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use pour::app::App;
 use pour::config::Config;
+use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
 use pour::data::presets::Presets;
 use pour::transport::Transport;
@@ -47,6 +48,7 @@ fn make_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dash-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
@@ -58,6 +60,7 @@ fn make_empty_app() -> App {
         transport,
         History::load_from(std::path::PathBuf::from("/tmp/test-dash-history.json")),
         Presets::empty(),
+        FieldPresets::empty(),
     )
 }
 
