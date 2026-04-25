@@ -86,7 +86,21 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | `Tab` | Advance to next cell |
 | `Enter` (in table) | Add new row |
 | `Delete` | Delete current row |
+| `s` | Save current rows as a per-field preset |
+| `l` | Open the per-field preset picker |
+| `p` | Quick-cycle to the next saved per-field preset |
 | `Esc` | Close table overlay |
+
+### Per-field preset picker (composite overlay)
+
+Appears when `l` is pressed inside a composite_array editor with at least one saved preset.
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Move selection |
+| `Enter` | Apply selected preset (replaces existing rows) |
+| `Ctrl+D` | Delete selected preset |
+| `Esc` | Cancel and close picker |
 
 ### Preset row
 

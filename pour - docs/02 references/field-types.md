@@ -364,7 +364,7 @@ prompt = "Unit"
 options = ["g", "ml", "oz", "cups", "tbsp", "tsp"]
 ```
 
-__TUI__: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output.
+__TUI__: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output. Inside the overlay, `s` saves the current rows as a per-field preset, `l` opens a picker over saved presets, and `p` cycles through them in place — see "Per-field presets" below.
 __Output (frontmatter)__: Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers.
 
 ```yaml
@@ -379,6 +379,24 @@ ingredients:
 
 __Output (body)__: Rendered as a Markdown table.
 __Validation__: `sub_fields` must be present and non-empty. Sub-field names must be unique. `static_select` sub-fields must have non-empty `options`.
+
+### Per-field presets
+
+Composite-array fields support saved row-set presets so high-friction inputs (recipes, pressure profiles, ingredient lists) can be replayed with a single keypress. Presets are scoped per `module.field` — `coffee.recipe` and `coffee.pressure_profile` have independent lists.
+
+__Storage__: `~/.pour/field_presets.json` (or `$POUR_HOME/field_presets.json`). User-curated, atomic-replaced on save, separate from module-level `presets.json`.
+
+__Keys (inside the composite overlay)__:
+
+| Key | Action |
+|---|---|
+| `s` | Save current rows as a named preset. Opens a name + description prompt. Empty editors are rejected with a status message. |
+| `l` | Open the load picker. Up/Down navigate, Enter applies, `Ctrl+D` deletes, Esc cancels. |
+| `p` | Quick-cycle to the next saved preset. Wraps; no modal. |
+
+__Apply behaviour__: Always replaces all existing rows silently — no confirmation prompt. The composite overlay shows `preset: <name>` as a subtitle once a preset has been applied so the active selection is visible.
+
+__Schema drift__: If `sub_fields` changed since the preset was saved (column added or removed), each saved row is right-padded with empty strings or truncated to match the current sub-field count on apply. The status line reads "preset shape adjusted to current schema" so the change is visible; the on-disk preset is not rewritten — re-save with `s` to clean it up.
 
 ### Template fields and `allow_create`
 

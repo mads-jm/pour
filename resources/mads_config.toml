@@ -304,14 +304,14 @@ name = "duration_s"
 field_type = "number"
 prompt = "Duration (s)"
 
-# Water temperature — relevant for Pour Over and Immersion methods
+# Water temperature — relevant for Pour Over, Immersion, and Espresso methods
 [[modules.coffee.fields]]
 name = "water_temp_c"
 field_type = "number"
 prompt = "Water temp (°C)"
 default = "96"
 target = "frontmatter"
-show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion", "Espresso"] }
 
 # Filter — paper/cloth/metal variants for filtered brews. Novel values typed
 # at capture time persist to this list via `allow_create`.
@@ -479,6 +479,13 @@ prompt = "Origin"
 options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen"]
 # Typing a novel value at capture time appends it to this list and persists
 # to config.toml so it's available next session.
+allow_create = true
+
+[[templates.bean.fields]]
+name = "varietal"
+field_type = "static_select"
+prompt = "Varietal (optional)"
+options = ["Typica", "Bourbon", "Caturra", "Catuai", "Geisha", "SL28", "SL34", "Heirloom", "Pacamara"]
 allow_create = true
 
 [[templates.bean.fields]]

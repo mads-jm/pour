@@ -22,16 +22,36 @@ pour              # open the dashboard
 
 ## Install
 
-```bash
-# From source
-cargo build --release
-# Binary is at target/release/pour - put it on your PATH
+**Prebuilt binary (recommended)**
 
-# Or install directly
-cargo install --path .
+Linux / macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mads-jm/pour/main/install.sh | sh
 ```
 
-Requires Rust 2024 edition. No other system dependencies - Obsidian Local REST API is optional.
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/mads-jm/pour/main/install.ps1 | iex
+```
+
+The installer downloads the latest release from GitHub, places the binary at `~/.local/bin/pour` (Unix) or `%LOCALAPPDATA%\Programs\pour\pour.exe` (Windows), bundles the `resources/` folder alongside (sample configs, presets, AI-agent reference), and adds it to your PATH. Pin a specific version: `curl ... | sh -s -- 0.2.2` on Unix, or `$env:POUR_VERSION = '0.2.2'; irm ... | iex` on Windows.
+
+**From crates.io** (requires Rust toolchain):
+
+```bash
+cargo install --git https://github.com/mads-jm/pour
+```
+
+**From source**:
+
+```bash
+cargo build --release
+# Binary is at target/release/pour
+```
+
+Requires Rust 2024 edition. No other system dependencies — Obsidian Local REST API is optional.
 
 ## Quick Start
 
@@ -57,6 +77,7 @@ All Pour state lives under `~/.pour/` (override with `POUR_HOME`):
   config.toml
   secrets.toml
   presets.json
+  field_presets.json
   cache/
     state.json
     history.jsonl
@@ -183,6 +204,18 @@ Save and recall named field-value sets per module.
 | `Ctrl+Left/Right` | Reorder presets |
 
 Fields with `preset_exclude = true` are skipped during save and apply - useful for notes or observations that change every entry.
+
+### Per-field presets (composite_array)
+
+Composite-array fields like `recipe` or `pressure_profile` carry their own preset list, scoped per `module.field`, so a "Hoffmann 4:6" recipe can be replayed without touching the rest of the form. Presets live in `~/.pour/field_presets.json` and only surface inside the composite editor overlay.
+
+| Key (inside the composite overlay) | Action |
+|-----|--------|
+| `s` | Save current rows as a named preset |
+| `l` | Open the load picker (Up/Down · Enter · `Ctrl+D` delete · Esc) |
+| `p` | Quick-cycle to the next saved preset |
+
+Apply replaces the current rows silently. If `sub_fields` were added or removed since the preset was saved, rows are padded or truncated to match the current schema.
 
 ## Transport
 
