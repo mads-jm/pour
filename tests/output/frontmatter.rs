@@ -2,13 +2,16 @@ use pour::config::Config;
 use pour::output::FrontmatterComposite;
 use pour::output::frontmatter::generate_frontmatter;
 
+/// Fixed test date — avoids any real clock call in frontmatter unit tests.
+const TEST_DATE: &str = "2026-01-15";
+
 #[test]
 fn basic_frontmatter_with_auto_date() {
     let fields = vec![
         ("brew_method".to_string(), "V60".to_string(), false),
         ("rating".to_string(), "4".to_string(), false),
     ];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(result.starts_with("---\n"), "should start with ---");
     assert!(result.ends_with("---\n"), "should end with ---");
@@ -33,7 +36,7 @@ fn explicit_date_is_preserved_and_first() {
         ("rating".to_string(), "5".to_string(), false),
         ("date".to_string(), "2025-01-15".to_string(), false),
     ];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     let lines: Vec<&str> = result.lines().collect();
     assert_eq!(
@@ -51,7 +54,7 @@ fn empty_values_are_skipped() {
         ("title".to_string(), "Hello".to_string(), false),
         ("empty_field".to_string(), String::new(), false),
     ];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(
         !result.contains("empty_field"),
@@ -70,7 +73,7 @@ fn special_chars_are_quoted() {
         "Ethiopia: Yirgacheffe".to_string(),
         false,
     )];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(
         result.contains(r#"origin: "Ethiopia: Yirgacheffe""#),
@@ -86,7 +89,7 @@ fn comma_separated_becomes_yaml_list() {
         "coffee, review, morning".to_string(),
         true,
     )];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(result.contains("tags:\n"), "should start a YAML list");
     assert!(
@@ -111,7 +114,7 @@ fn comma_separated_items_with_special_chars_are_quoted() {
         "good: flavor, bad: aftertaste".to_string(),
         true,
     )];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(
         result.contains("  - \"good: flavor\""),
@@ -129,7 +132,7 @@ fn all_empty_fields_still_produces_date() {
         ("a".to_string(), String::new(), false),
         ("b".to_string(), String::new(), false),
     ];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(result.starts_with("---\n"));
     assert!(result.ends_with("---\n"));
@@ -185,7 +188,7 @@ fn composite_frontmatter_sequence_of_mappings() {
     ];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&[], &composites);
+    let result = generate_frontmatter(&[], &composites, TEST_DATE);
 
     assert!(result.contains("recipe:"), "should have recipe key");
     assert!(result.contains("  - pour: 50"), "first row pour");
@@ -212,7 +215,7 @@ fn composite_numbers_serialize_unquoted() {
     ]];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&[], &composites);
+    let result = generate_frontmatter(&[], &composites, TEST_DATE);
 
     // Numbers should NOT be quoted
     assert!(result.contains("pour: 42"), "number should be unquoted");
@@ -238,7 +241,7 @@ fn composite_mixed_with_scalar_fields() {
     )];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&scalars, &composites);
+    let result = generate_frontmatter(&scalars, &composites, TEST_DATE);
 
     assert!(
         result.contains("bean: Ethiopian Yirgacheffe"),
@@ -254,7 +257,7 @@ fn composite_mixed_with_scalar_fields() {
 fn yaml_reserved_bare_words_are_quoted() {
     for word in &["true", "false", "null", "yes", "no", "on", "off"] {
         let fields = vec![("flag".to_string(), word.to_string(), false)];
-        let result = generate_frontmatter(&fields, &[]);
+        let result = generate_frontmatter(&fields, &[], TEST_DATE);
         assert!(
             result.contains(&format!("flag: \"{word}\"")),
             "bare word '{word}' should be quoted, got: {result}"
@@ -266,7 +269,7 @@ fn yaml_reserved_bare_words_are_quoted() {
 fn yaml_reserved_bare_words_case_insensitive() {
     for word in &["True", "FALSE", "Null", "YES", "NO", "On", "OFF"] {
         let fields = vec![("flag".to_string(), word.to_string(), false)];
-        let result = generate_frontmatter(&fields, &[]);
+        let result = generate_frontmatter(&fields, &[], TEST_DATE);
         assert!(
             result.contains(&format!("flag: \"{word}\"")),
             "bare word '{word}' (mixed-case) should be quoted, got: {result}"
@@ -278,7 +281,7 @@ fn yaml_reserved_bare_words_case_insensitive() {
 fn numeric_looking_strings_are_quoted() {
     for num in &["42", "3.14", "-7", "1e10", "0.0"] {
         let fields = vec![("val".to_string(), num.to_string(), false)];
-        let result = generate_frontmatter(&fields, &[]);
+        let result = generate_frontmatter(&fields, &[], TEST_DATE);
         assert!(
             result.contains(&format!("val: \"{num}\"")),
             "numeric string '{num}' should be quoted, got: {result}"
@@ -289,7 +292,7 @@ fn numeric_looking_strings_are_quoted() {
 #[test]
 fn newline_in_value_is_escaped() {
     let fields = vec![("note".to_string(), "line one\nline two".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     // The literal newline must be replaced with \n inside the quoted string.
     assert!(
         result.contains(r#"note: "line one\nline two""#),
@@ -309,7 +312,7 @@ fn newline_in_value_is_escaped() {
 #[test]
 fn carriage_return_in_value_is_escaped() {
     let fields = vec![("note".to_string(), "line one\rline two".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains(r#"note: "line one\rline two""#),
         "carriage return should be escaped, got: {result}"
@@ -319,7 +322,7 @@ fn carriage_return_in_value_is_escaped() {
 #[test]
 fn backslash_in_value_is_escaped() {
     let fields = vec![("path".to_string(), r"C:\Users\Joe".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     // The single backslash must be doubled inside the quoted YAML string.
     assert!(
         result.contains(r#"path: "C:\\Users\\Joe""#),
@@ -333,7 +336,7 @@ fn backslash_before_double_quote_ordering() {
     // Correct output: "C:\\\"file\""  — backslash doubled, quote escaped.
     // Wrong (if order reversed): "C:\"\\file\"" etc.
     let fields = vec![("v".to_string(), "C:\\\"file\"".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains(r#"v: "C:\\\"file\"""#),
         "backslash-then-quote ordering must be correct, got: {result}"
@@ -346,7 +349,7 @@ fn composite_empty_rows_skipped() {
     let rows: Vec<Vec<String>> = vec![];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&[], &composites);
+    let result = generate_frontmatter(&[], &composites, TEST_DATE);
 
     assert!(
         !result.contains("recipe:"),
@@ -359,7 +362,7 @@ fn composite_empty_rows_skipped() {
 #[test]
 fn value_starting_with_dash_is_quoted() {
     let fields = vec![("mood".to_string(), "-negative".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("mood: \"-negative\""),
         "value starting with dash should be quoted, got: {result}"
@@ -369,7 +372,7 @@ fn value_starting_with_dash_is_quoted() {
 #[test]
 fn value_with_embedded_quotes_escaped() {
     let fields = vec![("title".to_string(), "He said \"hello\"".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains(r#"title: "He said \"hello\"""#),
         "embedded quotes should be escaped, got: {result}"
@@ -379,7 +382,7 @@ fn value_with_embedded_quotes_escaped() {
 #[test]
 fn value_with_hash_is_quoted() {
     let fields = vec![("label".to_string(), "Coffee #3".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("label: \"Coffee #3\""),
         "hash should trigger quoting, got: {result}"
@@ -389,7 +392,7 @@ fn value_with_hash_is_quoted() {
 #[test]
 fn value_with_exclamation_is_quoted() {
     let fields = vec![("label".to_string(), "Wow!".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("label: \"Wow!\""),
         "exclamation should trigger quoting, got: {result}"
@@ -399,7 +402,7 @@ fn value_with_exclamation_is_quoted() {
 #[test]
 fn value_with_at_sign_is_quoted() {
     let fields = vec![("contact".to_string(), "user@email".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("contact: \"user@email\""),
         "@ should trigger quoting, got: {result}"
@@ -409,7 +412,7 @@ fn value_with_at_sign_is_quoted() {
 #[test]
 fn multiple_special_chars_quoted() {
     let fields = vec![("desc".to_string(), "a: b & c".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("desc: \"a: b & c\""),
         "multiple special chars should be quoted, got: {result}"
@@ -419,7 +422,7 @@ fn multiple_special_chars_quoted() {
 #[test]
 fn single_item_not_treated_as_list() {
     let fields = vec![("tag".to_string(), "coffee".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
     assert!(
         result.contains("tag: coffee"),
         "single item without comma-space should be scalar, got: {result}"
@@ -434,7 +437,7 @@ fn composite_with_empty_cells_skips_them() {
     let rows = vec![vec!["50".to_string(), String::new(), String::new()]];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("recipe".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&[], &composites);
+    let result = generate_frontmatter(&[], &composites, TEST_DATE);
     assert!(
         result.contains("  - pour: 50"),
         "non-empty cell should appear"
@@ -474,7 +477,7 @@ prompt = "Description"
     let rows = vec![vec!["A: B".to_string()]];
     let composites: Vec<FrontmatterComposite<'_>> = vec![("items".to_string(), &subs, rows)];
 
-    let result = generate_frontmatter(&[], &composites);
+    let result = generate_frontmatter(&[], &composites, TEST_DATE);
     assert!(
         result.contains("desc: \"A: B\""),
         "composite text with colon should be quoted, got: {result}"
@@ -487,7 +490,7 @@ prompt = "Description"
 fn frontmatter_comma_value_is_literal_by_default() {
     // list = false (default): comma-separated value must be a single quoted scalar, not a list.
     let fields = vec![("tags".to_string(), "tag1, tag2".to_string(), false)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     // Should be a scalar line, not a YAML sequence.
     assert!(
@@ -509,7 +512,7 @@ fn frontmatter_comma_value_is_literal_by_default() {
 fn frontmatter_comma_value_splits_when_list_true() {
     // list = true: comma-separated value must be emitted as a YAML sequence.
     let fields = vec![("tags".to_string(), "tag1, tag2".to_string(), true)];
-    let result = generate_frontmatter(&fields, &[]);
+    let result = generate_frontmatter(&fields, &[], TEST_DATE);
 
     assert!(
         result.contains("tags:\n"),

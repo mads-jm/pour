@@ -31,10 +31,14 @@ prompt = "Title"
 }
 
 fn test_state(mode: TransportMode) -> AppState {
+    use pour::server::idempotency::IdempotencyCache;
+    use pour::transport::{Transport, fs::FsWriter};
     AppState {
         transport_mode: mode,
         token: "test-token".to_string(),
         config: Arc::new(minimal_config()),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        idempotency: Arc::new(IdempotencyCache::new()),
     }
 }
 

@@ -1,11 +1,12 @@
 pub mod dto;
 pub mod handlers;
+pub mod idempotency;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{Router, middleware, routing::get};
+use axum::{Router, middleware, routing::get, routing::post};
 use axum::extract::{Request, State};
 use axum::http::{HeaderValue, header};
 use axum::middleware::Next;
@@ -16,6 +17,7 @@ use crate::config::Config;
 use crate::transport::{Transport, TransportMode};
 
 use dto::{error_codes, error_response};
+use idempotency::IdempotencyCache;
 
 /// Shared state threaded through every handler.
 #[derive(Clone)]
@@ -25,6 +27,10 @@ pub struct AppState {
     pub token: String,
     /// Full config, shared across handlers (read-only after startup).
     pub config: Arc<Config>,
+    /// Transport — Arc-wrapped for cheap clone across handler invocations.
+    pub transport: Arc<Transport>,
+    /// In-memory idempotency cache for POST /api/v1/submit/{module} (§9).
+    pub idempotency: Arc<IdempotencyCache>,
 }
 
 /// Constant-time token comparison. Returns true iff `candidate == secret`.
@@ -150,10 +156,13 @@ pub async fn run(
     port: u16,
     token: String,
 ) -> Result<()> {
+    let transport_mode = transport.mode();
     let state = AppState {
-        transport_mode: transport.mode(),
+        transport_mode,
         token,
         config: Arc::new(config),
+        transport: Arc::new(transport),
+        idempotency: Arc::new(IdempotencyCache::new()),
     };
 
     // Auth middleware is applied to known routes only via route_layer.
@@ -161,9 +170,20 @@ pub async fn run(
     // no_store_middleware is the outermost layer: it wraps everything on the
     // api subrouter (auth rejections, method-not-allowed, and handler responses)
     // so that Cache-Control: no-store appears on every /api/* response (§12).
+    //
+    // Body size limit: submit routes get 1 MiB (§13); all other routes get the
+    // axum default (which we layer-override to 16 KiB globally then extend per route).
+    // DefaultBodyLimit is applied per-route via layer() on the submit routes.
     let api = Router::new()
         .route("/api/v1/health", get(handlers::health::handler))
         .route("/api/v1/config", get(handlers::config::handler))
+        .route("/api/v1/options/:module/:field", get(handlers::options::handler))
+        .route(
+            "/api/v1/submit/:module",
+            post(handlers::submit::handler)
+                .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024)),
+        )
+        .route("/api/v1/captures/:history_id", get(handlers::captures::handler))
         .method_not_allowed_fallback(method_not_allowed_handler)
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .layer(middleware::from_fn(no_store_middleware));

@@ -1,6 +1,5 @@
 use crate::config::{SubFieldConfig, SubFieldType};
 use crate::output::FrontmatterComposite;
-use chrono::Local;
 
 /// Characters that require a YAML value to be quoted.
 const YAML_SPECIAL: &[char] = &[
@@ -12,6 +11,11 @@ const YAML_SPECIAL: &[char] = &[
 const YAML_SPECIAL_START: &[char] = &['-'];
 
 /// Generate YAML frontmatter from scalar key-value pairs and composite fields.
+///
+/// `date_str` is the pre-formatted `YYYY-MM-DD` date string derived from the
+/// caller's `now` timestamp (server: `captured_at`-derived; TUI: `Local::now()`).
+/// This avoids calling `Local::now()` internally so the frontmatter date honours
+/// the `captured_at` contract (§10).
 ///
 /// Rules:
 /// - Empty values are skipped.
@@ -25,6 +29,7 @@ const YAML_SPECIAL_START: &[char] = &['-'];
 pub fn generate_frontmatter(
     fields: &[(String, String, bool)],
     composites: &[FrontmatterComposite<'_>],
+    date_str: &str,
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
 
@@ -33,8 +38,7 @@ pub fn generate_frontmatter(
 
     // Date always comes first.
     if !has_date {
-        let today = Local::now().format("%Y-%m-%d").to_string();
-        lines.push(format!("date: {today}"));
+        lines.push(format!("date: {date_str}"));
     }
 
     for (key, value, list) in fields {

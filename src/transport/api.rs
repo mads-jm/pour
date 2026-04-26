@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crate::transport::TransportReadError;
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::Client;
 use serde::Deserialize;
@@ -295,6 +296,49 @@ impl ApiClient {
         resp.json()
             .await
             .context("API: failed to parse directory listing JSON")
+    }
+
+    /// Read a single file at `vault_path` and return its UTF-8 content.
+    ///
+    /// Sends a GET to `/vault/{percent-encoded-path}`.
+    ///
+    /// Error mapping (typed, no substring matching):
+    /// - HTTP 404 → `TransportReadError::NotFound`
+    /// - Connect / timeout errors → `TransportReadError::Unreachable`
+    /// - Other HTTP errors → `TransportReadError::Other`
+    pub async fn read_file(&self, vault_path: &str) -> std::result::Result<String, TransportReadError> {
+        let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
+
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .header("Accept", "text/markdown")
+            .send()
+            .await
+            .map_err(|e| {
+                // reqwest connect/timeout errors carry `is_connect()` or `is_timeout()`.
+                if e.is_connect() || e.is_timeout() {
+                    TransportReadError::Unreachable(e.to_string())
+                } else {
+                    TransportReadError::Other(e.to_string())
+                }
+            })?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(TransportReadError::NotFound);
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(TransportReadError::Other(format!(
+                "API read_file failed ({status}): {body}"
+            )));
+        }
+
+        resp.text()
+            .await
+            .map_err(|e| TransportReadError::Other(e.to_string()))
     }
 
     /// Execute an Obsidian command by its ID.

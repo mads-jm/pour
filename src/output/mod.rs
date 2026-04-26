@@ -5,6 +5,7 @@ use crate::config::{FieldTarget, FieldType, ModuleConfig, SubFieldConfig, WriteM
 use crate::transport::Transport;
 use crate::visibility::visible_field_indices;
 use anyhow::{Result, bail};
+use chrono::DateTime;
 use std::collections::{HashMap, HashSet};
 use unicode_width::UnicodeWidthStr;
 
@@ -15,6 +16,10 @@ pub type CompositeData = HashMap<String, Vec<Vec<String>>>;
 /// frontmatter and an optional body, then write it via the transport.
 ///
 /// Returns the resolved vault-relative path of the created file.
+///
+/// `now` is passed explicitly so that `captured_at`-derived timestamps from
+/// the server are threaded through correctly, while the TUI passes `Local::now()`.
+#[allow(clippy::too_many_arguments)]
 pub async fn write_create(
     transport: &Transport,
     module: &ModuleConfig,
@@ -23,6 +28,7 @@ pub async fn write_create(
     date_format: Option<&str>,
     callout_overrides: &HashMap<String, String>,
     callout_titles: &HashMap<String, String>,
+    now: DateTime<chrono::Local>,
 ) -> Result<String> {
     if module.mode != WriteMode::Create {
         bail!("write_create called on a non-create module");
@@ -45,11 +51,12 @@ pub async fn write_create(
 
     if module.daily_link == Some(true) && !fm_fields.iter().any(|(k, _, _)| k == "daily") {
         let date_fmt = date_format.unwrap_or("%Y%m%d");
-        let daily = format!("[[{}]]", chrono::Local::now().format(date_fmt));
+        let daily = format!("[[{}]]", now.format(date_fmt));
         fm_fields.push(("daily".to_string(), daily, false));
     }
 
-    let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites);
+    let date_str = now.format("%Y-%m-%d").to_string();
+    let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites, &date_str);
 
     let body = body_parts.join("\n\n");
 
@@ -60,12 +67,11 @@ pub async fn write_create(
         content.push('\n');
     }
 
-    let mut vault_path = template::render_path(&module.path, field_values, date_format);
+    let mut vault_path = template::render_path(&module.path, field_values, date_format, now);
 
     // If the resolved path has no file extension, treat it as a directory
     // and auto-generate a timestamped filename for uniqueness.
     if !vault_path.contains('.') {
-        let now = chrono::Local::now();
         let date_fmt = date_format.unwrap_or("%Y%m%d");
         let date_str = now.format(date_fmt).to_string();
         let time_str = now.format("%H-%M-%S").to_string();
@@ -86,6 +92,10 @@ pub async fn write_create(
 /// under the configured heading via the transport.
 ///
 /// Returns the resolved vault-relative path of the target file.
+///
+/// `now` is passed explicitly so that `captured_at`-derived timestamps from
+/// the server are threaded through correctly, while the TUI passes `Local::now()`.
+#[allow(clippy::too_many_arguments)]
 pub async fn write_append(
     transport: &Transport,
     module: &ModuleConfig,
@@ -94,6 +104,7 @@ pub async fn write_append(
     date_format: Option<&str>,
     callout_overrides: &HashMap<String, String>,
     callout_titles: &HashMap<String, String>,
+    now: DateTime<chrono::Local>,
 ) -> Result<String> {
     if module.mode != WriteMode::Append {
         bail!("write_append called on a non-append module");
@@ -109,6 +120,7 @@ pub async fn write_append(
             composite_data,
             callout_overrides,
             callout_titles,
+            now,
         ),
         None => {
             // Fallback: join all body-target fields with newlines.
@@ -123,7 +135,7 @@ pub async fn write_append(
         }
     };
 
-    let vault_path = template::render_path(&module.path, field_values, date_format);
+    let vault_path = template::render_path(&module.path, field_values, date_format, now);
     transport
         .append_under_heading(
             &vault_path,

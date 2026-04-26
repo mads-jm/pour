@@ -686,8 +686,12 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     }
     let transport_mode = app.transport.mode();
 
+    // Capture current time once so all engine calls use the same instant.
+    let now_local = chrono::Local::now();
+    let now_utc = chrono::Utc::now();
+
     // Auto-create bare notes for novel dynamic_select values (best-effort, before main write)
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = now_local.format("%Y-%m-%d").to_string();
     let auto_created = pour::autocreate::run(
         module,
         &field_values,
@@ -711,6 +715,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 date_fmt,
                 &callout_overrides,
                 &callout_titles,
+                now_local,
             )
             .await
         }
@@ -723,6 +728,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 date_fmt,
                 &callout_overrides,
                 &callout_titles,
+                now_local,
             )
             .await
         }
@@ -737,8 +743,8 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 .first()
                 .and_then(|f| field_values.get(&f.name))
                 .map(|v| v.as_str());
-            let history_warning = match app.history.record(&module_key, &vault_path, first_field) {
-                Ok(()) => None,
+            let history_warning = match app.history.record(&module_key, &vault_path, first_field, now_utc) {
+                Ok(_id) => None,
                 Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
             };
 
@@ -798,10 +804,11 @@ async fn handle_create_from_template(
         }
     };
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now_local = chrono::Local::now();
+    let today = now_local.format("%Y-%m-%d").to_string();
 
     // Resolve the vault path from the template pattern
-    let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name) {
+    let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name, now_local) {
         Some(p) => p,
         None => {
             if let Some(ref mut fs) = app.form_state

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Error envelope (§5.2)
@@ -393,4 +393,126 @@ pub fn build_config_response(config: &Config, transport_mode: &'static str) -> C
             .clone()
             .unwrap_or_else(|| "0.1.0".to_string()),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Error envelope with structured `details` (§5.2)
+// ---------------------------------------------------------------------------
+
+/// Error envelope that carries structured `details` alongside the standard
+/// `code` + `message` fields.
+///
+/// `details` is `serde_json::Value` so each endpoint can embed arbitrary
+/// structures (field error lists, engine error strings, etc.) without
+/// requiring a new Rust type per call site.
+pub fn error_response_with_details(
+    status: StatusCode,
+    code: &str,
+    message: &str,
+    details: serde_json::Value,
+) -> Response {
+    #[derive(Serialize)]
+    struct Inner {
+        code: String,
+        message: String,
+        details: serde_json::Value,
+    }
+    #[derive(Serialize)]
+    struct Envelope {
+        error: Inner,
+    }
+    (
+        status,
+        Json(Envelope {
+            error: Inner {
+                code: code.to_string(),
+                message: message.to_string(),
+                details,
+            },
+        }),
+    )
+        .into_response()
+}
+
+// Add a read_error code constant.
+pub mod extra_error_codes {
+    pub const READ_ERROR: &str = "read_error";
+    pub const CAPTURED_AT_OUT_OF_RANGE: &str = "captured_at_out_of_range";
+    pub const AUTO_CREATE_INPUT_REQUIRED: &str = "auto_create_input_required";
+    pub const IDEMPOTENCY_REPLAY_IN_FLIGHT: &str = "idempotency_replay_in_flight";
+}
+
+// ---------------------------------------------------------------------------
+// Submit request DTO (§6.4)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitRequest {
+    pub field_values: HashMap<String, String>,
+    #[serde(default)]
+    pub composite_data: HashMap<String, Vec<Vec<String>>>,
+    #[serde(default)]
+    pub callout_overrides: HashMap<String, String>,
+    #[serde(default)]
+    pub callout_titles: HashMap<String, String>,
+    #[serde(default)]
+    pub auto_create_inputs: HashMap<String, HashMap<String, String>>,
+    pub captured_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub client_id: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Submit response DTO (§6.4)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct AutoCreatedDto {
+    pub field: String,
+    pub value: String,
+    pub vault_path: String,
+    pub templated: bool,
+}
+
+#[derive(Serialize)]
+pub struct PostCreateCommandDto {
+    pub field: String,
+    pub command: String,
+    pub fired: bool,
+}
+
+#[derive(Serialize)]
+pub struct SubmitWarningDto {
+    pub code: &'static str,
+    /// The field name that triggered this warning, if applicable.
+    /// `None` (serializes to JSON `null`) for non-field warnings such as
+    /// history record failures.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    pub message: String,
+}
+
+#[derive(Serialize)]
+pub struct SubmitResponse {
+    pub vault_path: String,
+    pub transport_mode: &'static str,
+    pub auto_created: Vec<AutoCreatedDto>,
+    pub post_create_commands: Vec<PostCreateCommandDto>,
+    pub history_id: String,
+    pub captured_at: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<SubmitWarningDto>,
+}
+
+// ---------------------------------------------------------------------------
+// Captures response DTO (§6.6)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct CaptureResponse {
+    pub id: String,
+    pub module_key: String,
+    pub timestamp: String,
+    pub vault_path: String,
+    pub content: String,
+    pub transport_mode: &'static str,
 }

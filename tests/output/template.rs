@@ -35,7 +35,7 @@ fn no_overrides() -> HashMap<String, String> {
 #[test]
 fn render_path_substitutes_date_tokens() {
     let fields = HashMap::new();
-    let result = render_path("Journal/%Y/%Y-%m-%d.md", &fields, None);
+    let result = render_path("Journal/%Y/%Y-%m-%d.md", &fields, None, chrono::Local::now());
     let today = Local::now().format("%Y-%m-%d").to_string();
     let year = Local::now().format("%Y").to_string();
 
@@ -53,7 +53,7 @@ fn render_path_substitutes_date_tokens() {
 #[test]
 fn render_path_no_tokens_passes_through() {
     let fields = HashMap::new();
-    let result = render_path("static/path.md", &fields, None);
+    let result = render_path("static/path.md", &fields, None, chrono::Local::now());
     assert_eq!(result, "static/path.md");
 }
 
@@ -61,7 +61,7 @@ fn render_path_no_tokens_passes_through() {
 fn render_path_substitutes_field_placeholders() {
     let mut fields = HashMap::new();
     fields.insert("bean".to_string(), "Ethiopian".to_string());
-    let result = render_path("Coffee/{{bean}} %Y%m%d.md", &fields, None);
+    let result = render_path("Coffee/{{bean}} %Y%m%d.md", &fields, None, chrono::Local::now());
     let today = Local::now().format("%Y%m%d").to_string();
     assert_eq!(result, format!("Coffee/Ethiopian {today}.md"));
 }
@@ -69,7 +69,7 @@ fn render_path_substitutes_field_placeholders() {
 #[test]
 fn render_path_date_token_uses_vault_format() {
     let fields = HashMap::new();
-    let result = render_path("Daily/{{date}}.md", &fields, Some("%Y-%m-%d"));
+    let result = render_path("Daily/{{date}}.md", &fields, Some("%Y-%m-%d"), chrono::Local::now());
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Daily/{today}.md"));
 }
@@ -77,7 +77,7 @@ fn render_path_date_token_uses_vault_format() {
 #[test]
 fn render_path_date_token_uses_default_without_vault_format() {
     let fields = HashMap::new();
-    let result = render_path("Daily/{{date}}.md", &fields, None);
+    let result = render_path("Daily/{{date}}.md", &fields, None, chrono::Local::now());
     let today = Local::now().format("%Y%m%d").to_string();
     assert_eq!(result, format!("Daily/{today}.md"));
 }
@@ -85,7 +85,7 @@ fn render_path_date_token_uses_default_without_vault_format() {
 #[test]
 fn render_path_strips_unresolved_placeholders() {
     let fields = HashMap::new();
-    let result = render_path("Coffee/{{unknown}}.md", &fields, None);
+    let result = render_path("Coffee/{{unknown}}.md", &fields, None, chrono::Local::now());
     assert_eq!(result, "Coffee/.md");
 }
 
@@ -103,6 +103,7 @@ fn render_append_template_replaces_fields() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     assert_eq!(result, "Mood: happy | Hello world");
 }
@@ -118,6 +119,7 @@ fn render_append_template_special_time_token() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     let now = Local::now().format("%H:%M").to_string();
     assert!(
@@ -137,6 +139,7 @@ fn render_append_template_special_date_token() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Date: {today}"));
@@ -153,6 +156,7 @@ fn render_append_template_missing_field_left_as_is() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     assert_eq!(result, "Value: {{unknown}}");
 }
@@ -170,6 +174,7 @@ fn render_append_template_mixed_known_and_unknown() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     assert_eq!(result, "Alice said {{quote}}");
 }
@@ -189,6 +194,7 @@ fn render_append_template_realistic_journal() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     let now = Local::now().format("%H:%M").to_string();
@@ -239,6 +245,7 @@ fn render_append_template_callout_placeholder() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -259,6 +266,7 @@ fn render_append_template_callout_placeholder_without_type() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -275,7 +283,7 @@ fn render_path_percent_in_field_value_is_literal() {
     let mut fields = HashMap::new();
     fields.insert("title".to_string(), "Fixed 20% of bugs".to_string());
     // Template has no strftime tokens other than what's in the field value.
-    let result = render_path("Notes/{{title}}.md", &fields, None);
+    let result = render_path("Notes/{{title}}.md", &fields, None, chrono::Local::now());
     assert_eq!(
         result, "Notes/Fixed 20% of bugs.md",
         "percent in field value should be preserved literally, got: {result}"
@@ -286,7 +294,7 @@ fn render_path_percent_in_field_value_is_literal() {
 fn render_path_percent_in_field_value_with_strftime_tokens() {
     let mut fields = HashMap::new();
     fields.insert("tag".to_string(), "gain-5%".to_string());
-    let result = render_path("Log/%Y/{{tag}}.md", &fields, None);
+    let result = render_path("Log/%Y/{{tag}}.md", &fields, None, chrono::Local::now());
     let year = Local::now().format("%Y").to_string();
     assert_eq!(
         result,
@@ -307,6 +315,7 @@ fn render_append_template_percent_in_field_value_is_literal() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
     assert_eq!(
         result, "Note: Improved by 30% today",
@@ -377,6 +386,7 @@ fn render_append_template_composite_as_markdown_table() {
         &composites,
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(result.contains("Bean: Ethiopian"), "scalar field replaced");
@@ -430,6 +440,7 @@ fn render_append_template_hidden_field_placeholder_empty() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -461,6 +472,7 @@ fn render_append_template_visible_field_renders_normally() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert_eq!(
@@ -504,6 +516,7 @@ fn render_append_template_field_callout_wraps_value() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -533,6 +546,7 @@ fn render_append_template_field_callout_empty_value() {
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -557,6 +571,7 @@ fn render_append_template_callout_override_takes_precedence() {
         &no_composites(),
         &overrides,
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -585,6 +600,7 @@ fn render_append_template_field_callout_title_from_runtime() {
         &no_composites(),
         &no_overrides(),
         &titles,
+        chrono::Local::now(),
     );
 
     assert!(
@@ -628,6 +644,7 @@ callout_title = "Default Title"
         &no_composites(),
         &no_overrides(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     );
 
     assert!(
@@ -674,6 +691,7 @@ callout_title = "Default"
         &no_composites(),
         &no_overrides(),
         &titles,
+        chrono::Local::now(),
     );
 
     assert!(

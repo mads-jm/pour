@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crate::transport::TransportReadError;
 use std::path::PathBuf;
 
 use super::VaultEntry;
@@ -317,5 +318,28 @@ impl FsWriter {
 
         names.sort();
         Ok(names)
+    }
+
+    /// Read a single file at `relative_path` and return its UTF-8 content.
+    ///
+    /// Returns a typed `TransportReadError` so callers can distinguish
+    /// "not found" from other I/O errors without platform-specific string
+    /// matching (Windows and Unix error messages differ).
+    ///
+    /// Error mapping:
+    /// - File does not exist (`ErrorKind::NotFound`) → `TransportReadError::NotFound`
+    /// - Any other I/O error → `TransportReadError::Other`
+    pub fn read_file(&self, relative_path: &str) -> std::result::Result<String, TransportReadError> {
+        let full_path = self.resolve_path(relative_path);
+        std::fs::read_to_string(&full_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                TransportReadError::NotFound
+            } else {
+                TransportReadError::Other(format!(
+                    "FS: failed to read file {}: {e}",
+                    full_path.display()
+                ))
+            }
+        })
     }
 }

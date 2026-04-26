@@ -21,10 +21,14 @@ fn make_config(toml: &str) -> pour::config::Config {
 }
 
 fn make_state(config: pour::config::Config) -> AppState {
+    use pour::server::idempotency::IdempotencyCache;
+    use pour::transport::{Transport, fs::FsWriter};
     AppState {
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        idempotency: Arc::new(IdempotencyCache::new()),
     }
 }
 

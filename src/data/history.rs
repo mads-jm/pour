@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A single recorded capture event.
 ///
@@ -14,6 +15,12 @@ use std::path::{Path, PathBuf};
 /// (a dateless entry has no meaningful place in any time-based query).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
+    /// Opaque identifier in the form `<YYYYMMDDTHHmmss>-<module_key>`.
+    /// Used by the API to identify captures in `/api/v1/captures/{id}`.
+    /// Absent on legacy entries (pre-Step-C); callers should treat `None` as
+    /// meaning the entry predates the API and has no associated capture id.
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(default)]
     pub module_key: String,
     pub timestamp: DateTime<Utc>,
@@ -77,6 +84,14 @@ fn summary_version_default() -> u32 {
     1
 }
 
+/// Monotonically-increasing counter for within-millisecond id uniqueness.
+///
+/// When two `record()` calls arrive at the same millisecond (e.g. test fixtures
+/// or rapid concurrent PWA submits), the counter suffix prevents duplicate ids.
+/// The counter resets to 0 on process restart which is fine — the ms prefix
+/// already provides sufficient real-world uniqueness.
+static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 /// Manages the capture history log persisted at `~/.pour/cache/history.jsonl`.
 ///
 /// Write path: append a single JSON line per capture (O(1)).
@@ -125,15 +140,35 @@ impl History {
     }
 
     /// Record a successful capture and persist to disk.
+    ///
+    /// `at` is the canonical timestamp for this capture. The TUI passes
+    /// `Utc::now()`; the server passes the `captured_at`-derived UTC value
+    /// so that offline replays are dated correctly (contract §10).
+    ///
+    /// Returns the opaque `id` string assigned to the new entry.
     pub fn record(
         &mut self,
         module_key: &str,
         vault_path: &str,
         first_field: Option<&str>,
-    ) -> Result<()> {
+        at: DateTime<Utc>,
+    ) -> Result<String> {
+        // Build a collision-resistant id by appending milliseconds and a
+        // monotonic in-process counter.
+        //
+        // Format: YYYYMMDDTHHmmSSsss-<counter>-<module_key>
+        // - ms suffix: prevents same-second collisions under real concurrent load.
+        // - counter suffix: prevents same-millisecond collisions in tests or when
+        //   the same captured_at value is replayed (the counter resets on restart
+        //   but ms already handles real-world concurrent PWA submits).
+        // - Legacy entries (no ms/counter) remain uniquely findable — find_by_id
+        //   uses exact-string matching so old ids resolve correctly.
+        let seq = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = format!("{}-{}-{}", at.format("%Y%m%dT%H%M%S%3f"), seq, module_key);
         let entry = HistoryEntry {
+            id: Some(id.clone()),
             module_key: module_key.to_owned(),
-            timestamp: Utc::now(),
+            timestamp: at,
             vault_path: vault_path.to_owned(),
             first_field: first_field.map(|s| s.to_owned()),
         };
@@ -147,7 +182,7 @@ impl History {
         self.summary = compute_summary(&self.entries);
         let _ = write_summary(&summary_path(&self.path), &self.summary);
 
-        Ok(())
+        Ok(id)
     }
 
     /// Persist history to disk (full rewrite — used only for migration/tests).
@@ -165,6 +200,16 @@ impl History {
         // Also update summary
         let _ = write_summary(&summary_path(&self.path), &self.summary);
         Ok(())
+    }
+
+    /// All entries, oldest first.
+    pub fn entries(&self) -> &[HistoryEntry] {
+        &self.entries
+    }
+
+    /// Find an entry by its opaque `id` string.
+    pub fn find_by_id(&self, id: &str) -> Option<&HistoryEntry> {
+        self.entries.iter().find(|e| e.id.as_deref() == Some(id))
     }
 
     /// Most recent entry, if any.
