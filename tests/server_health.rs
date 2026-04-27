@@ -31,6 +31,7 @@ prompt = "Title"
 }
 
 fn test_state(mode: TransportMode) -> AppState {
+    use pour::data::presets::Presets;
     use pour::server::idempotency::IdempotencyCache;
     use pour::transport::{Transport, fs::FsWriter};
     AppState {
@@ -39,6 +40,7 @@ fn test_state(mode: TransportMode) -> AppState {
         config: Arc::new(minimal_config()),
         transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
         idempotency: Arc::new(IdempotencyCache::new()),
+        presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
 }
 

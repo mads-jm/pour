@@ -21,6 +21,7 @@ fn make_config(toml: &str) -> pour::config::Config {
 }
 
 fn make_state(config: pour::config::Config) -> AppState {
+    use pour::data::presets::Presets;
     use pour::server::idempotency::IdempotencyCache;
     use pour::transport::{Transport, fs::FsWriter};
     AppState {
@@ -29,6 +30,7 @@ fn make_state(config: pour::config::Config) -> AppState {
         config: Arc::new(config),
         transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
         idempotency: Arc::new(IdempotencyCache::new()),
+        presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
 }
 

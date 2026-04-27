@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a6b5a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <title>Pour</title>
+</head>
+<body>
+
+  <header>
+    <h1>Pour</h1>
+    <span id="status-pill">connecting...</span>
+  </header>
+
+  <!-- Token gate: shown when no token is available -->
+  <main id="token-gate">
+    <h2>Token Required</h2>
+    <p>
+      Open Pour on your desktop and run <strong>pour serve</strong>.
+      Scan the QR code with your phone — the URL carries your token.
+    </p>
+    <p style="margin-top:12px; font-size:0.8rem; color: var(--text-muted);">
+      Or open: <code>http://&lt;desktop-ip&gt;:8421/?token=&lt;your-token&gt;</code>
+    </p>
+  </main>
+
+  <!-- Dashboard: module tiles -->
+  <main id="dashboard" hidden>
+    <h2>Modules</h2>
+    <div class="module-grid" id="module-grid"></div>
+  </main>
+
+  <!-- Form view -->
+  <main id="form" hidden>
+    <h2>New Entry</h2>
+    <div class="form-module-title" id="form-title"></div>
+    <form id="capture-form" novalidate></form>
+  </main>
+
+  <!-- Summary view -->
+  <main id="summary" hidden>
+    <h2>Poured</h2>
+    <div class="summary-card">
+      <div id="summary-message"></div>
+      <div class="vault-path" id="summary-path"></div>
+      <span class="transport-badge" id="summary-transport"></span>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary" id="btn-pour-another">Pour Another</button>
+      <button class="btn-secondary" id="btn-dashboard">Dashboard</button>
+    </div>
+  </main>
+
+  <!-- Toast / error region -->
+  <div id="toast" hidden></div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

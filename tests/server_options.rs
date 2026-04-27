@@ -14,6 +14,7 @@ use pour::transport::TransportMode;
 // ---------------------------------------------------------------------------
 
 fn make_state_with_fs(config: pour::config::Config, base_path: &str) -> AppState {
+    use pour::data::presets::Presets;
     use pour::server::idempotency::IdempotencyCache;
     use pour::transport::{Transport, fs::FsWriter};
     AppState {
@@ -24,6 +25,7 @@ fn make_state_with_fs(config: pour::config::Config, base_path: &str) -> AppState
             std::path::PathBuf::from(base_path),
         ))),
         idempotency: Arc::new(IdempotencyCache::new()),
+        presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
 }
 

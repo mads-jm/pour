@@ -6,20 +6,156 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{Router, middleware, routing::get, routing::post};
-use axum::extract::{Request, State};
-use axum::http::{HeaderValue, header};
+use axum::{Router, middleware, routing::get, routing::post, routing::put};
+use axum::extract::{Path, Request, State};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use subtle::ConstantTimeEq;
+use tokio::sync::Mutex;
+
+// ---------------------------------------------------------------------------
+// Static asset embedding (rust-embed)
+// ---------------------------------------------------------------------------
+
+/// All files under `web/` at the repo root are embedded at compile time.
+/// Served unauthenticated at `/`, `/app.js`, `/styles.css`, `/manifest.json`,
+/// `/favicon.ico`, and `/static/{path}` (contract §3, §12).
+#[derive(rust_embed::RustEmbed)]
+#[folder = "web/"]
+struct StaticAssets;
+
+/// Map a file extension to its Content-Type.
+fn content_type_for(path: &str) -> &'static str {
+    if path.ends_with(".html") {
+        "text/html; charset=utf-8"
+    } else if path.ends_with(".js") {
+        "application/javascript; charset=utf-8"
+    } else if path.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if path.ends_with(".json") {
+        "application/json; charset=utf-8"
+    } else if path.ends_with(".svg") {
+        "image/svg+xml"
+    } else if path.ends_with(".ico") {
+        "image/x-icon"
+    } else if path.ends_with(".png") {
+        "image/png"
+    } else if path.ends_with(".webmanifest") {
+        "application/manifest+json"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+/// Cache-Control header value for a static asset (contract §12).
+///
+/// - Shell HTML and manifest get `no-cache, max-age=0, must-revalidate`
+///   (always revalidate; service worker handles offline — Phase 2).
+/// - Everything else (JS, CSS, icons) gets `public, max-age=300, must-revalidate`
+///   (5-minute browser cache; short enough to see rapid dev-cycle changes).
+fn cache_control_for(path: &str) -> &'static str {
+    if path.ends_with(".html") || path.ends_with(".webmanifest") || path == "manifest.json" || path == "sw.js" {
+        "no-cache, max-age=0, must-revalidate"
+    } else {
+        "public, max-age=300, must-revalidate"
+    }
+}
+
+/// Serve a single embedded file by asset path (relative to `web/`).
+///
+/// Returns 404 plain text (NOT the JSON error envelope — static assets are not API resources).
+fn serve_asset(asset_path: &str) -> Response {
+    match StaticAssets::get(asset_path) {
+        Some(file) => {
+            let ct = content_type_for(asset_path);
+            let cc = cache_control_for(asset_path);
+            let body: Vec<u8> = file.data.into_owned();
+            (
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, ct),
+                    (header::CACHE_CONTROL, cc),
+                ],
+                body,
+            )
+                .into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "404 Not Found",
+        )
+            .into_response(),
+    }
+}
+
+/// Handler for `GET /` — serves `index.html`.
+pub async fn index_handler() -> Response {
+    serve_asset("index.html")
+}
+
+/// Handler for `GET /app.js`.
+pub async fn app_js_handler() -> Response {
+    serve_asset("app.js")
+}
+
+/// Handler for `GET /styles.css`.
+pub async fn styles_css_handler() -> Response {
+    serve_asset("styles.css")
+}
+
+/// Handler for `GET /manifest.json`.
+pub async fn manifest_handler() -> Response {
+    serve_asset("manifest.json")
+}
+
+/// Handler for `GET /favicon.ico`.
+pub async fn favicon_handler() -> Response {
+    serve_asset("favicon.ico")
+}
+
+/// Handler for `GET /static/*path` — fallback for any other embedded asset.
+///
+/// Axum's wildcard `*path` captures include a leading `/`; strip it before
+/// looking up the embedded asset so that `/static/icon.svg` resolves to `icon.svg`.
+pub async fn static_asset_handler(Path(path): Path<String>) -> Response {
+    let asset_path = path.trim_start_matches('/');
+    serve_asset(asset_path)
+}
 
 use crate::config::Config;
+use crate::data::presets::Presets;
 use crate::transport::{Transport, TransportMode};
 
 use dto::{error_codes, error_response};
 use idempotency::IdempotencyCache;
 
+/// Returns `true` if the error comes from axum/hyper's body-length limit.
+///
+/// # Documented fragility
+/// Axum's `DefaultBodyLimit` produces a `LengthLimitError` when the cap is
+/// exceeded, but axum does not expose a typed error for this case — the only
+/// public API is `to_bytes(into_limited_body(), …)` returning an `axum::Error`
+/// whose `Display` contains "length limit exceeded". If hyper or axum renames
+/// this message in a future release, handlers that call this helper will return
+/// 500 instead of 413 until the string is updated here. By centralising the
+/// check in one place, a single-point regression is much cheaper to fix than
+/// hunting across every handler.
+pub fn is_length_limit_error(e: &axum::Error) -> bool {
+    e.to_string().contains("length limit exceeded")
+}
+
 /// Shared state threaded through every handler.
+///
+/// # TUI / server isolation note
+/// `Presets` is loaded independently by the TUI (via `src/main.rs`) and by the
+/// server here. Both read from / write to the same on-disk `presets.json` file,
+/// but they do NOT share a live in-memory instance. This is intentional: the TUI
+/// and `pour serve` are separate processes (`pour serve` runs instead of the TUI,
+/// not alongside it). Concurrent mutation from two processes is not a supported
+/// workflow; documents should remain internally consistent because each write is
+/// atomic (temp-file + rename).
 #[derive(Clone)]
 pub struct AppState {
     pub transport_mode: TransportMode,
@@ -31,6 +167,8 @@ pub struct AppState {
     pub transport: Arc<Transport>,
     /// In-memory idempotency cache for POST /api/v1/submit/{module} (§9).
     pub idempotency: Arc<IdempotencyCache>,
+    /// Presets — shared mutable state for CRUD endpoints (§6.7–§6.10).
+    pub presets: Arc<Mutex<Presets>>,
 }
 
 /// Constant-time token comparison. Returns true iff `candidate == secret`.
@@ -147,33 +285,21 @@ pub async fn no_store_middleware(req: Request, next: Next) -> Response {
     resp
 }
 
-/// Build and run the axum server.
+/// Build the axum Router for the given `AppState`.
 ///
-/// Blocks until the process is interrupted (Ctrl+C).
-pub async fn run(
-    config: Config,
-    transport: Transport,
-    port: u16,
-    token: String,
-) -> Result<()> {
-    let transport_mode = transport.mode();
-    let state = AppState {
-        transport_mode,
-        token,
-        config: Arc::new(config),
-        transport: Arc::new(transport),
-        idempotency: Arc::new(IdempotencyCache::new()),
-    };
-
+/// Extracted so that `run` (port-based) and `serve_on_listener` (pre-bound
+/// listener, used by integration tests) share identical topology.
+pub fn build_app(state: AppState) -> Router {
     // Auth middleware is applied to known routes only via route_layer.
     // The global fallback is outside auth so unknown paths → 404 (not 401).
     // no_store_middleware is the outermost layer: it wraps everything on the
     // api subrouter (auth rejections, method-not-allowed, and handler responses)
     // so that Cache-Control: no-store appears on every /api/* response (§12).
     //
-    // Body size limit: submit routes get 1 MiB (§13); all other routes get the
-    // axum default (which we layer-override to 16 KiB globally then extend per route).
-    // DefaultBodyLimit is applied per-route via layer() on the submit routes.
+    // Body size limits (§13):
+    //   - submit: 1 MiB via DefaultBodyLimit::max per-route
+    //   - presets PUT: 256 KiB via DefaultBodyLimit::max per-route
+    //   - all other routes: 16 KiB (axum's DefaultBodyLimit global default)
     let api = Router::new()
         .route("/api/v1/health", get(handlers::health::handler))
         .route("/api/v1/config", get(handlers::config::handler))
@@ -184,18 +310,76 @@ pub async fn run(
                 .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024)),
         )
         .route("/api/v1/captures/:history_id", get(handlers::captures::handler))
+        .route("/api/v1/history", get(handlers::history::handler))
+        .route("/api/v1/presets/:module", get(handlers::presets::get_handler))
+        .route(
+            "/api/v1/presets/:module/order",
+            put(handlers::presets::order_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route(
+            "/api/v1/presets/:module/:name",
+            put(handlers::presets::put_handler)
+                .delete(handlers::presets::delete_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(256 * 1024)),
+        )
         .method_not_allowed_fallback(method_not_allowed_handler)
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .layer(middleware::from_fn(no_store_middleware));
 
-    let app = Router::new()
+    // Static asset routes are OUTSIDE the api subrouter.
+    // They are unauthenticated (contract §3) and have their own Cache-Control
+    // headers set per §12 — the no_store_middleware MUST NOT apply to them.
+    // Adding them directly to the outer router, before the global fallback,
+    // ensures they bypass both the auth middleware and the no_store_middleware.
+    Router::new()
         .merge(api)
+        // Unauthenticated static asset routes (contract §3, §12)
+        .route("/", get(index_handler))
+        .route("/app.js", get(app_js_handler))
+        .route("/styles.css", get(styles_css_handler))
+        .route("/manifest.json", get(manifest_handler))
+        .route("/favicon.ico", get(favicon_handler))
+        .route("/static/*path", get(static_asset_handler))
         .fallback(not_found_handler)
-        .with_state(state);
+        .with_state(state)
+}
+
+/// Serve the app on a pre-bound `TcpListener`.
+///
+/// Used by integration tests to inject a port-0 listener so the OS assigns
+/// an ephemeral port. Production code calls `run` instead.
+pub async fn serve_on_listener(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+) -> Result<()> {
+    let app = build_app(state);
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// Build and run the axum server.
+///
+/// Blocks until the process is interrupted (Ctrl+C).
+pub async fn run(
+    config: Config,
+    transport: Transport,
+    port: u16,
+    token: String,
+) -> Result<()> {
+    let transport_mode = transport.mode();
+    let presets = Presets::load();
+    let state = AppState {
+        transport_mode,
+        token,
+        config: Arc::new(config),
+        transport: Arc::new(transport),
+        idempotency: Arc::new(IdempotencyCache::new()),
+        presets: Arc::new(Mutex::new(presets)),
+    };
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, app).await?;
-    Ok(())
+    serve_on_listener(listener, state).await
 }

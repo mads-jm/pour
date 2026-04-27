@@ -443,6 +443,110 @@ pub mod extra_error_codes {
 }
 
 // ---------------------------------------------------------------------------
+// History response DTOs (§6.5)
+// ---------------------------------------------------------------------------
+
+/// Entry in the history list. Matches the wire shape in §6.5.
+#[derive(Serialize)]
+pub struct HistoryEntryDto {
+    pub id: String,
+    pub module_key: String,
+    pub timestamp: String,
+    pub vault_path: String,
+    pub first_field: Option<String>,
+}
+
+/// Summary block in the history response (only on the dashboard call, per §6.5).
+#[derive(Serialize)]
+pub struct HistorySummaryDto {
+    pub version: u32,
+    pub last_pour: Option<HistoryEntryDto>,
+    pub today_count: usize,
+    pub week_count: usize,
+    pub streak_days: u64,
+    pub per_module_today: HashMap<String, usize>,
+}
+
+/// Full response for `GET /api/v1/history` (§6.5).
+///
+/// `next_cursor` replaces the old `next_until` timestamp cursor (§6.5 amendment
+/// 2026-04-26). It is an opaque string (the last entry's `id`) that the client
+/// passes as `?cursor=<next_cursor>` for the next page. Cursor-based pagination
+/// is exact even when multiple entries share the same millisecond timestamp.
+#[derive(Serialize)]
+pub struct HistoryResponse {
+    pub entries: Vec<HistoryEntryDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<HistorySummaryDto>,
+    pub has_more: bool,
+    /// Opaque pagination cursor. Pass as `?cursor=<next_cursor>` for the next
+    /// page. `null` when `has_more` is false.
+    pub next_cursor: Option<String>,
+}
+
+/// Convert a `HistoryEntry` to its wire DTO form.
+/// Entries without an id (legacy) get an empty string id.
+impl From<&crate::data::history::HistoryEntry> for HistoryEntryDto {
+    fn from(e: &crate::data::history::HistoryEntry) -> Self {
+        HistoryEntryDto {
+            id: e.id.clone().unwrap_or_default(),
+            module_key: e.module_key.clone(),
+            timestamp: e.timestamp.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            vault_path: e.vault_path.clone(),
+            first_field: e.first_field.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Presets response DTOs (§6.7–§6.10)
+// ---------------------------------------------------------------------------
+
+/// A single preset in the wire format.
+#[derive(Serialize)]
+pub struct PresetDto {
+    pub name: String,
+    pub description: Option<String>,
+    pub values: HashMap<String, String>,
+}
+
+/// Response for `GET /api/v1/presets/{module}` and `PUT /api/v1/presets/{module}/order` (§6.7, §6.10).
+#[derive(Serialize)]
+pub struct PresetsListResponse {
+    pub presets: Vec<PresetDto>,
+}
+
+/// Request body for `PUT /api/v1/presets/{module}/{name}` (§6.8).
+#[derive(Deserialize)]
+pub struct PresetUpsertRequest {
+    pub description: Option<String>,
+    #[serde(default)]
+    pub values: HashMap<String, String>,
+}
+
+/// Response body for `PUT /api/v1/presets/{module}/{name}` (§6.8).
+#[derive(Serialize)]
+pub struct PresetUpsertResponse {
+    pub preset: PresetDto,
+}
+
+/// Request body for `PUT /api/v1/presets/{module}/order` (§6.10).
+#[derive(Deserialize)]
+pub struct PresetReorderRequest {
+    pub names: Vec<String>,
+}
+
+impl From<&crate::data::presets::PresetEntry> for PresetDto {
+    fn from(p: &crate::data::presets::PresetEntry) -> Self {
+        PresetDto {
+            name: p.name.clone(),
+            description: p.description.clone(),
+            values: p.values.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Submit request DTO (§6.4)
 // ---------------------------------------------------------------------------
 

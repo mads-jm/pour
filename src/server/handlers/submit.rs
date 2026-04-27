@@ -29,6 +29,7 @@ use super::super::{
         error_codes, error_response, error_response_with_details, extra_error_codes,
     },
     idempotency::IdempotencyOutcome,
+    is_length_limit_error,
 };
 use crate::config::{FieldType, WriteMode};
 use crate::data::cache::Cache;
@@ -152,7 +153,7 @@ async fn submit_inner(
             // `into_limited_body()` produces a `LengthLimitError` when the
             // DefaultBodyLimit cap is exceeded. Map that to 413; everything
             // else is a genuine read failure (→ 500).
-            if e.to_string().contains("length limit exceeded") {
+            if is_length_limit_error(&e) {
                 return error_response(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     error_codes::PAYLOAD_TOO_LARGE,

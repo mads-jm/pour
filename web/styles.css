@@ -1,0 +1,258 @@
+/* Pour PWA — mobile-first, TUI-aesthetic */
+/* ~140 lines. No framework. Pure handwritten CSS. */
+
+:root {
+  --accent:    #1a6b5a;
+  --accent-lt: #2a8b72;
+  --bg:        #f8faf9;
+  --bg-card:   #ffffff;
+  --border:    #c8d8d4;
+  --text:      #0d1f1b;
+  --text-muted:#4a6b63;
+  --danger:    #b83232;
+  --warn:      #a06020;
+  --success:   #1a6b5a;
+  --font:      ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius:    4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:        #0d1f1b;
+    --bg-card:   #132b25;
+    --border:    #2a4a42;
+    --text:      #d8ede8;
+    --text-muted:#7aaba0;
+    --accent:    #2a8b72;
+    --accent-lt: #38b090;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em; }
+
+#status-pill {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+/* ── Views ── */
+main { flex: 1; padding: 16px; }
+
+/* ── Module tiles ── */
+#dashboard h2 { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.module-tile {
+  min-height: 64px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.1s;
+}
+
+.module-tile:hover, .module-tile:focus { border-color: var(--accent); outline: none; }
+.module-tile .tile-icon { font-size: 1.2rem; line-height: 1; }
+
+/* ── Form view ── */
+#form h2 { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.form-module-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+.field-group { margin-bottom: 16px; }
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.04em;
+}
+
+label .required-star { color: var(--danger); margin-left: 2px; }
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 1rem;
+  color: var(--text);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+textarea { min-height: 88px; resize: vertical; }
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-error { font-size: 0.78rem; color: var(--danger); margin-top: 4px; }
+
+/* ── Composite array ── */
+.composite-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.composite-row input {
+  flex: 1;
+  min-height: 44px;
+}
+
+.btn-remove-row {
+  min-height: 44px;
+  min-width: 44px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 1rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font);
+}
+
+.btn-add-row {
+  min-height: 44px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  color: var(--accent);
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  min-height: 52px;
+  width: 100%;
+  margin-top: 20px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.btn-primary:hover { background: var(--accent-lt); }
+
+.btn-secondary {
+  min-height: 44px;
+  padding: 0 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.btn-row .btn-secondary { flex: 1; min-height: 44px; }
+
+/* ── Summary view ── */
+#summary { max-width: 480px; }
+#summary h2 { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.summary-card .vault-path {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  margin-top: 6px;
+}
+
+.summary-card .transport-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  max-width: calc(100vw - 32px);
+  z-index: 100;
+  text-align: center;
+}
+
+/* ── Token gate ── */
+#token-gate { max-width: 480px; }
+#token-gate p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; margin-top: 8px; }

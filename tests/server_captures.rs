@@ -63,6 +63,7 @@ fn fwd(p: &std::path::Path) -> String {
 }
 
 fn make_state(config: pour::config::Config, base: &std::path::Path) -> AppState {
+    use pour::data::presets::Presets;
     use pour::server::idempotency::IdempotencyCache;
     use pour::transport::{Transport, fs::FsWriter};
     AppState {
@@ -71,6 +72,7 @@ fn make_state(config: pour::config::Config, base: &std::path::Path) -> AppState 
         config: Arc::new(config),
         transport: Arc::new(Transport::Fs(FsWriter::new(base.to_path_buf()))),
         idempotency: Arc::new(IdempotencyCache::new()),
+        presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
 }
 

@@ -318,6 +318,99 @@ impl History {
         self.entries.iter().rev().take(n).collect()
     }
 
+    /// Paginated, filtered history query (§6.5 cursor pagination).
+    ///
+    /// Filters by:
+    /// - `since`: inclusive lower bound (`timestamp >= since`).
+    /// - `until`: exclusive upper bound (`timestamp < until`). Raw timestamp
+    ///   filter — kept for direct "older than X date" use. NOT used as the
+    ///   pagination cursor; use `cursor` for pagination.
+    /// - `cursor`: opaque string cursor (the `id` of the last entry from the
+    ///   previous page). Filters to entries whose `id` is lexicographically
+    ///   less than the cursor. Because ids are `YYYYMMDDTHHmmSSsss-seq-module`,
+    ///   lexicographic order == chronological+counter order, so this correctly
+    ///   handles same-millisecond entries that a timestamp-only cursor would drop.
+    /// - `module`: exact `module_key` match.
+    ///
+    /// Returns entries in descending id order (most recent first).
+    ///
+    /// `limit` must be ≥ 1. The method fetches up to `limit + 1` entries to
+    /// detect whether a next page exists:
+    /// - If > `limit` found: `has_more = true`,
+    ///   `next_cursor = Some(entries[limit - 1].id)`.
+    /// - Otherwise: `has_more = false`, `next_cursor = None`.
+    pub fn filter(
+        &self,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+        cursor: Option<&str>,
+        module: Option<&str>,
+        limit: usize,
+    ) -> (Vec<HistoryEntry>, bool, Option<String>) {
+        let mut filtered: Vec<&HistoryEntry> = self
+            .entries
+            .iter()
+            .filter(|e| {
+                if let Some(s) = since
+                    && e.timestamp < s
+                {
+                    return false;
+                }
+                if let Some(u) = until
+                    && e.timestamp >= u
+                {
+                    return false;
+                }
+                // Cursor: id-based exclusive upper bound. Entries whose id is
+                // lexicographically >= cursor are on a previous page.
+                if let Some(c) = cursor {
+                    let entry_id = e.id.as_deref().unwrap_or("");
+                    if entry_id >= c {
+                        return false;
+                    }
+                }
+                if let Some(m) = module
+                    && e.module_key != m
+                {
+                    return false;
+                }
+                true
+            })
+            .collect();
+
+        // Sort descending by id (lexicographic == chronological+counter for our
+        // id format). Entries without an id (legacy) sort last (empty string).
+        filtered.sort_by(|a, b| {
+            let a_id = a.id.as_deref().unwrap_or("");
+            let b_id = b.id.as_deref().unwrap_or("");
+            b_id.cmp(a_id)
+        });
+
+        let has_more = filtered.len() > limit;
+        // next_cursor is the id of the last entry we return on this page.
+        // The client passes it as `?cursor=<next_cursor>` for the next page.
+        let next_cursor: Option<String> = if has_more {
+            filtered
+                .get(limit.saturating_sub(1))
+                .and_then(|e| e.id.clone())
+        } else {
+            None
+        };
+
+        let entries: Vec<HistoryEntry> = filtered
+            .into_iter()
+            .take(limit)
+            .cloned()
+            .collect();
+
+        (entries, has_more, next_cursor)
+    }
+
+    /// Returns the precomputed summary, recomputing if stale.
+    pub fn summary(&self) -> &HistorySummary {
+        &self.summary
+    }
+
     /// Most recent timestamp per module key.
     /// Returns cached value when the summary is fresh.
     pub fn last_per_module(&self) -> HashMap<String, DateTime<Utc>> {
