@@ -31,6 +31,8 @@ use super::super::{
     idempotency::IdempotencyOutcome,
     is_length_limit_error,
 };
+// Logging: module name + vault path + autocreate count on success; module name +
+// error code on failure. NO field values, NO composite data, NO user content (§14).
 use crate::config::{FieldType, WriteMode};
 use crate::data::cache::Cache;
 use crate::data::history::History;
@@ -112,7 +114,14 @@ pub async fn handler(
         // Capture the response bytes to store in cache then re-wrap.
         let (parts, body) = resp.into_parts();
         let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
-        state.idempotency.complete(key, parts.status, bytes.to_vec());
+        // Contract §9: only 2xx terminal successes are stored in the idempotency
+        // cache. 4xx and 5xx are NOT cached — release the in-flight marker so
+        // the client can fix the problem and retry with the same key.
+        if parts.status.is_success() {
+            state.idempotency.complete(key, parts.status, bytes.to_vec());
+        } else {
+            state.idempotency.release(key);
+        }
         let mut rebuilt = Response::from_parts(parts, axum::body::Body::from(bytes));
         rebuilt.headers_mut().insert(
             header::CACHE_CONTROL,
@@ -250,6 +259,11 @@ async fn submit_inner(
     }
 
     if !field_errors.is_empty() {
+        tracing::warn!(
+            module = %module_key,
+            code = %error_codes::VALIDATION_FAILED,
+            "submit failed"
+        );
         return error_response_with_details(
             StatusCode::BAD_REQUEST,
             error_codes::VALIDATION_FAILED,
@@ -356,7 +370,7 @@ async fn submit_inner(
                             warnings.push(SubmitWarningDto {
                                 code: "autocreate_failed",
                                 field: Some(field.name.clone()),
-                                message: format!("failed to sanitize filename for '{value}'"),
+                                message: "failed to sanitize filename".to_string(),
                             });
                             continue;
                         }
@@ -404,10 +418,17 @@ async fn submit_inner(
                             });
                         }
                         Err(e) => {
+                            // Log the internal error server-side (no user content in
+                            // the log — the error string is filesystem/transport-internal).
+                            tracing::warn!(
+                                field = %field.name,
+                                error = %e,
+                                "autocreate file creation failed"
+                            );
                             warnings.push(SubmitWarningDto {
                                 code: "autocreate_failed",
                                 field: Some(field.name.clone()),
-                                message: e.to_string(),
+                                message: "failed to create autocreate file".to_string(),
                             });
                         }
                     }
@@ -482,6 +503,11 @@ async fn submit_inner(
     let vault_path = match write_result {
         Ok(p) => p,
         Err(e) => {
+            tracing::warn!(
+                module = %module_key,
+                code = %error_codes::WRITE_ERROR,
+                "submit failed"
+            );
             return error_response_with_details(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 error_codes::WRITE_ERROR,
@@ -521,6 +547,14 @@ async fn submit_inner(
             }
         }
     };
+
+    // -- Domain log: submit ok (module + vault path + autocreate count; NO field values §14) ---
+    tracing::info!(
+        module = %module_key,
+        vault_path = %vault_path,
+        autocreate = auto_created_dtos.len(),
+        "submit ok"
+    );
 
     // -- Build response ---------------------------------------------------
     let transport_mode_str = match state.transport_mode {

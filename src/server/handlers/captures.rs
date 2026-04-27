@@ -35,8 +35,12 @@ pub async fn handler(
     // Read file via transport.
     // Pattern-match the typed error — no substring matching on error messages.
     let content = match state.transport.read_file(&entry.vault_path).await {
-        Ok(c) => c,
+        Ok(c) => {
+            tracing::debug!(history_id = %history_id, "captures: served");
+            c
+        }
         Err(TransportReadError::NotFound) => {
+            tracing::warn!(history_id = %history_id, "captures: vault file missing");
             return error_response(
                 StatusCode::NOT_FOUND,
                 error_codes::NOT_FOUND,

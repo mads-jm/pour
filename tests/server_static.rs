@@ -63,6 +63,7 @@ fn make_router(state: AppState) -> axum::Router {
         auth, method_not_allowed_handler, no_store_middleware,
         index_handler, app_js_handler, styles_css_handler,
         manifest_handler, favicon_handler, static_asset_handler,
+        sw_js_handler, queue_js_handler,
     };
 
     let api = Router::new()
@@ -89,6 +90,8 @@ fn make_router(state: AppState) -> axum::Router {
         .route("/styles.css", get(styles_css_handler))
         .route("/manifest.json", get(manifest_handler))
         .route("/favicon.ico", get(favicon_handler))
+        .route("/sw.js", get(sw_js_handler))
+        .route("/queue.js", get(queue_js_handler))
         .route("/static/*path", get(static_asset_handler))
         .fallback(not_found_handler)
         .with_state(state)
@@ -419,7 +422,7 @@ async fn app_js_body_is_non_empty() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/app.js")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = to_bytes(resp.into_body(), 32768).await.unwrap();
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
     assert!(!bytes.is_empty(), "app.js body must not be empty");
 }
 
@@ -429,7 +432,7 @@ async fn app_js_contains_escape_html() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/app.js")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
     let body = std::str::from_utf8(&bytes).unwrap_or("");
     assert!(
         body.contains("escapeHtml"),
@@ -443,11 +446,154 @@ async fn app_js_contains_uuid_fallback() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/app.js")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = to_bytes(resp.into_body(), 65536).await.unwrap();
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
     let body = std::str::from_utf8(&bytes).unwrap_or("");
     assert!(
         body.contains("crypto.getRandomValues"),
         "app.js must contain crypto.getRandomValues fallback path in uuidv4()"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1.5: show_when fix + preset selector — content-check assertions
+// ---------------------------------------------------------------------------
+
+/// app.js binds "change" on the form element (not per-field), which ensures
+/// <select> change events bubble correctly and trigger recomputeVisibility.
+#[tokio::test]
+async fn app_js_form_change_listener_bound_on_form() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("form.addEventListener(\"change\""),
+        "app.js must bind 'change' listener on the form element (not per-field) to catch <select> events"
+    );
+}
+
+/// app.js also binds "input" on the form element, covering text/number keystrokes.
+#[tokio::test]
+async fn app_js_form_input_listener_bound_on_form() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("form.addEventListener(\"input\""),
+        "app.js must bind 'input' listener on the form element for text/number reactivity"
+    );
+}
+
+/// app.js uses readCurrentFieldValues() which reads ALL fields unconditionally,
+/// so the controlling field's fresh value is always available to computeVisible.
+#[tokio::test]
+async fn app_js_has_read_current_field_values() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("function readCurrentFieldValues"),
+        "app.js must have readCurrentFieldValues() that reads all field values regardless of visibility"
+    );
+}
+
+/// renderForm renders ALL fields (including hidden ones) so recomputeVisibility
+/// can toggle them. Previously, hidden fields were skipped at render time, so
+/// the DOM elements never existed for the toggle to target.
+#[tokio::test]
+async fn app_js_renders_all_fields_with_hidden_attribute() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    // The fix: group.hidden = !visible.has(field.name) is set for every field,
+    // no longer skipping hidden fields before appending to the form.
+    assert!(
+        body.contains("group.hidden = !visible.has(field.name)"),
+        "app.js must set group.hidden on every field-group div (not skip non-visible fields)"
+    );
+}
+
+/// app.js fetches presets on form open via GET /api/v1/presets/<module>.
+#[tokio::test]
+async fn app_js_fetches_presets_on_form_open() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("\"/api/v1/presets/\""),
+        "app.js must fetch GET /api/v1/presets/<module> when opening the form"
+    );
+}
+
+/// app.js renders a <none> chip in the preset row to allow clearing the form.
+#[tokio::test]
+async fn app_js_has_none_preset_chip() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("<none>"),
+        "app.js must include a '<none>' chip as the first preset option"
+    );
+}
+
+/// app.js respects preset_exclude when applying a preset.
+#[tokio::test]
+async fn app_js_preset_apply_respects_exclude() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("preset_exclude"),
+        "app.js applyPreset must check field.preset_exclude before overwriting"
+    );
+}
+
+/// app.js calls recomputeVisibility after preset apply so show_when fields update.
+#[tokio::test]
+async fn app_js_preset_apply_triggers_recompute() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    // applyPreset calls recomputeVisibility at its end
+    assert!(
+        body.contains("recomputeVisibility(fields, allVals)"),
+        "app.js applyPreset must call recomputeVisibility after applying values"
+    );
+}
+
+/// app.js has the idempotency-key-persists comment AND _pendingIdempotencyKey pattern.
+/// Guards against regression where a new key is generated on every submit tap,
+/// which would cause duplicate vault entries on 5xx-then-success retry cycles.
+#[tokio::test]
+async fn app_js_idempotency_key_persists_across_retries() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/app.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("// idempotency-key persists across retries"),
+        "app.js must contain the idempotency persistence comment"
+    );
+    assert!(
+        body.contains("_pendingIdempotencyKey"),
+        "app.js must use _pendingIdempotencyKey to persist the key across retries"
     );
 }
 
@@ -465,5 +611,112 @@ async fn static_icon_svg_served() {
     assert!(
         ct.starts_with("image/svg"),
         "icon.svg must return image/svg+xml; got: {ct:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TASK-2.2.1: /sw.js route — status, headers, content-type, no auth
+// ---------------------------------------------------------------------------
+
+/// GET /sw.js returns 200 without any auth token (it's a static asset per §3).
+#[tokio::test]
+async fn sw_js_served_without_auth() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET /sw.js must return 200 with no auth token (static asset per §3)"
+    );
+}
+
+/// GET /sw.js returns Content-Type: application/javascript; charset=utf-8
+/// (contract §12 — service workers must be served as JS or browsers refuse them).
+#[tokio::test]
+async fn sw_js_returns_javascript_content_type() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        ct.contains("javascript"),
+        "GET /sw.js must return application/javascript; got: {ct:?}"
+    );
+}
+
+/// GET /sw.js carries Cache-Control: no-cache, max-age=0, must-revalidate
+/// (contract §12 — same as shell HTML so the browser re-validates on every load).
+#[tokio::test]
+async fn sw_js_has_no_cache_header() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cc = resp
+        .headers()
+        .get("cache-control")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(
+        cc, "no-cache, max-age=0, must-revalidate",
+        "/sw.js must use no-cache revalidation per §12; got: {cc:?}"
+    );
+}
+
+/// GET /sw.js must NOT carry Cache-Control: no-store (that is for /api/* only).
+#[tokio::test]
+async fn sw_js_does_not_have_no_store() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cc = resp
+        .headers()
+        .get("cache-control")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        !cc.contains("no-store"),
+        "GET /sw.js must not contain no-store; got: {cc:?}"
+    );
+}
+
+/// GET /sw.js body is non-empty and contains the CACHE_VERSION constant.
+/// This guards against serving an empty stub or the wrong file.
+#[tokio::test]
+async fn sw_js_body_contains_cache_version() {
+    let router = make_router(test_state());
+    let resp = router.oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = to_bytes(resp.into_body(), 524288).await.unwrap();
+    let body = std::str::from_utf8(&bytes).unwrap_or("");
+    assert!(
+        body.contains("CACHE_VERSION"),
+        "/sw.js must contain CACHE_VERSION constant; got first 200 chars: {:?}",
+        &body[..body.len().min(200)]
+    );
+}
+
+/// GET /sw.js is served at root scope, NOT under /static/.
+/// A SW at /static/sw.js can only control /static/* paths — it cannot
+/// intercept navigation to / or form submits to /api/v1/submit/*.
+#[tokio::test]
+async fn sw_js_at_root_scope_not_static() {
+    let router = make_router(test_state());
+    // /sw.js at root → 200
+    let resp = router.clone().oneshot(get_req("/sw.js")).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "/sw.js must be accessible at root scope"
+    );
+    // /static/sw.js → 404 (not embedded under static/)
+    let resp2 = router.oneshot(get_req("/static/sw.js")).await.unwrap();
+    assert_eq!(
+        resp2.status(),
+        StatusCode::NOT_FOUND,
+        "/static/sw.js must return 404 — SW must only be served at root scope"
     );
 }

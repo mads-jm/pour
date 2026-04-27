@@ -604,6 +604,86 @@ async fn presets_get_has_cache_control_no_store() {
 }
 
 // ---------------------------------------------------------------------------
+// Reserved name "order" — CRITICAL 2 regression guard
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn presets_put_reserved_name_order_returns_400() {
+    // PUT /presets/coffee/order must be rejected with 400 validation_failed
+    // and code "reserved_name". "order" is the fixed route segment for
+    // PUT /presets/{module}/order (§6.10); a preset named "order" would
+    // be permanently unreachable via any single-preset endpoint.
+    let state = make_state_empty(minimal_config());
+    let router = make_router(state);
+
+    let resp = router
+        .clone()
+        .oneshot(bearer_put(
+            "/api/v1/presets/coffee/order",
+            r#"{"values":{"bean":"test"}}"#,
+        ))
+        .await
+        .unwrap();
+    // The /order route is registered BEFORE /:name, so PUT /presets/coffee/order
+    // hits order_handler (§6.10), which expects { "names": [...] } and returns
+    // 400 validation_failed for an invalid body. This test pins that behaviour:
+    // the name "order" never reaches put_handler via normal routing.
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "PUT /presets/coffee/order must return 400 (hits order_handler with wrong body)"
+    );
+    assert_error_code(resp.into_body(), "validation_failed").await;
+}
+
+#[tokio::test]
+async fn presets_put_reserved_name_order_percent_encoded_returns_400() {
+    // PUT /presets/coffee/ord%65r (percent-encoded "order") hits /:name handler.
+    // The server must reject it with 400 reserved_name (belt-and-suspenders guard).
+    let state = make_state_empty(minimal_config());
+    let router = make_router(state);
+
+    let resp = router
+        .clone()
+        .oneshot(bearer_put(
+            "/api/v1/presets/coffee/ord%65r",
+            r#"{"values":{"bean":"test"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "percent-encoded 'order' must return 400 reserved_name"
+    );
+    let json = body_json(resp.into_body()).await;
+    assert_eq!(json["error"]["code"], "validation_failed");
+    assert_eq!(
+        json["error"]["details"]["code"], "reserved_name",
+        "details.code must be reserved_name; got: {json}"
+    );
+}
+
+#[tokio::test]
+async fn presets_delete_reserved_name_order_returns_404() {
+    // DELETE /presets/coffee/order hits the order_handler route (PUT-only),
+    // so axum returns 405 Method Not Allowed. Pins that behaviour.
+    let state = make_state_empty(minimal_config());
+    let router = make_router(state);
+
+    let resp = router
+        .oneshot(bearer_delete("/api/v1/presets/coffee/order"))
+        .await
+        .unwrap();
+    // /order is registered as PUT-only. DELETE on a PUT-only route returns 405.
+    assert_eq!(
+        resp.status(),
+        StatusCode::METHOD_NOT_ALLOWED,
+        "DELETE /presets/coffee/order must return 405 (order endpoint is PUT-only)"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Error envelopes on 4xx (spot-check)
 // ---------------------------------------------------------------------------
 

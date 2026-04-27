@@ -20,6 +20,17 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+/// Return the first 8 characters of an idempotency key for log redaction (§14).
+/// 8 chars is enough to correlate log lines without exposing the full key.
+fn key_short(key: &str) -> &str {
+    let end = key
+        .char_indices()
+        .nth(8)
+        .map(|(i, _)| i)
+        .unwrap_or(key.len());
+    &key[..end]
+}
+
 const CAPACITY: usize = 1024;
 const TTL: Duration = Duration::from_secs(300); // 5 minutes
 /// Maximum time an InFlight entry can remain before it is treated as expired.
@@ -87,6 +98,7 @@ impl IdempotencyCache {
                 Entry::InFlight { started_at } => {
                     if now.duration_since(*started_at) < IN_FLIGHT_TTL {
                         // Still within the in-flight window — genuine parallel request.
+                        tracing::warn!(key_short = %key_short(key), "idempotency: in-flight rejected");
                         return IdempotencyOutcome::InFlight;
                     }
                     // Expired in-flight marker (dropped future, panic, cancellation).
@@ -94,6 +106,7 @@ impl IdempotencyCache {
                 }
                 Entry::Done { status, body, completed_at } => {
                     if now.duration_since(*completed_at) < TTL {
+                        tracing::info!(key_short = %key_short(key), "idempotency: replay served");
                         return IdempotencyOutcome::Replay {
                             status: *status,
                             body: body.clone(),
@@ -109,6 +122,7 @@ impl IdempotencyCache {
         while g.order.len() >= CAPACITY {
             if let Some(oldest) = g.order.pop_front() {
                 g.map.remove(&oldest);
+                tracing::debug!("idempotency: cache eviction (capacity reached)");
             }
         }
 
@@ -123,6 +137,9 @@ impl IdempotencyCache {
 
     /// Record the completed response for `key`, replacing the in-flight marker.
     ///
+    /// Only call this for 2xx terminal successes (contract §9). For non-2xx
+    /// responses, call `release` instead so the key can be retried fresh.
+    ///
     /// No-op if the key is absent (shouldn't happen in normal usage).
     pub fn complete(&self, key: &str, status: StatusCode, body: Vec<u8>) {
         let mut g = self.inner.lock().unwrap();
@@ -135,6 +152,22 @@ impl IdempotencyCache {
                     completed_at: Instant::now(),
                 },
             );
+        }
+    }
+
+    /// Remove the in-flight marker for `key` without caching any response.
+    ///
+    /// Call this when the handler returns a non-2xx response (4xx or 5xx).
+    /// This allows the client to fix the problem and resubmit with the same
+    /// Idempotency-Key, which will be treated as a fresh request (contract §9).
+    ///
+    /// No-op if the key is absent.
+    pub fn release(&self, key: &str) {
+        let mut g = self.inner.lock().unwrap();
+        if g.map.remove(key).is_some() {
+            // Also remove from the LRU order queue to avoid a dangling entry.
+            g.order.retain(|k| k != key);
+            tracing::debug!(key_short = %key_short(key), "idempotency: released (non-2xx, retryable)");
         }
     }
 }

@@ -95,6 +95,20 @@ pub async fn put_handler(
         );
     }
 
+    // Reject the reserved name "order" (case-insensitive). The route
+    // `/presets/:module/order` is fixed and registered before `/:name`, so
+    // a PUT for the literal name "order" would be routed to the order_handler
+    // instead — but a client could still attempt it via percent-encoding tricks.
+    // Belt-and-suspenders: block it here so the name never enters storage.
+    if name.to_ascii_lowercase() == "order" {
+        return error_response_with_details(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_FAILED,
+            "'order' is a reserved name and cannot be used as a preset name.",
+            serde_json::json!({ "field": "name", "code": "reserved_name" }),
+        );
+    }
+
     // Content-Type check.
     let content_type = req
         .headers()

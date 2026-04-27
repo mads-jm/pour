@@ -840,7 +840,14 @@ async fn scenario8_captured_at_offline_replay() {
     assert_eq!(cap_resp.status(), StatusCode::OK);
     let cap: Value = cap_resp.json().await.unwrap();
     let content = cap["content"].as_str().unwrap();
-    let expected_date = seven_days_ago.format("%Y-%m-%d").to_string();
+    // The server renders `date:` frontmatter in LOCAL timezone per contract §10,
+    // not UTC. Compute expected the same way the server does — otherwise the
+    // assertion is flaky and only passes during the half of the day when UTC
+    // and Local fall on the same calendar date.
+    let expected_date = seven_days_ago
+        .with_timezone(&chrono::Local)
+        .format("%Y-%m-%d")
+        .to_string();
     assert!(
         content.contains(&expected_date),
         "capture content must contain date {expected_date} matching captured_at; content: {content}"

@@ -13,6 +13,8 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 // ---------------------------------------------------------------------------
 // Static asset embedding (rust-embed)
@@ -115,12 +117,60 @@ pub async fn favicon_handler() -> Response {
     serve_asset("favicon.ico")
 }
 
+/// Handler for `GET /queue.js` — IDB queue module.
+///
+/// Served at root scope alongside app.js. Loaded before app.js via a `<script>`
+/// tag so listQueue/removeQueueRecord etc. are available when app.js calls them.
+pub async fn queue_js_handler() -> Response {
+    serve_asset("queue.js")
+}
+
+/// Handler for `GET /sw.js` — service worker script.
+///
+/// MUST be served at root scope (`/sw.js`, NOT `/static/sw.js`) so the
+/// service worker can control all navigation to `/`. A SW served from
+/// `/static/sw.js` can only control paths under `/static/`, which would
+/// exclude the PWA shell.
+///
+/// Cache-Control is `no-cache, max-age=0, must-revalidate` per contract §12
+/// (same as the shell HTML). The browser re-validates on every page load so
+/// a new deploy is detected promptly. This is already returned by
+/// `cache_control_for("sw.js")` — no special-casing needed.
+pub async fn sw_js_handler() -> Response {
+    serve_asset("sw.js")
+}
+
 /// Handler for `GET /static/*path` — fallback for any other embedded asset.
 ///
 /// Axum's wildcard `*path` captures include a leading `/`; strip it before
 /// looking up the embedded asset so that `/static/icon.svg` resolves to `icon.svg`.
+///
+/// Root-scope assets that have their own named routes (`/app.js`, `/sw.js`,
+/// `/styles.css`, `/manifest.json`, etc.) MUST NOT be accessible via `/static/`.
+/// Serving the SW at `/static/sw.js` would silently allow installing a SW with
+/// the wrong scope — a scope-poisoning risk.
 pub async fn static_asset_handler(Path(path): Path<String>) -> Response {
     let asset_path = path.trim_start_matches('/');
+    // Block assets that are served exclusively at root scope via dedicated routes.
+    // A SW installed from /static/sw.js can only control /static/* paths, which
+    // is wrong; it must be at /sw.js (root scope) to control navigation.
+    const ROOT_SCOPE_ASSETS: &[&str] = &[
+        "sw.js",
+        "app.js",
+        "queue.js",
+        "styles.css",
+        "manifest.json",
+        "index.html",
+        "favicon.ico",
+    ];
+    if ROOT_SCOPE_ASSETS.contains(&asset_path) {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "404 Not Found",
+        )
+            .into_response();
+    }
     serve_asset(asset_path)
 }
 
@@ -201,12 +251,17 @@ pub async fn auth(
         .filter(|t| !t.is_empty())
         .map(|t| t.to_string());
 
+    // Capture path for rejection logging (no token values, no headers — §14).
+    let path = req.uri().path().to_string();
+
     if let Some(ref hdr) = header_token {
         // Header is present and non-empty — it is authoritative.
         // Reject immediately on mismatch; do NOT fall through to query.
         if token_matches(hdr, &state.token) {
+            tracing::debug!("auth: accepted_via_header");
             return next.run(req).await;
         }
+        tracing::warn!(path = %path, "auth: rejected");
         return error_response(
             axum::http::StatusCode::UNAUTHORIZED,
             error_codes::UNAUTHORIZED,
@@ -230,12 +285,18 @@ pub async fn auth(
         });
 
     match query_token {
-        Some(ref qt) if token_matches(qt, &state.token) => next.run(req).await,
-        _ => error_response(
-            axum::http::StatusCode::UNAUTHORIZED,
-            error_codes::UNAUTHORIZED,
-            "Missing or invalid authentication token.",
-        ),
+        Some(ref qt) if token_matches(qt, &state.token) => {
+            tracing::info!("auth: accepted_via_query");
+            next.run(req).await
+        }
+        _ => {
+            tracing::warn!(path = %path, "auth: rejected");
+            error_response(
+                axum::http::StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "Missing or invalid authentication token.",
+            )
+        }
     }
 }
 
@@ -325,7 +386,12 @@ pub fn build_app(state: AppState) -> Router {
         )
         .method_not_allowed_fallback(method_not_allowed_handler)
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
-        .layer(middleware::from_fn(no_store_middleware));
+        .layer(middleware::from_fn(no_store_middleware))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        );
 
     // Static asset routes are OUTSIDE the api subrouter.
     // They are unauthenticated (contract §3) and have their own Cache-Control
@@ -340,6 +406,11 @@ pub fn build_app(state: AppState) -> Router {
         .route("/styles.css", get(styles_css_handler))
         .route("/manifest.json", get(manifest_handler))
         .route("/favicon.ico", get(favicon_handler))
+        // Service worker: MUST be at root scope (not /static/) so it can control
+        // all navigation. Cache-Control: no-cache per contract §12. (TASK-2.2.1)
+        .route("/sw.js", get(sw_js_handler))
+        // IDB queue module: loaded before app.js via <script> tag. (TASK-2.1.1)
+        .route("/queue.js", get(queue_js_handler))
         .route("/static/*path", get(static_asset_handler))
         .fallback(not_found_handler)
         .with_state(state)
@@ -358,6 +429,29 @@ pub async fn serve_on_listener(
     Ok(())
 }
 
+/// Initialize the tracing subscriber.
+///
+/// Reads `POUR_LOG` env var for level filtering; defaults to `info` for all
+/// targets.  Uses `try_init` so that a second call (e.g. from integration tests
+/// that share a global subscriber) silently no-ops instead of panicking.
+///
+/// Examples:
+///   `POUR_LOG=debug pour serve`           — verbose, all targets
+///   `POUR_LOG=pour=debug,tower_http=warn` — fine-grained
+pub fn init_logging() {
+    let filter = tracing_subscriber::EnvFilter::try_from_env("POUR_LOG")
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,pour=info,tower_http=info"));
+
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .with_level(true)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .compact()
+        .try_init();
+}
+
 /// Build and run the axum server.
 ///
 /// Blocks until the process is interrupted (Ctrl+C).
@@ -367,7 +461,22 @@ pub async fn run(
     port: u16,
     token: String,
 ) -> Result<()> {
+    init_logging();
+
     let transport_mode = transport.mode();
+
+    let vault_path = &config.vault.base_path;
+    let transport_label = match transport_mode {
+        TransportMode::Api => "API",
+        TransportMode::FileSystem => "FileSystem",
+    };
+    tracing::info!(
+        address = %format!("0.0.0.0:{port}"),
+        transport = transport_label,
+        vault = %vault_path,
+        "serving"
+    );
+
     let presets = Presets::load();
     let state = AppState {
         transport_mode,

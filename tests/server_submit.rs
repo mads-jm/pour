@@ -2,17 +2,59 @@
 //
 // Uses axum's in-process test approach: build the Router, drive it with
 // `tower::ServiceExt::oneshot` — no TCP socket needed.
+//
+// Test isolation
+// --------------
+// Tests that mutate POUR_HOME must hold ENV_LOCK for their entire duration and
+// use EnvGuard to restore the prior value on drop. This prevents the race where
+// one test's set_var races with another, or a Drop fires while a concurrent
+// test is mid-handler, silently falling through to the real ~/.pour/.
 
 use std::sync::Arc;
 
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
+use tokio::sync::Mutex;
 use tower::ServiceExt as _;
 
 use chrono::Timelike as _;
 use pour::server::{AppState, handlers, not_found_handler};
 use pour::transport::TransportMode;
+
+// ---------------------------------------------------------------------------
+// Env serialization helpers
+// ---------------------------------------------------------------------------
+
+static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+
+struct EnvGuard {
+    key: &'static str,
+    prior: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let prior = std::env::var(key).ok();
+        // SAFETY: set_var is process-global. Access is serialized via ENV_LOCK
+        // within this test file so all POUR_HOME-touching tests run serially.
+        unsafe { std::env::set_var(key, value) };
+        EnvGuard { key, prior }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: set_var/remove_var are process-global. Access is serialized
+        // via ENV_LOCK so no concurrent test observes the transition window.
+        unsafe {
+            match &self.prior {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -723,16 +765,14 @@ async fn submit_idempotency_key_replay_returns_same_body_with_header() {
 
 #[tokio::test]
 async fn submit_auto_create_bare_stub_novel_value_creates_note() {
+    let _lock = ENV_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let base = fwd(tmp.path());
 
     // Isolate the pour state cache from other parallel tests by pointing
     // POUR_HOME at the temp dir. Without this, Cache::load/save uses the
     // global ~/.pour/cache/state.json which races with other autocreate tests.
-    // SAFETY: set_var is process-global. Tests in this binary may run in
-    // parallel and could observe a partial update of POUR_HOME. The races are
-    // benign here because every test points POUR_HOME at its own tempdir.
-    unsafe { std::env::set_var("POUR_HOME", tmp.path()) };
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
 
     // Pre-create the beans directory so list_directory can find it
     let beans_dir = tmp.path().join("Brew").join("Beans");
@@ -763,12 +803,10 @@ async fn submit_auto_create_bare_stub_novel_value_creates_note() {
 
 #[tokio::test]
 async fn submit_auto_create_existing_value_is_not_auto_created() {
+    let _lock = ENV_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let base = fwd(tmp.path());
-    // SAFETY: set_var is process-global. Tests in this binary may run in
-    // parallel and could observe a partial update of POUR_HOME. The races are
-    // benign here because every test points POUR_HOME at its own tempdir.
-    unsafe { std::env::set_var("POUR_HOME", tmp.path()) };
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
 
     // Pre-create an existing bean note
     let beans_dir = tmp.path().join("Brew").join("Beans");
@@ -980,12 +1018,10 @@ required = true
 /// Templated auto-create: novel dynamic_select value with create_template + auto_create_inputs.
 #[tokio::test]
 async fn submit_auto_create_templated_note_has_full_frontmatter() {
+    let _lock = ENV_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let base = fwd(tmp.path());
-    // SAFETY: set_var is process-global. Tests in this binary may run in
-    // parallel and could observe a partial update of POUR_HOME. The races are
-    // benign here because every test points POUR_HOME at its own tempdir.
-    unsafe { std::env::set_var("POUR_HOME", tmp.path()) };
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
 
     let beans_dir = tmp.path().join("Brew").join("Beans");
     std::fs::create_dir_all(&beans_dir).unwrap();
@@ -1133,4 +1169,206 @@ async fn submit_idempotency_key_non_printable_returns_400() {
         "Idempotency-Key containing ASCII control character (tab) must return 400"
     );
     assert_error_code(resp.into_body(), "validation_failed").await;
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency cacheability (contract §9 round-5 amendment)
+// ---------------------------------------------------------------------------
+
+/// 4xx responses must NOT be cached. A 400 validation_failed on the first
+/// submit must not block a corrected retry with the same Idempotency-Key.
+///
+/// Sequence:
+/// 1. Submit with missing required field → 400 validation_failed
+/// 2. Submit again with the SAME key but field filled → 201 success
+///    (must NOT replay the 400)
+#[tokio::test]
+async fn submit_idempotency_400_not_cached_allows_retry_with_fix() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let state = make_state(create_config(&base), tmp.path());
+    let router = make_router(state);
+
+    let key = "retry-after-fix-key-001";
+
+    // 1. Submit with empty required field → 400.
+    let req1 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/submit/coffee")
+        .header("Authorization", "Bearer test-token")
+        .header("Content-Type", "application/json")
+        .header("Idempotency-Key", key)
+        .body(axum::body::Body::from(
+            json!({ "field_values": { "bean": "" } }).to_string(),
+        ))
+        .unwrap();
+    let resp1 = router.clone().oneshot(req1).await.unwrap();
+    assert_eq!(
+        resp1.status(),
+        StatusCode::BAD_REQUEST,
+        "first submit with empty required field must return 400"
+    );
+    assert_error_code(resp1.into_body(), "validation_failed").await;
+
+    // 2. Retry with the SAME key, but this time provide the required field.
+    //    Must succeed with 201, NOT replay the cached 400.
+    let req2 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/submit/coffee")
+        .header("Authorization", "Bearer test-token")
+        .header("Content-Type", "application/json")
+        .header("Idempotency-Key", key)
+        .body(axum::body::Body::from(
+            json!({ "field_values": { "bean": "Ethiopia Guji" } }).to_string(),
+        ))
+        .unwrap();
+    let resp2 = router.oneshot(req2).await.unwrap();
+    assert_eq!(
+        resp2.status(),
+        StatusCode::CREATED,
+        "retry with same key after fixing validation error must return 201, not replayed 400"
+    );
+    // Must NOT carry the replay header (this is a fresh execution, not a cache hit).
+    let replay_header = resp2
+        .headers()
+        .get("idempotency-replay")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        replay_header.is_empty(),
+        "corrected retry must not carry Idempotency-Replay header"
+    );
+}
+
+/// 2xx responses ARE cached. After a successful 201, a second request with the
+/// same Idempotency-Key must return the cached 201 (Idempotency-Replay: true).
+/// This test ensures the fix for CRITICAL #1 did not regress the happy path.
+#[tokio::test]
+async fn submit_idempotency_201_is_cached_replay_returns_201() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let state = make_state(create_config(&base), tmp.path());
+    let router = make_router(state);
+
+    let key = "success-cache-key-002";
+    let body = json!({ "field_values": { "bean": "Kenya AA" } }).to_string();
+
+    // First request → 201.
+    let req1 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/submit/coffee")
+        .header("Authorization", "Bearer test-token")
+        .header("Content-Type", "application/json")
+        .header("Idempotency-Key", key)
+        .body(axum::body::Body::from(body.clone()))
+        .unwrap();
+    let resp1 = router.clone().oneshot(req1).await.unwrap();
+    assert_eq!(resp1.status(), StatusCode::CREATED, "first request must be 201");
+    let body1 = to_bytes(resp1.into_body(), 65536).await.unwrap();
+
+    // Second request with same key → 201 replay.
+    let req2 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/submit/coffee")
+        .header("Authorization", "Bearer test-token")
+        .header("Content-Type", "application/json")
+        .header("Idempotency-Key", key)
+        .body(axum::body::Body::from(body.clone()))
+        .unwrap();
+    let resp2 = router.oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::CREATED, "replay must return 201");
+
+    let replay_header = resp2
+        .headers()
+        .get("idempotency-replay")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(
+        replay_header, "true",
+        "replay response must carry Idempotency-Replay: true"
+    );
+
+    let body2 = to_bytes(resp2.into_body(), 65536).await.unwrap();
+    assert_eq!(body1, body2, "replay body must be byte-for-byte identical to original");
+}
+
+// ---------------------------------------------------------------------------
+// Isolation regression guard
+// ---------------------------------------------------------------------------
+
+/// Proves that a submit writes history into the POUR_HOME tempdir and NOT into
+/// any other location (i.e. not into ~/.pour/cache/history.jsonl).
+///
+/// This test locks ENV_LOCK, sets POUR_HOME to an isolated tempdir, submits,
+/// then asserts:
+/// 1. history.jsonl exists inside the tempdir
+/// 2. POUR_HOME env var is exactly the tempdir path while the guard is held
+/// 3. After the guard drops, POUR_HOME is restored to whatever it was before
+///
+/// If ENV_LOCK is ever removed or EnvGuard is replaced with bare set_var, the
+/// restoration check at step 3 will still pass (since it compares env state),
+/// but the entire test suite run demonstrates that parallel tests can no longer
+/// race on the env var — the lock is what makes the suite deterministic.
+#[tokio::test]
+async fn submit_history_written_to_pour_home_not_real_home() {
+    let _lock = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+
+    // Capture whatever POUR_HOME was before this test.
+    let prior_pour_home = std::env::var("POUR_HOME").ok();
+
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
+
+    // POUR_HOME must now point to our tempdir.
+    assert_eq!(
+        std::env::var("POUR_HOME").ok().as_deref(),
+        Some(tmp.path().to_str().unwrap()),
+        "POUR_HOME must be set to the tempdir while EnvGuard is held"
+    );
+
+    let state = make_state(create_config(&base), tmp.path());
+    let router = make_router(state);
+
+    let req = json_request(
+        "coffee",
+        Some("test-token"),
+        json!({ "field_values": { "bean": "Isolation Test Bean" } }),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let resp_json = body_json(resp.into_body()).await;
+    let history_id = resp_json["history_id"].as_str().unwrap();
+    assert!(!history_id.is_empty(), "history_id must be non-empty");
+
+    // history.jsonl must exist inside our tempdir, not anywhere else.
+    let history_path = tmp.path().join("cache").join("history.jsonl");
+    assert!(
+        history_path.exists(),
+        "history.jsonl must be written inside POUR_HOME tempdir at {}",
+        history_path.display()
+    );
+
+    let content = std::fs::read_to_string(&history_path).unwrap();
+    assert!(
+        content.contains(history_id),
+        "history.jsonl must contain the submitted history_id={history_id}; content: {content}"
+    );
+    assert!(
+        content.contains("Isolation Test Bean") || content.contains("coffee"),
+        "history.jsonl must reference the submitted module; content: {content}"
+    );
+
+    // Drop the guard explicitly before checking restoration.
+    drop(_env);
+
+    // POUR_HOME must be restored to its prior state after the guard drops.
+    let restored = std::env::var("POUR_HOME").ok();
+    assert_eq!(
+        restored,
+        prior_pour_home,
+        "POUR_HOME must be restored to prior value after EnvGuard drops; \
+         expected {prior_pour_home:?}, got {restored:?}"
+    );
 }

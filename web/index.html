@@ -3,63 +3,169 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a6b5a">
+  <meta name="theme-color" content="#0891b2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
   <link rel="stylesheet" href="/styles.css">
   <title>Pour</title>
 </head>
 <body>
 
   <header>
-    <h1>Pour</h1>
-    <span id="status-pill">connecting...</span>
+    <h1>pour <span class="separator">›</span> <span class="vault-name" id="header-vault">vault</span></h1>
+    <div class="header-pills">
+      <!-- TASK-2.1.4: queue badge — hidden when n=0 -->
+      <button
+        type="button"
+        id="queue-badge"
+        class="queue-badge"
+        hidden
+        aria-label="Queued captures"
+        aria-expanded="false"
+      >Queued (0)</button>
+      <span id="status-pill">connecting...</span>
+    </div>
   </header>
 
-  <!-- Token gate: shown when no token is available -->
-  <main id="token-gate">
-    <h2>Token Required</h2>
-    <p>
-      Open Pour on your desktop and run <strong>pour serve</strong>.
-      Scan the QR code with your phone — the URL carries your token.
-    </p>
-    <p style="margin-top:12px; font-size:0.8rem; color: var(--text-muted);">
-      Or open: <code>http://&lt;desktop-ip&gt;:8421/?token=&lt;your-token&gt;</code>
-    </p>
-  </main>
-
-  <!-- Dashboard: module tiles -->
-  <main id="dashboard" hidden>
-    <h2>Modules</h2>
-    <div class="module-grid" id="module-grid"></div>
-  </main>
-
-  <!-- Form view -->
-  <main id="form" hidden>
-    <h2>New Entry</h2>
-    <div class="form-module-title" id="form-title"></div>
-    <form id="capture-form" novalidate></form>
-  </main>
-
-  <!-- Summary view -->
-  <main id="summary" hidden>
-    <h2>Poured</h2>
-    <div class="summary-card">
-      <div id="summary-message"></div>
-      <div class="vault-path" id="summary-path"></div>
-      <span class="transport-badge" id="summary-transport"></span>
+  <!-- TASK-2.1.4: Queue panel — pending record list. Hidden by default. -->
+  <div id="queue-panel" class="queue-panel" hidden aria-label="Queued captures panel">
+    <div class="queue-panel-header">
+      <span class="queue-panel-title">Queued captures</span>
+      <button type="button" id="queue-panel-close" class="queue-panel-close" aria-label="Close queue panel">×</button>
     </div>
-    <div class="btn-row">
-      <button class="btn-secondary" id="btn-pour-another">Pour Another</button>
-      <button class="btn-secondary" id="btn-dashboard">Dashboard</button>
-    </div>
+    <!-- Sync status indicator (updated by SW messages) -->
+    <div id="queue-sync-status" class="queue-sync-status"></div>
+    <div id="queue-panel-list" class="queue-panel-list"></div>
+  </div>
+
+  <main>
+
+    <!-- Token gate: shown when no token is available -->
+    <section id="token-gate">
+      <h2>Token Required</h2>
+      <p>
+        Open Pour on your desktop and run <strong>pour serve</strong>.
+        Scan the QR code with your phone — the URL carries your token.
+      </p>
+      <p style="margin-top:12px; font-size:0.8rem; color: var(--text-muted);">
+        Or open: <code>http://&lt;desktop-ip&gt;:8421/?token=&lt;your-token&gt;</code>
+      </p>
+    </section>
+
+    <!-- Dashboard: module tiles -->
+    <section id="dashboard" hidden aria-label="Module list">
+      <h2>Modules</h2>
+      <div class="module-grid" id="module-grid"></div>
+    </section>
+
+    <!-- Form view -->
+    <section id="form" hidden aria-label="Capture form">
+      <h2>New Entry</h2>
+      <div class="form-module-title" id="form-title"></div>
+      <form id="capture-form" novalidate></form>
+    </section>
+
+    <!-- Summary view -->
+    <section id="summary" hidden aria-label="Capture summary">
+      <h2>Poured</h2>
+      <div class="summary-card">
+        <div id="summary-message"></div>
+        <div class="vault-path" id="summary-path"></div>
+        <span class="transport-badge" id="summary-transport"></span>
+      </div>
+      <!-- Non-fatal autocreate warnings (TASK-2.3.5) -->
+      <div id="summary-warnings"></div>
+      <div class="btn-row">
+        <button class="btn-secondary" id="btn-pour-another">Pour Another</button>
+        <button class="btn-secondary" id="btn-dashboard">Dashboard</button>
+      </div>
+    </section>
+
+    <!-- History view (TASK-2.5.1) — lazy-loaded on first tab tap -->
+    <section id="history" hidden aria-label="Capture history">
+      <!-- Heatmap sits ABOVE the history list (TASK-2.5.4) -->
+      <div id="heatmap-container" class="heatmap-container">
+        <!-- Populated by renderHeatmap() -->
+      </div>
+      <!-- Stats strip: streak + today count from summary -->
+      <div id="history-stats" class="history-stats"></div>
+      <!-- History list -->
+      <div id="history-list" class="history-list"></div>
+      <!-- Inline spinner while fetching next page (TASK-2.5.2) -->
+      <div id="history-spinner" class="history-spinner" hidden aria-live="polite">Loading…</div>
+      <!-- Read-back panel (TASK-2.5.3) — tap entry opens this -->
+      <div id="capture-panel" class="capture-panel" hidden aria-label="Capture content">
+        <div class="capture-panel-header">
+          <div class="capture-panel-meta">
+            <span id="capture-panel-path" class="capture-panel-path"></span>
+            <span id="capture-panel-transport" class="capture-panel-transport"></span>
+          </div>
+          <button type="button" id="capture-panel-close" class="capture-panel-close" aria-label="Close capture">×</button>
+        </div>
+        <!-- Content rendered via textContent — NEVER innerHTML (XSS rule) -->
+        <pre id="capture-panel-content" class="capture-panel-content"></pre>
+      </div>
+    </section>
+
   </main>
 
-  <!-- Toast / error region -->
-  <div id="toast" hidden></div>
+  <!-- Bottom-tab nav (TASK-2.5.1 / 2.5.6) — hidden on form and summary views -->
+  <!-- role="tablist" + role="tab" + aria-selected per a11y spec -->
+  <nav id="bottom-tab-nav" class="bottom-tab-nav" role="tablist" aria-label="Main navigation">
+    <button
+      id="tab-capture"
+      class="tab-btn"
+      role="tab"
+      aria-selected="true"
+      aria-controls="dashboard"
+      type="button"
+    >capture</button>
+    <button
+      id="tab-history"
+      class="tab-btn"
+      role="tab"
+      aria-selected="false"
+      aria-controls="history"
+      type="button"
+    >history</button>
+  </nav>
 
+  <!-- Sub-form overlay: create_template fields for novel dynamic_select values -->
+  <!-- Hidden by default. Shown by openSubformOverlay(). -->
+  <section
+    id="subform-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="subform-title"
+    aria-hidden="true"
+    hidden
+  >
+    <div id="subform-scrim"></div>
+    <div id="subform-panel">
+      <header id="subform-header">
+        <h2 id="subform-title">Create</h2>
+        <p id="subform-novel-value" class="subform-novel-value"></p>
+      </header>
+      <!-- Per-field errors from server relay appear here -->
+      <div id="subform-top-error" class="subform-top-error" hidden role="alert"></div>
+      <!-- Template fields rendered here by renderSubformFields() -->
+      <div id="subform-fields"></div>
+      <div class="subform-actions">
+        <button type="button" class="btn-primary" id="subform-confirm">Confirm</button>
+        <button type="button" class="btn-secondary" id="subform-cancel">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast / status region -->
+  <div id="toast" hidden role="status" aria-live="polite"></div>
+
+  <!-- queue.js: IDB queue API (TASK-2.1.1). Loaded before app.js so the
+       openQueue/listQueue/etc. functions are available when app.js calls them. -->
+  <script src="/queue.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>
