@@ -3,7 +3,7 @@ use pour::app::{App, PresetPickerState};
 use pour::config::Config;
 use pour::data::field_presets::FieldPresets;
 use pour::data::history::History;
-use pour::data::preset_tree::{PresetTree, build};
+use pour::data::preset_tree::build;
 use pour::data::presets::{PresetEntry, Presets};
 use pour::transport::Transport;
 use pour::transport::fs::FsWriter;
@@ -93,15 +93,6 @@ fn make_app_no_axes() -> App {
         Presets::empty(),
         FieldPresets::empty(),
     )
-}
-
-fn make_simple_tree() -> PresetTree {
-    let presets = vec![
-        make_preset("V60 Onyx", "V60", "Onyx"),
-        make_preset("V60 Kenya", "V60", "Kenya"),
-        make_preset("Aero Onyx", "AeroPress", "Onyx"),
-    ];
-    build(&presets, &["method".to_owned(), "bean".to_owned()])
 }
 
 fn key(code: KeyCode) -> KeyEvent {
