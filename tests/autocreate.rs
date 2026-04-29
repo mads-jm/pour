@@ -112,6 +112,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         daily_link: None,
         append_shallow: None,
         mobile_visible: None,
+        preset_axes: Vec::new(),
     }
 }
 

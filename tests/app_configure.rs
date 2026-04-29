@@ -324,12 +324,14 @@ fn make_form_state(
         sub_form: None,
         preset_names: Vec::new(),
         preset_descriptions: Vec::new(),
-        selected_preset: 0,
+        selected_preset_name: None,
+        preset_picker: None,
         preset_overlay: None,
         confirm_delete_preset: false,
         field_preset_picker: None,
         last_applied_field_preset: HashMap::new(),
         composite_status: None,
+        axis_warnings: Vec::new(),
     }
 }
 

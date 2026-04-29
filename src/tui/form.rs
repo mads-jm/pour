@@ -9,7 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{
     App, CalloutTitleEdit, FieldPresetPickerState, FormState, PresetDialogFocus,
-    PresetDialogTarget, PresetSaveDialog, SubFormState,
+    PresetDialogTarget, PresetPickerState, PresetSaveDialog, SubFormState,
 };
 use crate::config::{FieldConfig, FieldType, SubFieldType, TemplateFieldType};
 use crate::visibility::visible_field_indices;
@@ -61,21 +61,30 @@ pub fn render(app: &App, frame: &mut Frame) {
     .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(title, chunks[0]);
 
-    // Fields
-    render_fields(frame, chunks[1], &module.fields, form_state);
+    // has_picker is false when axes are empty OR axes failed validation (axis_warnings non-empty).
+    let has_picker = !module.preset_axes.is_empty() && form_state.axis_warnings.is_empty();
+    render_fields(frame, chunks[1], &module.fields, form_state, has_picker);
 
-    // Footer: validation errors, delete confirmation, or key hints
+    // Footer: validation errors, axis warnings, delete confirmation, or key hints
     let footer_content = if !form_state.validation_errors.is_empty() {
         let error_text = form_state.validation_errors.join("; ");
         Line::from(Span::styled(
             format!(" Error: {error_text}"),
             Style::default().fg(Color::Red),
         ))
+    } else if !form_state.axis_warnings.is_empty() {
+        let warn_text = form_state.axis_warnings.join(", ");
+        Line::from(vec![
+            Span::styled(
+                format!(" \u{26A0} preset_axes invalid: {warn_text}"),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" — picker disabled", Style::default().fg(Color::DarkGray)),
+        ])
     } else if form_state.confirm_delete_preset {
         let name = form_state
-            .preset_names
-            .get(form_state.selected_preset.saturating_sub(1))
-            .cloned()
+            .selected_preset_name
+            .clone()
             .unwrap_or_default();
         Line::from(vec![
             Span::styled(
@@ -109,13 +118,20 @@ pub fn render(app: &App, frame: &mut Frame) {
             Span::raw(" save  "),
             Span::styled("d", Style::default().fg(Color::Yellow)),
             Span::raw(" delete  "),
-            Span::styled("←→", Style::default().fg(Color::Yellow)),
-            Span::raw(" cycle  "),
+        ];
+        if has_picker {
+            spans.push(Span::styled("p", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" picker  "));
+        } else {
+            spans.push(Span::styled("←→", Style::default().fg(Color::Yellow)));
+            spans.push(Span::raw(" cycle  "));
+        }
+        spans.extend([
             Span::styled("↑↓/Tab", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
             Span::styled("Enter", Style::default().fg(Color::Yellow)),
             Span::raw(" interact  "),
-        ];
+        ]);
         if show_title_hint {
             spans.push(Span::styled("t", Style::default().fg(Color::Yellow)));
             spans.push(Span::raw(" title  "));
@@ -126,6 +142,11 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
+
+    // Preset picker overlay: drilldown tree modal
+    if let Some(ref picker) = form_state.preset_picker {
+        render_preset_picker_overlay(frame, area, picker, &module.preset_axes);
+    }
 
     // Preset save overlay renders before sub-form overlay
     if let Some(ref overlay) = form_state.preset_overlay {
@@ -152,7 +173,7 @@ pub fn render(app: &App, frame: &mut Frame) {
 ///   0                      = preset row
 ///   1..=visible_count      = real fields (visible_indices[active_field - 1])
 ///   visible_count + 1      = submit button
-fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState) {
+fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState, has_picker: bool) {
     // Compute which fields are currently visible given the form's current values.
     // `vi` (visible index) is the render position; `ci` (config index) is the field's
     // position in the original `fields` slice.
@@ -175,16 +196,12 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
     } else {
         Style::default().fg(Color::Gray)
     };
-    let preset_name_display = if form_state.selected_preset == 0 {
-        "<none>".to_string()
-    } else {
-        form_state
-            .preset_names
-            .get(form_state.selected_preset - 1)
-            .cloned()
-            .unwrap_or_else(|| "<none>".to_string())
-    };
-    let preset_value_text = if on_preset_row {
+    let preset_name_display = form_state
+        .selected_preset_name
+        .clone()
+        .unwrap_or_else(|| "<none>".to_string());
+    let preset_value_text = if on_preset_row && !has_picker {
+        // Legacy cycler: show chevrons when cycling is active.
         format!("◂ {preset_name_display} ▸")
     } else {
         preset_name_display
@@ -198,10 +215,12 @@ fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_sta
 
     // Description subtitle: shown only when a real preset is selected and it
     // has a non-empty description. Rendered dim, indented under the preset name.
-    let preset_description = if form_state.selected_preset > 0 {
+    let preset_description = if let Some(ref name) = form_state.selected_preset_name {
         form_state
-            .preset_descriptions
-            .get(form_state.selected_preset - 1)
+            .preset_names
+            .iter()
+            .position(|n| n == name)
+            .and_then(|i| form_state.preset_descriptions.get(i))
             .and_then(|d| d.clone())
     } else {
         None
@@ -655,6 +674,179 @@ fn handle_callout_title_key(
     FormAction::None
 }
 
+fn render_preset_picker_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    picker: &PresetPickerState,
+    axes: &[String],
+) {
+    use crate::data::preset_tree::TreeNode;
+
+    if area.height < 6 || area.width < 30 {
+        return;
+    }
+
+    let modal_width = (area.width * 2 / 3).max(40).min(area.width.saturating_sub(4));
+    let modal_height = (area.height * 2 / 3).max(8).min(area.height.saturating_sub(4));
+    let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+    // Build breadcrumb from path.
+    let breadcrumb = build_breadcrumb(picker, axes);
+    let title = format!(" Preset: {breadcrumb} ");
+    frame.render_widget(Clear, modal_area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title.as_str())
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, modal_area);
+
+    let inner = Rect::new(
+        modal_area.x + 1,
+        modal_area.y + 1,
+        modal_area.width.saturating_sub(2),
+        modal_area.height.saturating_sub(2),
+    );
+
+    let list_height = inner.height.saturating_sub(1) as usize; // last row is hint
+
+    let nodes = current_nodes(picker);
+    let total = nodes.len();
+
+    let items: Vec<ListItem> = nodes
+        .iter()
+        .skip(picker.viewport_offset)
+        .take(list_height)
+        .enumerate()
+        .map(|(i, node)| {
+            let abs_i = i + picker.viewport_offset;
+            let is_selected = abs_i == picker.selected;
+            let style = if is_selected {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            match node {
+                TreeNode::Branch { axis_value, count, .. } => {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("  {axis_value}"), style),
+                        Span::styled(
+                            format!("  ({count})"),
+                            if is_selected {
+                                Style::default().fg(Color::DarkGray).bg(Color::Cyan)
+                            } else {
+                                Style::default().fg(Color::DarkGray)
+                            },
+                        ),
+                        Span::styled(" ▸", style),
+                    ]))
+                }
+                TreeNode::Leaf { preset_name, description } => {
+                    let name_style = style;
+                    if let Some(desc) = description {
+                        let desc_style = if is_selected {
+                            Style::default().fg(Color::DarkGray).bg(Color::Cyan)
+                        } else {
+                            Style::default()
+                                .fg(Color::DarkGray)
+                                .add_modifier(Modifier::ITALIC)
+                        };
+                        ListItem::new(Text::from(vec![
+                            Line::from(Span::styled(format!("  {preset_name}"), name_style)),
+                            Line::from(Span::styled(format!("    {desc}"), desc_style)),
+                        ]))
+                    } else {
+                        ListItem::new(Line::from(Span::styled(
+                            format!("  {preset_name}"),
+                            name_style,
+                        )))
+                    }
+                }
+            }
+        })
+        .collect();
+
+    let list_area = Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(1));
+    frame.render_widget(List::new(items), list_area);
+
+    // Scroll indicator
+    if total > list_height {
+        let pct = (picker.viewport_offset * 100) / total.max(1);
+        let scroll_text = format!(" {}/{} ({}%)", picker.selected + 1, total, pct);
+        let indicator_area = Rect::new(
+            modal_area.x + modal_area.width.saturating_sub(scroll_text.len() as u16 + 1),
+            modal_area.y,
+            scroll_text.len() as u16,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(Span::styled(scroll_text, Style::default().fg(Color::DarkGray))),
+            indicator_area,
+        );
+    }
+
+    // Hint row
+    let hint_area = Rect::new(inner.x, inner.y + inner.height.saturating_sub(1), inner.width, 1);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("↑↓", Style::default().fg(Color::Yellow)),
+            Span::raw(" nav  "),
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" select  "),
+            Span::styled("Bksp/←", Style::default().fg(Color::Yellow)),
+            Span::raw(" back  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" cancel"),
+        ])),
+        hint_area,
+    );
+}
+
+fn build_breadcrumb(picker: &PresetPickerState, axes: &[String]) -> String {
+    use crate::data::preset_tree::TreeNode;
+    if picker.path.is_empty() {
+        return axes.first().cloned().unwrap_or_else(|| "Preset".to_string());
+    }
+    let mut parts: Vec<String> = Vec::new();
+    // Walk through roots_with_ungrouped (which includes the synthetic Ungrouped branch).
+    let mut nodes: &[TreeNode] = &picker.tree.roots_with_ungrouped;
+    for &idx in picker.path.iter() {
+        if let Some(TreeNode::Branch { axis_value, children, .. }) = nodes.get(idx) {
+            parts.push(axis_value.clone());
+            nodes = children;
+        }
+    }
+    // Append next axis label (not applicable when inside the Ungrouped virtual branch).
+    let next_axis = axes.get(picker.path.len()).cloned();
+    let mut breadcrumb = parts.join(" \u{25B8} ");
+    if let Some(ax) = next_axis {
+        if !breadcrumb.is_empty() {
+            breadcrumb.push_str(" \u{25B8} ");
+        }
+        breadcrumb.push_str(&ax);
+    }
+    breadcrumb
+}
+
+fn current_nodes(picker: &PresetPickerState) -> &[crate::data::preset_tree::TreeNode] {
+    use crate::data::preset_tree::TreeNode;
+    if picker.path.is_empty() {
+        // roots_with_ungrouped contains the alphabetical branches followed by a synthetic
+        // "Ungrouped (N)" branch when ungrouped presets exist.  Empty if no presets at all.
+        return &picker.tree.roots_with_ungrouped;
+    }
+    let mut nodes: &[TreeNode] = &picker.tree.roots_with_ungrouped;
+    for &idx in &picker.path {
+        if let Some(TreeNode::Branch { children, .. }) = nodes.get(idx) {
+            nodes = children;
+        } else {
+            return &[];
+        }
+    }
+    nodes
+}
+
 fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSaveDialog) {
     if area.height < 10 || area.width < 30 {
         return;
@@ -718,14 +910,27 @@ fn render_preset_save_overlay(frame: &mut Frame, area: Rect, overlay: &PresetSav
 
     // Hint line (two rows below inputs leaves a visual gap)
     let hint_area = Rect::new(inner.x, inner.y + 3, inner.width, 1);
-    let hint = Paragraph::new(Line::from(vec![
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(" save  "),
-        Span::styled("Tab", Style::default().fg(Color::Yellow)),
-        Span::raw(" switch  "),
-        Span::styled("Esc", Style::default().fg(Color::Yellow)),
-        Span::raw(" cancel"),
-    ]));
+    let hint = if overlay.awaiting_overwrite_confirm {
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!("Overwrite \"{}\"? ", overlay.name_buffer.trim()),
+                Style::default().fg(Color::Red),
+            ),
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" confirm  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" cancel"),
+        ]))
+    } else {
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().fg(Color::Yellow)),
+            Span::raw(" save  "),
+            Span::styled("Tab", Style::default().fg(Color::Yellow)),
+            Span::raw(" switch  "),
+            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::raw(" cancel"),
+        ]))
+    };
     frame.render_widget(hint, hint_area);
 
     // Place cursor inside the focused input ("Name: " / "Desc: " are both 6 chars)
@@ -1655,15 +1860,19 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         return handle_preset_overlay_key(form_state, &module_key, module, key);
     }
 
+    // Preset picker overlay intercepts ALL keys when open.
+    if form_state.preset_picker.is_some() {
+        return handle_preset_picker_key(form_state, &module_key, module, &app.presets, key);
+    }
+
     // Delete confirmation intercepts y/n/Esc
     if form_state.confirm_delete_preset {
         use crossterm::event::KeyCode;
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 let name = form_state
-                    .preset_names
-                    .get(form_state.selected_preset.saturating_sub(1))
-                    .cloned()
+                    .selected_preset_name
+                    .clone()
                     .unwrap_or_default();
                 form_state.confirm_delete_preset = false;
                 return FormAction::DeletePreset { name };
@@ -1737,23 +1946,27 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::CONTROL))
     {
-        let (prefill_name, prefill_desc) = if form_state.selected_preset > 0 {
-            let idx = form_state.selected_preset - 1;
-            let name = form_state
-                .preset_names
-                .get(idx)
-                .cloned()
-                .unwrap_or_default();
-            let desc = form_state
-                .preset_descriptions
-                .get(idx)
-                .cloned()
-                .flatten()
-                .unwrap_or_default();
-            (name, desc)
-        } else {
-            (String::new(), String::new())
-        };
+        let (prefill_name, prefill_desc, name_was_user_edited) =
+            if let Some(ref sel_name) = form_state.selected_preset_name.clone() {
+                // Editing an existing preset: prefill its current name + desc.
+                let idx = form_state.preset_names.iter().position(|n| n == sel_name);
+                let desc = idx
+                    .and_then(|i| form_state.preset_descriptions.get(i))
+                    .and_then(|d| d.clone())
+                    .unwrap_or_default();
+                (sel_name.clone(), desc, true)
+            } else {
+                // New preset: auto-suggest from axes if available.
+                let suggested = if !module.preset_axes.is_empty() {
+                    crate::data::preset_tree::suggest_preset_name(
+                        &form_state.field_values,
+                        &module.preset_axes,
+                    )
+                } else {
+                    String::new()
+                };
+                (suggested, String::new(), false)
+            };
         let cursor_position = prefill_name.chars().count();
         let description_cursor = prefill_desc.chars().count();
         form_state.preset_overlay = Some(PresetSaveDialog {
@@ -1763,20 +1976,59 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
             description_cursor,
             focus: PresetDialogFocus::Name,
             target: PresetDialogTarget::Module,
+            name_was_user_edited,
+            awaiting_overwrite_confirm: false,
         });
         return FormAction::None;
     }
 
     // Delete preset: bare 'd' or Ctrl+D on preset row with a real preset selected.
-    if key.code == KeyCode::Char('d') && on_preset_row && form_state.selected_preset > 0 {
+    if key.code == KeyCode::Char('d') && on_preset_row && form_state.selected_preset_name.is_some() {
         form_state.confirm_delete_preset = true;
+        return FormAction::None;
+    }
+
+    // Open preset picker: bare 'p' on the preset row, or Ctrl+P from any non-editing context.
+    // Bare 'p' only fires when on the preset row AND picker is configured.
+    // Ctrl+P fires from any non-editing context when picker is configured.
+    // Disabled when axis_warnings is non-empty (invalid axes → cycler resumes instead).
+    let picker_trigger = !module.preset_axes.is_empty()
+        && form_state.axis_warnings.is_empty()
+        && !form_state.textarea_open
+        && !form_state.composite_open
+        && (key.code == KeyCode::Char('p')
+            && (on_preset_row
+                || key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL)));
+    if picker_trigger {
+        let presets = app.presets.get(&module_key);
+        let tree =
+            crate::data::preset_tree::build(&presets, &module.preset_axes);
+        form_state.preset_picker = Some(PresetPickerState {
+            tree,
+            path: Vec::new(),
+            selected: 0,
+            viewport_offset: 0,
+        });
         return FormAction::None;
     }
 
     // Preset row navigation: Left/Right cycle; Ctrl+Left/Right reorder
     if on_preset_row {
         let preset_count = form_state.preset_names.len();
-        let total = preset_count + 1; // 0=<none>, 1..=preset_count
+        // names: [None, "A", "B", ...] — None means <none>, index into preset_names is i-1
+        let total = preset_count + 1;
+        // axes_empty: treat as empty when axes failed validation (warnings present) so cycler stays active.
+        let axes_empty = module.preset_axes.is_empty() || !form_state.axis_warnings.is_empty();
+
+        // Helper: current numeric index (0 = <none>)
+        let current_idx = form_state
+            .selected_preset_name
+            .as_ref()
+            .and_then(|n| form_state.preset_names.iter().position(|p| p == n))
+            .map(|i| i + 1)
+            .unwrap_or(0);
 
         match key.code {
             KeyCode::Left => {
@@ -1784,40 +2036,30 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     .modifiers
                     .contains(crossterm::event::KeyModifiers::CONTROL)
                 {
-                    // Ctrl+Left: reorder backward
-                    if form_state.selected_preset > 0 {
-                        let name = form_state
-                            .preset_names
-                            .get(form_state.selected_preset - 1)
-                            .cloned()
-                            .unwrap_or_default();
+                    // Ctrl+Left: reorder backward (always available)
+                    if let Some(ref name) = form_state.selected_preset_name.clone() {
                         return FormAction::ReorderPreset {
-                            name,
+                            name: name.clone(),
                             direction: -1,
                         };
                     }
-                } else {
-                    // Left: cycle backward
+                } else if axes_empty {
+                    // Left: cycle backward (only when no picker)
                     if total > 0 {
-                        form_state.selected_preset =
-                            (form_state.selected_preset + total - 1) % total;
-                        let preset_entry = if form_state.selected_preset > 0 {
-                            let pname = form_state
-                                .preset_names
-                                .get(form_state.selected_preset - 1)
-                                .cloned();
-                            pname.and_then(|name| {
-                                app.presets
-                                    .get(&module_key)
-                                    .into_iter()
-                                    .find(|p| p.name == name)
-                            })
+                        let new_idx = (current_idx + total - 1) % total;
+                        let new_name = if new_idx > 0 {
+                            form_state.preset_names.get(new_idx - 1).cloned()
                         } else {
                             None
                         };
+                        let preset_entry = new_name.as_ref().and_then(|n| {
+                            app.presets
+                                .get(&module_key)
+                                .into_iter()
+                                .find(|p| p.name == *n)
+                        });
+                        form_state.selected_preset_name = new_name;
                         App::apply_preset(form_state, &module.fields, preset_entry.as_ref());
-                        // apply_preset sets active_field to a raw visible index (0-based).
-                        // We stay on the preset row after cycling.
                         form_state.active_field = 0;
                         form_state.active_config_idx = None;
                     }
@@ -1829,35 +2071,30 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     .modifiers
                     .contains(crossterm::event::KeyModifiers::CONTROL)
                 {
-                    // Ctrl+Right: reorder forward
-                    if form_state.selected_preset > 0 {
-                        let name = form_state
-                            .preset_names
-                            .get(form_state.selected_preset - 1)
-                            .cloned()
-                            .unwrap_or_default();
-                        return FormAction::ReorderPreset { name, direction: 1 };
+                    // Ctrl+Right: reorder forward (always available)
+                    if let Some(ref name) = form_state.selected_preset_name.clone() {
+                        return FormAction::ReorderPreset {
+                            name: name.clone(),
+                            direction: 1,
+                        };
                     }
-                } else {
-                    // Right: cycle forward
+                } else if axes_empty {
+                    // Right: cycle forward (only when no picker)
                     if total > 0 {
-                        form_state.selected_preset = (form_state.selected_preset + 1) % total;
-                        let preset_entry = if form_state.selected_preset > 0 {
-                            let pname = form_state
-                                .preset_names
-                                .get(form_state.selected_preset - 1)
-                                .cloned();
-                            pname.and_then(|name| {
-                                app.presets
-                                    .get(&module_key)
-                                    .into_iter()
-                                    .find(|p| p.name == name)
-                            })
+                        let new_idx = (current_idx + 1) % total;
+                        let new_name = if new_idx > 0 {
+                            form_state.preset_names.get(new_idx - 1).cloned()
                         } else {
                             None
                         };
+                        let preset_entry = new_name.as_ref().and_then(|n| {
+                            app.presets
+                                .get(&module_key)
+                                .into_iter()
+                                .find(|p| p.name == *n)
+                        });
+                        form_state.selected_preset_name = new_name;
                         App::apply_preset(form_state, &module.fields, preset_entry.as_ref());
-                        // Stay on the preset row after cycling.
                         form_state.active_field = 0;
                         form_state.active_config_idx = None;
                     }
@@ -2640,6 +2877,96 @@ fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u1
     }
 }
 
+/// Handle key events while the preset picker drilldown is open.
+///
+/// All keys consumed. ↑↓ navigate, Enter drill/apply, Backspace/Left pop, Esc cancel.
+fn handle_preset_picker_key(
+    form_state: &mut FormState,
+    module_key: &str,
+    module: &crate::config::ModuleConfig,
+    presets: &crate::data::presets::Presets,
+    key: crossterm::event::KeyEvent,
+) -> FormAction {
+    use crate::data::preset_tree::TreeNode;
+    use crossterm::event::KeyCode;
+
+    let picker = match &mut form_state.preset_picker {
+        Some(p) => p,
+        None => return FormAction::None,
+    };
+
+    let nodes_len = current_nodes(picker).len();
+
+    match key.code {
+        KeyCode::Esc => {
+            form_state.preset_picker = None;
+            FormAction::None
+        }
+        KeyCode::Up => {
+            if picker.selected > 0 {
+                picker.selected -= 1;
+                if picker.selected < picker.viewport_offset {
+                    picker.viewport_offset = picker.selected;
+                }
+            }
+            FormAction::None
+        }
+        KeyCode::Down => {
+            if picker.selected + 1 < nodes_len {
+                picker.selected += 1;
+                // keep selected visible (lazy: no fixed window height here — clamped at render)
+                if picker.selected >= picker.viewport_offset + 20 {
+                    picker.viewport_offset = picker.selected.saturating_sub(19);
+                }
+            }
+            FormAction::None
+        }
+        KeyCode::Enter => {
+            // Clone the node at selected to avoid borrow issues.
+            let node = current_nodes(picker).get(picker.selected).cloned();
+            match node {
+                Some(TreeNode::Branch { .. }) => {
+                    // Drill in: push current selected index onto path.
+                    let selected = picker.selected;
+                    let picker = form_state.preset_picker.as_mut().unwrap();
+                    picker.path.push(selected);
+                    picker.selected = 0;
+                    picker.viewport_offset = 0;
+                    FormAction::None
+                }
+                Some(TreeNode::Leaf { preset_name, .. }) => {
+                    // Apply the preset and close the picker.
+                    let preset_entry = presets
+                        .get(module_key)
+                        .into_iter()
+                        .find(|p| p.name == preset_name);
+                    form_state.selected_preset_name = Some(preset_name);
+                    form_state.preset_picker = None;
+                    App::apply_preset(form_state, &module.fields, preset_entry.as_ref());
+                    form_state.active_field = 0;
+                    form_state.active_config_idx = None;
+                    FormAction::None
+                }
+                None => FormAction::None,
+            }
+        }
+        KeyCode::Backspace | KeyCode::Left => {
+            let picker = form_state.preset_picker.as_mut().unwrap();
+            if picker.path.is_empty() {
+                // At root — close picker.
+                form_state.preset_picker = None;
+            } else {
+                // Pop one level.
+                let prev_selected = picker.path.pop().unwrap_or(0);
+                picker.selected = prev_selected;
+                picker.viewport_offset = prev_selected.saturating_sub(10);
+            }
+            FormAction::None
+        }
+        _ => FormAction::None,
+    }
+}
+
 /// Handle key events while the preset save overlay is open.
 ///
 /// All keys are consumed. Enter saves, Esc cancels, text keys edit the name buffer.
@@ -2680,6 +3007,24 @@ fn handle_preset_overlay_key(
                     Some(trimmed.to_string())
                 }
             };
+            // Overwrite confirm: if the name collides with an existing preset
+            // AND this is a new preset (not editing the same name), gate with
+            // a single-confirm step before committing.
+            if matches!(&overlay.target, PresetDialogTarget::Module) {
+                let is_collision = form_state.preset_names.contains(&name);
+                // Allow through if editing the preset that already has this name.
+                let editing_same = form_state
+                    .selected_preset_name
+                    .as_deref()
+                    .map(|n| n == name)
+                    .unwrap_or(false);
+                if is_collision && !editing_same && !overlay.awaiting_overwrite_confirm {
+                    overlay.awaiting_overwrite_confirm = true;
+                    return FormAction::None;
+                }
+                // Reset confirm flag after passing through.
+                overlay.awaiting_overwrite_confirm = false;
+            }
             // Branch on dialog target — composite-field saves use the rows of
             // the named field; module-level saves collect a flat field-value
             // map from visible non-excluded fields.
@@ -2750,6 +3095,7 @@ fn handle_preset_overlay_key(
             FormAction::None
         }
         KeyCode::Backspace => {
+            let is_name_focus = matches!(overlay.focus, PresetDialogFocus::Name);
             let (buffer, cursor) = match overlay.focus {
                 PresetDialogFocus::Name => (&mut overlay.name_buffer, &mut overlay.cursor_position),
                 PresetDialogFocus::Description => (
@@ -2765,6 +3111,11 @@ fn handle_preset_overlay_key(
                     .unwrap_or(0);
                 buffer.remove(byte_pos);
                 *cursor -= 1;
+            }
+            // Any edit to the name field — including deletion — marks it as user-edited.
+            if is_name_focus {
+                overlay.name_was_user_edited = true;
+                overlay.awaiting_overwrite_confirm = false;
             }
             FormAction::None
         }
@@ -2808,6 +3159,11 @@ fn handle_preset_overlay_key(
                     .unwrap_or(buffer.len());
                 buffer.insert(byte_pos, c);
                 *cursor += 1;
+                // Typing changes the name — reset any pending confirm.
+                overlay.awaiting_overwrite_confirm = false;
+                if matches!(overlay.focus, PresetDialogFocus::Name) {
+                    overlay.name_was_user_edited = true;
+                }
             }
             FormAction::None
         }
@@ -3157,6 +3513,8 @@ fn handle_composite_key(
             target: PresetDialogTarget::CompositeField {
                 field_name: field_name.clone(),
             },
+            name_was_user_edited: false,
+            awaiting_overwrite_confirm: false,
         });
         return FormAction::None;
     }

@@ -71,6 +71,10 @@ pub struct ModuleConfig {
     /// unless explicitly opted out.
     #[serde(default)]
     pub mobile_visible: Option<bool>,
+    /// Ordered list of field names used as drilldown axes in the preset picker.
+    /// Empty/absent → no picker; the legacy Left/Right cycler stays active.
+    #[serde(default)]
+    pub preset_axes: Vec<String>,
 }
 
 impl ModuleConfig {

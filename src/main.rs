@@ -533,14 +533,9 @@ fn handle_save_preset(
     let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
     let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names
-            .iter()
-            .position(|n| n == name)
-            .map(|i| i + 1)
-            .unwrap_or(0);
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = new_idx;
+        fs.selected_preset_name = Some(name.to_string());
     }
 }
 
@@ -566,7 +561,7 @@ fn handle_delete_preset(app: &mut App, name: &str) {
     if let Some(ref mut fs) = app.form_state {
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = 0; // Back to <none>, but keep current field values.
+        fs.selected_preset_name = None;
     }
 }
 
@@ -587,14 +582,10 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
     let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
     let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names
-            .iter()
-            .position(|n| n == name)
-            .map(|i| i + 1)
-            .unwrap_or(fs.selected_preset);
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = new_idx;
+        // Do NOT overwrite selected_preset_name here: reordering changes list position
+        // but not identity. The name-keyed selection survives unchanged.
     }
 }
 
@@ -1401,6 +1392,7 @@ fn handle_save_new_module(app: &mut App) {
         daily_link: None,
         append_shallow: None,
         mobile_visible: None,
+        preset_axes: Vec::new(),
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
