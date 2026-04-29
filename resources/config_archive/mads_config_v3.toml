@@ -503,14 +503,6 @@ field_type = "text"
 prompt = "Roaster"
 # wikilink wrapping happens on the parent field (bean), not template fields
 
-# Roast date — the source of truth for `days_off_roast` at brew time.
-# Stored as YYYY-MM-DD plain text today; will become the lookup target when
-# the `field_type = "lookup"` mechanism lands (see pour-lookup-fields.md).
-[[templates.bean.fields]]
-name = "roast_date"
-field_type = "text"
-prompt = "Roast date (YYYY-MM-DD)"
-
 [[templates.bean.fields]]
 name = "origin"
 field_type = "static_select"
