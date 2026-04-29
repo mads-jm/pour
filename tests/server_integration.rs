@@ -325,7 +325,11 @@ async fn scenario1_capture_round_trip() {
     assert_eq!(submit_resp["transport_mode"], "FileSystem");
 
     // Step 4: history — first entry matches submit response
-    let resp = c.get(format!("{base}/api/v1/history")).send().await.unwrap();
+    let resp = c
+        .get(format!("{base}/api/v1/history"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let hist: Value = resp.json().await.unwrap();
     let entries = hist["entries"].as_array().unwrap();
@@ -414,7 +418,11 @@ async fn scenario2_idempotency_replay() {
     );
 
     // History must have exactly ONE entry for this submission
-    let resp = c.get(format!("{base}/api/v1/history")).send().await.unwrap();
+    let resp = c
+        .get(format!("{base}/api/v1/history"))
+        .send()
+        .await
+        .unwrap();
     let hist: Value = resp.json().await.unwrap();
     let matching: Vec<_> = hist["entries"]
         .as_array()
@@ -485,7 +493,11 @@ async fn scenario4_presets_crud_round_trip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "first PUT must return 201");
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "first PUT must return 201"
+    );
     let location = resp
         .headers()
         .get("location")
@@ -532,10 +544,7 @@ async fn scenario4_presets_crud_round_trip() {
     let has_location = resp.headers().contains_key("location");
     let update_resp: Value = resp.json().await.unwrap();
     assert_eq!(update_resp["preset"]["values"]["bean"], "Yirgacheffe");
-    assert!(
-        !has_location,
-        "update (200) must not carry Location header"
-    );
+    assert!(!has_location, "update (200) must not carry Location header");
 
     // Step 5: PUT order — reorder ["Aeropress Quick", "Morning Onyx"]
     let resp = c
@@ -616,13 +625,16 @@ async fn scenario5_autocreate_templated_round_trip() {
     assert!(!bean_vault_path.is_empty());
 
     // Verify the bean's vault file exists on disk with templated content
-    let full_bean_path = srv._vault_dir.path().join(bean_vault_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let full_bean_path = srv
+        ._vault_dir
+        .path()
+        .join(bean_vault_path.replace('/', std::path::MAIN_SEPARATOR_STR));
     assert!(
         full_bean_path.exists(),
         "auto-created bean file must exist on disk at {full_bean_path:?}"
     );
-    let bean_content = std::fs::read_to_string(&full_bean_path)
-        .expect("bean file must be readable");
+    let bean_content =
+        std::fs::read_to_string(&full_bean_path).expect("bean file must be readable");
     assert!(
         bean_content.contains("Test Roaster") || bean_content.contains("Novel Bean"),
         "bean file must contain template values; content: {bean_content}"
@@ -659,7 +671,10 @@ async fn scenario6_static_and_api_coexist() {
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert!(ct.contains("text/html"), "/ must return text/html; got {ct}");
+    assert!(
+        ct.contains("text/html"),
+        "/ must return text/html; got {ct}"
+    );
     // Cache-Control for shell HTML must be no-cache, max-age=0, must-revalidate (§12)
     let cc = resp
         .headers()
@@ -695,7 +710,10 @@ async fn scenario6_static_and_api_coexist() {
         .get("cache-control")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert_eq!(cc, "no-store", "/api/v1/health Cache-Control must be no-store; got {cc}");
+    assert_eq!(
+        cc, "no-store",
+        "/api/v1/health Cache-Control must be no-store; got {cc}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -741,7 +759,13 @@ async fn scenario7_pwa_bootstrap_simulation() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let cfg: Value = resp.json().await.unwrap();
-    assert!(cfg["modules"].as_array().unwrap().iter().any(|m| m["key"] == "coffee"));
+    assert!(
+        cfg["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["key"] == "coffee")
+    );
 
     // Step 5: POST /api/v1/submit with Bearer header + Idempotency-Key
     let resp = authed
@@ -814,7 +838,11 @@ async fn scenario8_captured_at_offline_replay() {
     );
 
     // History timestamp must match captured_at (not server now)
-    let resp = c.get(format!("{base}/api/v1/history")).send().await.unwrap();
+    let resp = c
+        .get(format!("{base}/api/v1/history"))
+        .send()
+        .await
+        .unwrap();
     let hist: Value = resp.json().await.unwrap();
     let entry = hist["entries"]
         .as_array()

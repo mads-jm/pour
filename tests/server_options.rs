@@ -21,9 +21,9 @@ fn make_state_with_fs(config: pour::config::Config, base_path: &str) -> AppState
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
-        transport: Arc::new(Transport::Fs(FsWriter::new(
-            std::path::PathBuf::from(base_path),
-        ))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            base_path,
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -34,7 +34,10 @@ fn make_router(state: AppState) -> axum::Router {
     use pour::server::{auth, method_not_allowed_handler, no_store_middleware};
 
     let api = Router::new()
-        .route("/api/v1/options/:module/:field", get(handlers::options::handler))
+        .route(
+            "/api/v1/options/:module/:field",
+            get(handlers::options::handler),
+        )
         .method_not_allowed_fallback(method_not_allowed_handler)
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .layer(middleware::from_fn(no_store_middleware));
@@ -60,7 +63,10 @@ async fn body_json(body: axum::body::Body) -> serde_json::Value {
 
 async fn assert_error_code(body: axum::body::Body, expected_code: &str) {
     let json = body_json(body).await;
-    assert!(json["error"].is_object(), "expected error envelope, got: {json}");
+    assert!(
+        json["error"].is_object(),
+        "expected error envelope, got: {json}"
+    );
     assert_eq!(
         json["error"]["code"], expected_code,
         "error code mismatch, got: {}",
@@ -149,7 +155,10 @@ async fn options_unknown_field_returns_404() {
     let router = make_router(state);
 
     let resp = router
-        .oneshot(bearer("test-token", "/api/v1/options/coffee/nonexistent_field"))
+        .oneshot(bearer(
+            "test-token",
+            "/api/v1/options/coffee/nonexistent_field",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -259,7 +268,10 @@ async fn options_transport_tier_when_source_dir_has_files() {
     let options = json["options"].as_array().unwrap();
     assert!(options.len() >= 2, "should have at least 2 options");
     let names: Vec<&str> = options.iter().map(|o| o.as_str().unwrap()).collect();
-    assert!(names.contains(&"Ethiopia Guji"), "should contain Ethiopia Guji");
+    assert!(
+        names.contains(&"Ethiopia Guji"),
+        "should contain Ethiopia Guji"
+    );
     assert!(names.contains(&"Kenya"), "should contain Kenya");
     assert_eq!(json["source_path"], "Coffee/Beans");
 }
@@ -281,7 +293,10 @@ async fn options_response_has_required_fields() {
 
     let json = body_json(resp.into_body()).await;
     assert!(json["options"].is_array(), "options must be array");
-    assert!(json["source_path"].is_string(), "source_path must be string");
+    assert!(
+        json["source_path"].is_string(),
+        "source_path must be string"
+    );
     assert!(json["tier"].is_string(), "tier must be string");
 }
 

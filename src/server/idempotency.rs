@@ -44,10 +44,7 @@ pub enum IdempotencyOutcome {
     /// This is a new key — proceed with the handler; call `complete()` when done.
     Fresh,
     /// A prior completed response exists — serve it byte-for-byte.
-    Replay {
-        status: StatusCode,
-        body: Vec<u8>,
-    },
+    Replay { status: StatusCode, body: Vec<u8> },
     /// The same key is currently in flight (parallel submit race).
     /// Contract: return 409 `idempotency_replay_in_flight`.
     InFlight,
@@ -62,7 +59,11 @@ enum Entry {
     /// the impact of dropped futures to at most `IN_FLIGHT_TTL` seconds of
     /// wedging per key, without requiring a new wrapper type.
     InFlight { started_at: Instant },
-    Done { status: StatusCode, body: Vec<u8>, completed_at: Instant },
+    Done {
+        status: StatusCode,
+        body: Vec<u8>,
+        completed_at: Instant,
+    },
 }
 
 pub struct IdempotencyCache {
@@ -104,7 +105,11 @@ impl IdempotencyCache {
                     // Expired in-flight marker (dropped future, panic, cancellation).
                     // Fall through and treat as a fresh request.
                 }
-                Entry::Done { status, body, completed_at } => {
+                Entry::Done {
+                    status,
+                    body,
+                    completed_at,
+                } => {
                     if now.duration_since(*completed_at) < TTL {
                         tracing::info!(key_short = %key_short(key), "idempotency: replay served");
                         return IdempotencyOutcome::Replay {
@@ -126,7 +131,12 @@ impl IdempotencyCache {
             }
         }
 
-        g.map.insert(key.to_string(), Entry::InFlight { started_at: Instant::now() });
+        g.map.insert(
+            key.to_string(),
+            Entry::InFlight {
+                started_at: Instant::now(),
+            },
+        );
         // Only add to order if this is a genuinely new key (not an expired re-insert).
         if !g.order.contains(&key.to_string()) {
             g.order.push_back(key.to_string());
@@ -185,8 +195,11 @@ impl IdempotencyCache {
     /// Intended for integration tests only. Not called in production paths.
     pub fn insert_stale_in_flight(&self, key: &str, age: Duration) {
         let mut g = self.inner.lock().unwrap();
-        let started_at = Instant::now().checked_sub(age).expect("age fits in Instant");
-        g.map.insert(key.to_string(), Entry::InFlight { started_at });
+        let started_at = Instant::now()
+            .checked_sub(age)
+            .expect("age fits in Instant");
+        g.map
+            .insert(key.to_string(), Entry::InFlight { started_at });
         if !g.order.contains(&key.to_string()) {
             g.order.push_back(key.to_string());
         }

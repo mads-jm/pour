@@ -258,7 +258,10 @@ async fn captures_returns_file_content_after_submit() {
     );
 
     let json = body_json(captures_resp.into_body()).await;
-    assert_eq!(json["id"], history_id, "id must match the requested history_id");
+    assert_eq!(
+        json["id"], history_id,
+        "id must match the requested history_id"
+    );
     assert_eq!(json["module_key"], "coffee");
     assert!(
         json["vault_path"].is_string(),

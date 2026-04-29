@@ -159,7 +159,7 @@ pub struct FormState {
     /// editor; `None` otherwise.
     pub field_preset_picker: Option<FieldPresetPickerState>,
     /// Last preset applied per composite field, keyed by field name.
-    /// Drives the "preset: <name>" subtitle in the composite overlay.
+    /// Drives the `preset: <name>` subtitle in the composite overlay.
     pub last_applied_field_preset: HashMap<String, String>,
     /// Transient status message shown in the composite overlay (e.g. after a
     /// preset save or a schema-adjusted apply). Cleared on next user action.

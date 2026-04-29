@@ -159,7 +159,10 @@ impl Transport {
     ///
     /// - API backend: `NOT_FOUND` status → `NotFound`; connect/timeout → `Unreachable`.
     /// - FS backend: `io::ErrorKind::NotFound` → `NotFound`; other I/O → `Other`.
-    pub async fn read_file(&self, vault_path: &str) -> std::result::Result<String, TransportReadError> {
+    pub async fn read_file(
+        &self,
+        vault_path: &str,
+    ) -> std::result::Result<String, TransportReadError> {
         match self {
             Transport::Api(client) => client.read_file(vault_path).await,
             Transport::Fs(writer) => writer.read_file(vault_path),

@@ -397,11 +397,7 @@ impl History {
             None
         };
 
-        let entries: Vec<HistoryEntry> = filtered
-            .into_iter()
-            .take(limit)
-            .cloned()
-            .collect();
+        let entries: Vec<HistoryEntry> = filtered.into_iter().take(limit).cloned().collect();
 
         (entries, has_more, next_cursor)
     }

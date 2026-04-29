@@ -10,15 +10,15 @@ use serde_json::json;
 
 use super::super::{
     AppState,
-    dto::{CaptureResponse, error_codes, error_response, error_response_with_details, extra_error_codes},
+    dto::{
+        CaptureResponse, error_codes, error_response, error_response_with_details,
+        extra_error_codes,
+    },
 };
 use crate::data::history::History;
 use crate::transport::TransportReadError;
 
-pub async fn handler(
-    State(state): State<AppState>,
-    Path(history_id): Path<String>,
-) -> Response {
+pub async fn handler(State(state): State<AppState>, Path(history_id): Path<String>) -> Response {
     // Load history and find the entry.
     let history = History::load();
     let entry = match history.find_by_id(&history_id) {

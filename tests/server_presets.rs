@@ -58,7 +58,9 @@ fn make_state_with_presets_file(
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::load_from(presets_path))),
     }
@@ -73,7 +75,9 @@ fn make_state_empty(config: pour::config::Config) -> AppState {
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -84,7 +88,10 @@ fn make_router(state: AppState) -> axum::Router {
     use pour::server::{auth, method_not_allowed_handler, no_store_middleware};
 
     let api = Router::new()
-        .route("/api/v1/presets/:module", get(handlers::presets::get_handler))
+        .route(
+            "/api/v1/presets/:module",
+            get(handlers::presets::get_handler),
+        )
         .route(
             "/api/v1/presets/:module/order",
             put(handlers::presets::order_handler)
@@ -140,7 +147,10 @@ async fn body_json(body: axum::body::Body) -> serde_json::Value {
 
 async fn assert_error_code(body: axum::body::Body, expected_code: &str) {
     let json = body_json(body).await;
-    assert!(json["error"].is_object(), "expected error envelope, got: {json}");
+    assert!(
+        json["error"].is_object(),
+        "expected error envelope, got: {json}"
+    );
     assert_eq!(
         json["error"]["code"], expected_code,
         "error code mismatch, got: {json}"
@@ -280,10 +290,7 @@ async fn presets_put_whitespace_only_name_is_400() {
 
     // Axum decodes the path param — " " trims to empty string in our validation.
     let resp = router
-        .oneshot(bearer_put(
-            "/api/v1/presets/coffee/%20",
-            r#"{"values":{}}"#,
-        ))
+        .oneshot(bearer_put("/api/v1/presets/coffee/%20", r#"{"values":{}}"#))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -393,7 +400,10 @@ async fn presets_delete_existing_returns_204() {
         .unwrap();
     assert_eq!(resp_get.status(), StatusCode::OK);
     let json = body_json(resp_get.into_body()).await;
-    assert!(json["presets"].as_array().unwrap().is_empty(), "list must be empty after delete");
+    assert!(
+        json["presets"].as_array().unwrap().is_empty(),
+        "list must be empty after delete"
+    );
 }
 
 #[tokio::test]
@@ -486,9 +496,8 @@ async fn presets_order_missing_name_returns_400() {
     let json = body_json(resp.into_body()).await;
     assert_eq!(json["error"]["code"], "validation_failed");
     // Stronger: decode as Vec<String> to verify stable shape, not just is_array().
-    let missing: Vec<String> =
-        serde_json::from_value(json["error"]["details"]["missing"].clone())
-            .expect("details.missing must be a string array");
+    let missing: Vec<String> = serde_json::from_value(json["error"]["details"]["missing"].clone())
+        .expect("details.missing must be a string array");
     assert!(
         missing.contains(&"Beta".to_string()),
         "missing must contain 'Beta'; got {missing:?}"
@@ -505,7 +514,10 @@ async fn presets_order_extra_name_returns_400() {
     // Create Alpha only.
     router
         .clone()
-        .oneshot(bearer_put("/api/v1/presets/coffee/Alpha", r#"{"values":{}}"#))
+        .oneshot(bearer_put(
+            "/api/v1/presets/coffee/Alpha",
+            r#"{"values":{}}"#,
+        ))
         .await
         .unwrap();
 
@@ -523,9 +535,8 @@ async fn presets_order_extra_name_returns_400() {
     let json = body_json(resp.into_body()).await;
     assert_eq!(json["error"]["code"], "validation_failed");
     // Stronger: decode as Vec<String> to verify stable shape.
-    let extra: Vec<String> =
-        serde_json::from_value(json["error"]["details"]["extra"].clone())
-            .expect("details.extra must be a string array");
+    let extra: Vec<String> = serde_json::from_value(json["error"]["details"]["extra"].clone())
+        .expect("details.extra must be a string array");
     assert!(
         extra.contains(&"Extra".to_string()),
         "extra must contain 'Extra'; got {extra:?}"
@@ -600,7 +611,10 @@ async fn presets_get_has_cache_control_no_store() {
         .get("cache-control")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert_eq!(cc, "no-store", "Cache-Control must be no-store on GET presets");
+    assert_eq!(
+        cc, "no-store",
+        "Cache-Control must be no-store on GET presets"
+    );
 }
 
 // ---------------------------------------------------------------------------

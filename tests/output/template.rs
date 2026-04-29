@@ -35,7 +35,12 @@ fn no_overrides() -> HashMap<String, String> {
 #[test]
 fn render_path_substitutes_date_tokens() {
     let fields = HashMap::new();
-    let result = render_path("Journal/%Y/%Y-%m-%d.md", &fields, None, chrono::Local::now());
+    let result = render_path(
+        "Journal/%Y/%Y-%m-%d.md",
+        &fields,
+        None,
+        chrono::Local::now(),
+    );
     let today = Local::now().format("%Y-%m-%d").to_string();
     let year = Local::now().format("%Y").to_string();
 
@@ -61,7 +66,12 @@ fn render_path_no_tokens_passes_through() {
 fn render_path_substitutes_field_placeholders() {
     let mut fields = HashMap::new();
     fields.insert("bean".to_string(), "Ethiopian".to_string());
-    let result = render_path("Coffee/{{bean}} %Y%m%d.md", &fields, None, chrono::Local::now());
+    let result = render_path(
+        "Coffee/{{bean}} %Y%m%d.md",
+        &fields,
+        None,
+        chrono::Local::now(),
+    );
     let today = Local::now().format("%Y%m%d").to_string();
     assert_eq!(result, format!("Coffee/Ethiopian {today}.md"));
 }
@@ -69,7 +79,12 @@ fn render_path_substitutes_field_placeholders() {
 #[test]
 fn render_path_date_token_uses_vault_format() {
     let fields = HashMap::new();
-    let result = render_path("Daily/{{date}}.md", &fields, Some("%Y-%m-%d"), chrono::Local::now());
+    let result = render_path(
+        "Daily/{{date}}.md",
+        &fields,
+        Some("%Y-%m-%d"),
+        chrono::Local::now(),
+    );
     let today = Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(result, format!("Daily/{today}.md"));
 }

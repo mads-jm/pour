@@ -157,8 +157,13 @@ fn record_persists_to_disk() {
     let mut h = History::load_from(path.clone());
 
     assert_eq!(h.today_count(), 0);
-    h.record("coffee", "Coffee/2026/test.md", Some("Ethiopia Yirg"), chrono::Utc::now())
-        .expect("record should succeed");
+    h.record(
+        "coffee",
+        "Coffee/2026/test.md",
+        Some("Ethiopia Yirg"),
+        chrono::Utc::now(),
+    )
+    .expect("record should succeed");
     assert_eq!(h.today_count(), 1);
 
     // Reload from disk
@@ -314,9 +319,12 @@ fn record_appends_without_rewriting() {
     let path = dir.path().join("history.jsonl");
     let mut h = History::load_from(path.clone());
 
-    h.record("coffee", "test1.md", None, chrono::Utc::now()).expect("record 1");
-    h.record("me", "test2.md", None, chrono::Utc::now()).expect("record 2");
-    h.record("music", "test3.md", None, chrono::Utc::now()).expect("record 3");
+    h.record("coffee", "test1.md", None, chrono::Utc::now())
+        .expect("record 1");
+    h.record("me", "test2.md", None, chrono::Utc::now())
+        .expect("record 2");
+    h.record("music", "test3.md", None, chrono::Utc::now())
+        .expect("record 3");
 
     // File should have exactly 3 lines
     let contents = std::fs::read_to_string(&path).expect("read");
@@ -363,9 +371,11 @@ fn record_same_module_same_second_produces_distinct_ids() {
 
     // Use the exact same UTC timestamp for both records (simulates same-second submit).
     let ts = chrono::Utc::now();
-    let id1 = h.record("coffee", "Coffee/note1.md", Some("Ethiopia"), ts)
+    let id1 = h
+        .record("coffee", "Coffee/note1.md", Some("Ethiopia"), ts)
         .expect("record 1");
-    let id2 = h.record("coffee", "Coffee/note2.md", Some("Colombia"), ts)
+    let id2 = h
+        .record("coffee", "Coffee/note2.md", Some("Colombia"), ts)
         .expect("record 2");
 
     assert_ne!(

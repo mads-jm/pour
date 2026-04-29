@@ -203,11 +203,7 @@ impl Presets {
         description: Option<String>,
         values: HashMap<String, String>,
     ) -> Result<SetResult> {
-        let list = self
-            .data
-            .modules
-            .entry(module_key.to_owned())
-            .or_default();
+        let list = self.data.modules.entry(module_key.to_owned()).or_default();
 
         let result = if let Some(existing) = list.iter_mut().find(|p| p.name == name) {
             existing.description = description;
@@ -254,11 +250,7 @@ impl Presets {
         module_key: &str,
         new_order: Vec<String>,
     ) -> std::result::Result<(), ReorderError> {
-        let list = self
-            .data
-            .modules
-            .entry(module_key.to_owned())
-            .or_default();
+        let list = self.data.modules.entry(module_key.to_owned()).or_default();
 
         // Reject duplicates first — before the missing/extra set-diff check.
         // Without this, ["Alpha","Beta","Beta"] against ["Alpha","Beta"] would

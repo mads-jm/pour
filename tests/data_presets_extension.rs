@@ -35,7 +35,8 @@ fn module_presets_empty_slice_after_add_and_remove_all() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = presets_in_tmp(&tmp);
 
-    p.api_set("coffee", "Alpha", None, vals(&[("bean", "Onyx")])).unwrap();
+    p.api_set("coffee", "Alpha", None, vals(&[("bean", "Onyx")]))
+        .unwrap();
     p.api_remove("coffee", "Alpha").unwrap();
 
     // Module key now exists (entry was created then removed); slice should be empty.
@@ -53,7 +54,12 @@ fn api_set_new_preset_returns_created() {
     let mut p = presets_in_tmp(&tmp);
 
     let result = p
-        .api_set("coffee", "Morning", Some("desc".to_string()), vals(&[("bean", "Onyx")]))
+        .api_set(
+            "coffee",
+            "Morning",
+            Some("desc".to_string()),
+            vals(&[("bean", "Onyx")]),
+        )
         .unwrap();
     assert_eq!(result, SetResult::Created);
 }
@@ -63,9 +69,15 @@ fn api_set_existing_preset_returns_updated() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = presets_in_tmp(&tmp);
 
-    p.api_set("coffee", "Morning", None, vals(&[("bean", "Onyx")])).unwrap();
+    p.api_set("coffee", "Morning", None, vals(&[("bean", "Onyx")]))
+        .unwrap();
     let result = p
-        .api_set("coffee", "Morning", Some("new desc".to_string()), vals(&[("bean", "Onyx2")]))
+        .api_set(
+            "coffee",
+            "Morning",
+            Some("new desc".to_string()),
+            vals(&[("bean", "Onyx2")]),
+        )
         .unwrap();
     assert_eq!(result, SetResult::Updated);
 }
@@ -77,7 +89,13 @@ fn api_set_update_preserves_position() {
 
     p.api_set("coffee", "Alpha", None, vals(&[])).unwrap();
     p.api_set("coffee", "Beta", None, vals(&[])).unwrap();
-    p.api_set("coffee", "Alpha", Some("updated".to_string()), vals(&[("x", "y")])).unwrap();
+    p.api_set(
+        "coffee",
+        "Alpha",
+        Some("updated".to_string()),
+        vals(&[("x", "y")]),
+    )
+    .unwrap();
 
     let list = p.module_presets("coffee").unwrap();
     assert_eq!(list.len(), 2);
@@ -95,7 +113,8 @@ fn api_set_persists_to_disk() {
 
     {
         let mut p = Presets::load_from(path.clone());
-        p.api_set("coffee", "Morning", None, vals(&[("bean", "Onyx")])).unwrap();
+        p.api_set("coffee", "Morning", None, vals(&[("bean", "Onyx")]))
+            .unwrap();
     }
 
     // Reload from disk.
@@ -181,7 +200,10 @@ fn api_reorder_missing_names_returns_error() {
 
     match err {
         ReorderError::MissingNames(missing) => {
-            assert!(missing.contains(&"Beta".to_string()), "missing should contain Beta; got {missing:?}");
+            assert!(
+                missing.contains(&"Beta".to_string()),
+                "missing should contain Beta; got {missing:?}"
+            );
         }
         other => panic!("expected MissingNames, got {other:?}"),
     }
@@ -195,15 +217,15 @@ fn api_reorder_extra_names_returns_error() {
     p.api_set("coffee", "Alpha", None, vals(&[])).unwrap();
 
     let err = p
-        .api_reorder(
-            "coffee",
-            vec!["Alpha".to_string(), "Extra".to_string()],
-        )
+        .api_reorder("coffee", vec!["Alpha".to_string(), "Extra".to_string()])
         .unwrap_err();
 
     match err {
         ReorderError::ExtraNames(extra) => {
-            assert!(extra.contains(&"Extra".to_string()), "extra should contain Extra; got {extra:?}");
+            assert!(
+                extra.contains(&"Extra".to_string()),
+                "extra should contain Extra; got {extra:?}"
+            );
         }
         other => panic!("expected ExtraNames, got {other:?}"),
     }

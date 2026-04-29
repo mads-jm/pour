@@ -83,7 +83,9 @@ fn make_state(config: pour::config::Config) -> AppState {
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -120,7 +122,10 @@ async fn body_json(body: axum::body::Body) -> serde_json::Value {
 
 async fn assert_error_code(body: axum::body::Body, expected_code: &str) {
     let json = body_json(body).await;
-    assert!(json["error"].is_object(), "expected error envelope, got: {json}");
+    assert!(
+        json["error"].is_object(),
+        "expected error envelope, got: {json}"
+    );
     assert_eq!(
         json["error"]["code"], expected_code,
         "error code mismatch, got: {json}"
@@ -191,7 +196,10 @@ async fn history_empty_returns_200_with_summary() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let json = body_json(resp.into_body()).await;
-    assert!(json["entries"].as_array().unwrap().is_empty(), "entries must be empty");
+    assert!(
+        json["entries"].as_array().unwrap().is_empty(),
+        "entries must be empty"
+    );
     assert_eq!(json["has_more"], false);
     assert!(json["next_cursor"].is_null(), "next_cursor must be null");
     // Summary present on dashboard call.
@@ -396,8 +404,7 @@ async fn history_since_until_filter_range() {
     // since=t2, until=t4 → should return t2, t3 (t4 is exclusive)
     let uri = format!(
         "/api/v1/history?since={}&until={}",
-        "2026-04-21T10:00:00Z",
-        "2026-04-23T10:00:00Z"
+        "2026-04-21T10:00:00Z", "2026-04-23T10:00:00Z"
     );
     let resp = router.oneshot(bearer(&uri)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -406,10 +413,7 @@ async fn history_since_until_filter_range() {
     let entries = json["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 2, "expected 2 entries in range; got {json}");
     // Descending order — most recent first.
-    let ids: Vec<&str> = entries
-        .iter()
-        .map(|e| e["id"].as_str().unwrap())
-        .collect();
+    let ids: Vec<&str> = entries.iter().map(|e| e["id"].as_str().unwrap()).collect();
     assert_eq!(ids[0], "e3");
     assert_eq!(ids[1], "e2");
 }
@@ -546,7 +550,10 @@ async fn history_pagination_cursor_works() {
         .collect();
     // e2 is excluded by the cursor (id < next_cursor, where next_cursor == e2's id)
     assert!(!ids2.contains(&"e3"), "e3 must not appear on page 2");
-    assert!(!ids2.contains(&"e2"), "e2 must not appear on page 2 (cursor)");
+    assert!(
+        !ids2.contains(&"e2"),
+        "e2 must not appear on page 2 (cursor)"
+    );
     // e1 and e0 should appear.
     assert!(ids2.contains(&"e1"), "e1 must appear on page 2");
     assert!(ids2.contains(&"e0"), "e0 must appear on page 2");
@@ -612,7 +619,10 @@ async fn history_same_ms_pagination_returns_all_entries() {
         .unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
     let json1 = body_json(resp1.into_body()).await;
-    assert_eq!(json1["has_more"], true, "has_more must be true; got {json1}");
+    assert_eq!(
+        json1["has_more"], true,
+        "has_more must be true; got {json1}"
+    );
     let cursor = json1["next_cursor"]
         .as_str()
         .expect("next_cursor must be present when has_more=true")
@@ -624,7 +634,11 @@ async fn history_same_ms_pagination_returns_all_entries() {
         .map(|e| e["id"].as_str().unwrap())
         .collect();
     // Page 1 should have 2 of the 3 entries (most recent by id first).
-    assert_eq!(page1_ids.len(), 2, "page 1 should have 2 entries; got {json1}");
+    assert_eq!(
+        page1_ids.len(),
+        2,
+        "page 1 should have 2 entries; got {json1}"
+    );
 
     // Page 2: pass the cursor
     let uri2 = format!("/api/v1/history?limit=2&cursor={}", cursor);
@@ -637,7 +651,11 @@ async fn history_same_ms_pagination_returns_all_entries() {
         .iter()
         .map(|e| e["id"].as_str().unwrap())
         .collect();
-    assert_eq!(page2_ids.len(), 1, "page 2 should have 1 remaining entry; got {json2}");
+    assert_eq!(
+        page2_ids.len(),
+        1,
+        "page 2 should have 1 remaining entry; got {json2}"
+    );
 
     // All three ids must appear exactly once across both pages.
     let all_ids: Vec<&str> = page1_ids.iter().chain(page2_ids.iter()).copied().collect();

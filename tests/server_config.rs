@@ -28,7 +28,9 @@ fn make_state(config: pour::config::Config) -> AppState {
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(config),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -107,10 +109,7 @@ async fn config_rejects_wrong_token_with_envelope() {
     let config = make_config(MINIMAL_TOML);
     let router = make_router(make_state(config));
 
-    let resp = router
-        .oneshot(config_request(Some("wrong")))
-        .await
-        .unwrap();
+    let resp = router.oneshot(config_request(Some("wrong"))).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     assert_error_envelope(resp.into_body(), "unauthorized").await;
 }
@@ -232,11 +231,17 @@ async fn config_module_with_mobile_visible_false_is_omitted() {
 
     // "secret" module has mobile_visible = false — must not appear
     let secret_present = modules.iter().any(|m| m["key"] == "secret");
-    assert!(!secret_present, "mobile_visible=false module must be omitted");
+    assert!(
+        !secret_present,
+        "mobile_visible=false module must be omitted"
+    );
 
     // "visible" module must appear
     let visible_present = modules.iter().any(|m| m["key"] == "visible");
-    assert!(visible_present, "mobile_visible=true module must be included");
+    assert!(
+        visible_present,
+        "mobile_visible=true module must be included"
+    );
 }
 
 #[tokio::test]
@@ -278,10 +283,7 @@ async fn config_module_order_is_honored() {
 
     let json = get_json(router, "test-token").await;
     let modules = json["modules"].as_array().unwrap();
-    let keys: Vec<&str> = modules
-        .iter()
-        .map(|m| m["key"].as_str().unwrap())
-        .collect();
+    let keys: Vec<&str> = modules.iter().map(|m| m["key"].as_str().unwrap()).collect();
 
     // module_order = ["bravo", "alpha"] → bravo first, alpha second, charlie last (alphabetical unlisted)
     assert_eq!(keys[0], "bravo");
@@ -338,8 +340,7 @@ async fn config_field_type_strings_are_snake_case() {
     ];
     for (i, expected) in expected_types.iter().enumerate() {
         assert_eq!(
-            fields[i]["field_type"],
-            *expected,
+            fields[i]["field_type"], *expected,
             "field[{i}] field_type mismatch"
         );
     }
@@ -357,7 +358,10 @@ async fn config_show_when_equals_serializes_correctly() {
     let json = get_json(router, "test-token").await;
     let fields = json["modules"][0]["fields"].as_array().unwrap();
 
-    let conditional = fields.iter().find(|f| f["name"] == "conditional_field").unwrap();
+    let conditional = fields
+        .iter()
+        .find(|f| f["name"] == "conditional_field")
+        .unwrap();
     let sw = &conditional["show_when"];
     assert!(sw.is_object());
     assert_eq!(sw["field"], "controller");
@@ -471,7 +475,10 @@ async fn config_module_order_filtered_when_module_hidden() {
     // modules array must also omit "b"
     let modules = json["modules"].as_array().unwrap();
     let keys: Vec<&str> = modules.iter().map(|m| m["key"].as_str().unwrap()).collect();
-    assert!(!keys.contains(&"b"), "modules must not include mobile_visible=false module");
+    assert!(
+        !keys.contains(&"b"),
+        "modules must not include mobile_visible=false module"
+    );
     assert!(keys.contains(&"a"), "module 'a' must be present");
     assert!(keys.contains(&"c"), "module 'c' must be present");
     assert_eq!(modules.len(), 2, "exactly 2 visible modules expected");

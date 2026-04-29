@@ -229,10 +229,18 @@ fn single_child_at_level_still_shows_branch() {
     let tree = build(&presets, &axes);
 
     // The root must still show the "method" branch even though only one child.
-    assert_eq!(tree.roots.len(), 1, "single preset must still produce a root branch");
+    assert_eq!(
+        tree.roots.len(),
+        1,
+        "single preset must still produce a root branch"
+    );
     let method_branch = &tree.roots[0];
     match method_branch {
-        TreeNode::Branch { axis_value, children, .. } => {
+        TreeNode::Branch {
+            axis_value,
+            children,
+            ..
+        } => {
             assert_eq!(axis_value, "V60");
             assert_eq!(children.len(), 1, "single bean branch still present");
         }

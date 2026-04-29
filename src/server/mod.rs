@@ -6,11 +6,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{Router, middleware, routing::get, routing::post, routing::put};
 use axum::extract::{Path, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::{Router, middleware, routing::get, routing::post, routing::put};
 use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -57,7 +57,11 @@ fn content_type_for(path: &str) -> &'static str {
 /// - Everything else (JS, CSS, icons) gets `public, max-age=300, must-revalidate`
 ///   (5-minute browser cache; short enough to see rapid dev-cycle changes).
 fn cache_control_for(path: &str) -> &'static str {
-    if path.ends_with(".html") || path.ends_with(".webmanifest") || path == "manifest.json" || path == "sw.js" {
+    if path.ends_with(".html")
+        || path.ends_with(".webmanifest")
+        || path == "manifest.json"
+        || path == "sw.js"
+    {
         "no-cache, max-age=0, must-revalidate"
     } else {
         "public, max-age=300, must-revalidate"
@@ -75,10 +79,7 @@ fn serve_asset(asset_path: &str) -> Response {
             let body: Vec<u8> = file.data.into_owned();
             (
                 StatusCode::OK,
-                [
-                    (header::CONTENT_TYPE, ct),
-                    (header::CACHE_CONTROL, cc),
-                ],
+                [(header::CONTENT_TYPE, ct), (header::CACHE_CONTROL, cc)],
                 body,
             )
                 .into_response()
@@ -237,11 +238,7 @@ fn token_matches(candidate: &str, secret: &str) -> bool {
 /// 3. Neither present → 401 with JSON error envelope (§5.2).
 ///
 /// All comparisons are constant-time to prevent timing side-channels.
-pub async fn auth(
-    State(state): State<AppState>,
-    req: Request,
-    next: Next,
-) -> Response {
+pub async fn auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
     // 1. Extract the Authorization header token, if any.
     let header_token: Option<String> = req
         .headers()
@@ -270,19 +267,16 @@ pub async fn auth(
     }
 
     // 2. No usable header token — check ?token= query param (bootstrap / QR-code path).
-    let query_token = req
-        .uri()
-        .query()
-        .and_then(|q| {
-            q.split('&').find_map(|pair| {
-                let (k, v) = pair.split_once('=')?;
-                if k == "token" && !v.is_empty() {
-                    Some(v.to_string())
-                } else {
-                    None
-                }
-            })
-        });
+    let query_token = req.uri().query().and_then(|q| {
+        q.split('&').find_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            if k == "token" && !v.is_empty() {
+                Some(v.to_string())
+            } else {
+                None
+            }
+        })
+    });
 
     match query_token {
         Some(ref qt) if token_matches(qt, &state.token) => {
@@ -315,10 +309,8 @@ pub async fn not_found_handler() -> Response {
         error_codes::NOT_FOUND,
         "Resource not found.",
     );
-    resp.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    resp.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     resp
 }
 
@@ -339,10 +331,8 @@ pub async fn method_not_allowed_handler() -> Response {
 /// it covers handlers, auth rejections, and the method-not-allowed fallback.
 pub async fn no_store_middleware(req: Request, next: Next) -> Response {
     let mut resp = next.run(req).await;
-    resp.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    resp.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     resp
 }
 
@@ -364,15 +354,24 @@ pub fn build_app(state: AppState) -> Router {
     let api = Router::new()
         .route("/api/v1/health", get(handlers::health::handler))
         .route("/api/v1/config", get(handlers::config::handler))
-        .route("/api/v1/options/:module/:field", get(handlers::options::handler))
+        .route(
+            "/api/v1/options/:module/:field",
+            get(handlers::options::handler),
+        )
         .route(
             "/api/v1/submit/:module",
             post(handlers::submit::handler)
                 .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024)),
         )
-        .route("/api/v1/captures/:history_id", get(handlers::captures::handler))
+        .route(
+            "/api/v1/captures/:history_id",
+            get(handlers::captures::handler),
+        )
         .route("/api/v1/history", get(handlers::history::handler))
-        .route("/api/v1/presets/:module", get(handlers::presets::get_handler))
+        .route(
+            "/api/v1/presets/:module",
+            get(handlers::presets::get_handler),
+        )
         .route(
             "/api/v1/presets/:module/order",
             put(handlers::presets::order_handler)
@@ -420,10 +419,7 @@ pub fn build_app(state: AppState) -> Router {
 ///
 /// Used by integration tests to inject a port-0 listener so the OS assigns
 /// an ephemeral port. Production code calls `run` instead.
-pub async fn serve_on_listener(
-    listener: tokio::net::TcpListener,
-    state: AppState,
-) -> Result<()> {
+pub async fn serve_on_listener(listener: tokio::net::TcpListener, state: AppState) -> Result<()> {
     let app = build_app(state);
     axum::serve(listener, app).await?;
     Ok(())
@@ -455,12 +451,7 @@ pub fn init_logging() {
 /// Build and run the axum server.
 ///
 /// Blocks until the process is interrupted (Ctrl+C).
-pub async fn run(
-    config: Config,
-    transport: Transport,
-    port: u16,
-    token: String,
-) -> Result<()> {
+pub async fn run(config: Config, transport: Transport, port: u16, token: String) -> Result<()> {
     init_logging();
 
     let transport_mode = transport.mode();

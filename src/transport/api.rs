@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use crate::transport::TransportReadError;
+use anyhow::{Context, Result};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::Client;
 use serde::Deserialize;
@@ -306,7 +306,10 @@ impl ApiClient {
     /// - HTTP 404 → `TransportReadError::NotFound`
     /// - Connect / timeout errors → `TransportReadError::Unreachable`
     /// - Other HTTP errors → `TransportReadError::Other`
-    pub async fn read_file(&self, vault_path: &str) -> std::result::Result<String, TransportReadError> {
+    pub async fn read_file(
+        &self,
+        vault_path: &str,
+    ) -> std::result::Result<String, TransportReadError> {
         let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
 
         let resp = self

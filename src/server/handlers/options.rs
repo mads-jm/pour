@@ -16,7 +16,10 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
-use super::super::{AppState, dto::{error_codes, error_response}};
+use super::super::{
+    AppState,
+    dto::{error_codes, error_response},
+};
 use crate::config::FieldType;
 use crate::data::cache::Cache;
 use crate::transport::Transport;

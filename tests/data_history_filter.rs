@@ -12,11 +12,7 @@ use std::io::Write;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn make_entry(
-    id: &str,
-    module_key: &str,
-    timestamp: DateTime<Utc>,
-) -> HistoryEntry {
+fn make_entry(id: &str, module_key: &str, timestamp: DateTime<Utc>) -> HistoryEntry {
     HistoryEntry {
         id: Some(id.to_string()),
         module_key: module_key.to_string(),
@@ -62,8 +58,14 @@ fn filter_no_constraints_returns_all_descending() {
     assert!(!has_more);
     assert!(next_cursor.is_none());
     // Descending by id — most recent first.
-    assert_eq!(entries[0].id.as_deref().unwrap(), "20260422T100000000-0-coffee");
-    assert_eq!(entries[2].id.as_deref().unwrap(), "20260420T100000000-0-coffee");
+    assert_eq!(
+        entries[0].id.as_deref().unwrap(),
+        "20260422T100000000-0-coffee"
+    );
+    assert_eq!(
+        entries[2].id.as_deref().unwrap(),
+        "20260420T100000000-0-coffee"
+    );
 }
 
 #[test]

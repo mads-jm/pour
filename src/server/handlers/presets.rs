@@ -32,10 +32,7 @@ use crate::data::presets::{ReorderError, SetResult};
 // GET /api/v1/presets/{module}  (§6.7)
 // ---------------------------------------------------------------------------
 
-pub async fn get_handler(
-    State(state): State<AppState>,
-    Path(module): Path<String>,
-) -> Response {
+pub async fn get_handler(State(state): State<AppState>, Path(module): Path<String>) -> Response {
     // 404 if module unknown.
     if !state.config.modules.contains_key(&module) {
         return error_response(
@@ -100,7 +97,7 @@ pub async fn put_handler(
     // a PUT for the literal name "order" would be routed to the order_handler
     // instead — but a client could still attempt it via percent-encoding tricks.
     // Belt-and-suspenders: block it here so the name never enters storage.
-    if name.to_ascii_lowercase() == "order" {
+    if name.eq_ignore_ascii_case("order") {
         return error_response_with_details(
             StatusCode::BAD_REQUEST,
             error_codes::VALIDATION_FAILED,
@@ -189,7 +186,7 @@ pub async fn put_handler(
 
     match result {
         SetResult::Created => {
-            use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+            use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
             let encoded_name = utf8_percent_encode(&name, NON_ALPHANUMERIC).to_string();
             let location = format!("/api/v1/presets/{}/{}", module, encoded_name);
             let mut resp = (StatusCode::CREATED, Json(body)).into_response();

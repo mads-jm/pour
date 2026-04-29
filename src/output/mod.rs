@@ -56,7 +56,8 @@ pub async fn write_create(
     }
 
     let date_str = now.format("%Y-%m-%d").to_string();
-    let frontmatter_block = frontmatter::generate_frontmatter(&fm_fields, &fm_composites, &date_str);
+    let frontmatter_block =
+        frontmatter::generate_frontmatter(&fm_fields, &fm_composites, &date_str);
 
     let body = body_parts.join("\n\n");
 

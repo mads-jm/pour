@@ -427,7 +427,10 @@ fn suggest_name_skips_missing_axis() {
     // bean not set
     let axes = ["method".to_owned(), "bean".to_owned()];
     let name = suggest_preset_name(&values, &axes);
-    assert_eq!(name, "V60", "missing axis must not produce trailing separator");
+    assert_eq!(
+        name, "V60",
+        "missing axis must not produce trailing separator"
+    );
 }
 
 #[test]
@@ -455,9 +458,7 @@ fn selected_preset_name_survives_reorder() {
     let app = App::new(
         config,
         transport,
-        History::load_from(std::path::PathBuf::from(
-            "/tmp/test-reorder-history.json",
-        )),
+        History::load_from(std::path::PathBuf::from("/tmp/test-reorder-history.json")),
         presets,
         FieldPresets::empty(),
     );
@@ -586,7 +587,10 @@ fn editing_existing_preset_name_does_not_trigger_overwrite_confirm() {
         .as_deref()
         .map(|n| n == overlay.name_buffer)
         .unwrap_or(false);
-    assert!(editing_same, "editing the same preset should suppress overwrite confirm");
+    assert!(
+        editing_same,
+        "editing the same preset should suppress overwrite confirm"
+    );
 }
 
 #[test]

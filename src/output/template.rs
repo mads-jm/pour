@@ -28,7 +28,6 @@ pub fn render_path(
     date_format: Option<&str>,
     now: DateTime<Local>,
 ) -> String {
-
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
     let strftime_expanded = now.format(template).to_string();
@@ -94,7 +93,6 @@ pub fn render_append_template(
     callout_titles: &HashMap<String, String>,
     now: DateTime<Local>,
 ) -> String {
-
     // Compute visible field names once; hidden fields render as empty string.
     let visible_indices = visible_field_indices(&module.fields, fields);
     let visible_names: HashSet<&str> = visible_indices

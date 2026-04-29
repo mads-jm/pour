@@ -526,7 +526,10 @@ fn mobile_visible_setting_has_expected_initial_value_when_unset() {
         .unwrap();
 
     // "" means "default visible" — the toggle's zero-index value
-    assert_eq!(mv.value, "", "unset mobile_visible should be empty string (visible)");
+    assert_eq!(
+        mv.value, "",
+        "unset mobile_visible should be empty string (visible)"
+    );
 }
 
 #[test]
@@ -562,7 +565,10 @@ prompt = "Note"
         .find(|s| s.key == "mobile_visible")
         .unwrap();
 
-    assert_eq!(mv.value, "false", "explicit mobile_visible=false should be reflected in setting value");
+    assert_eq!(
+        mv.value, "false",
+        "explicit mobile_visible=false should be reflected in setting value"
+    );
 }
 
 #[test]

@@ -7,7 +7,9 @@ use pour::config::{Config, ModuleUpdates};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-fn write_temp_config(content: &str) -> (tempfile::NamedTempFile, std::sync::MutexGuard<'static, ()>) {
+fn write_temp_config(
+    content: &str,
+) -> (tempfile::NamedTempFile, std::sync::MutexGuard<'static, ()>) {
     let guard = ENV_LOCK.lock().unwrap();
     let mut f = tempfile::NamedTempFile::new().expect("failed to create temp file");
     f.write_all(content.as_bytes())

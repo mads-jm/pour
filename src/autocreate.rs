@@ -237,7 +237,11 @@ pub fn build_templated_note_content(
 ///
 /// `now` is passed explicitly so callers can supply a `captured_at`-derived
 /// timestamp (server) or `Local::now()` (TUI) without internal clock calls.
-pub fn resolve_template_path(template_path: &str, name: &str, now: DateTime<Local>) -> Option<String> {
+pub fn resolve_template_path(
+    template_path: &str,
+    name: &str,
+    now: DateTime<Local>,
+) -> Option<String> {
     let stem = sanitize_filename(name)?;
     // Expand strftime BEFORE substituting {{name}} to prevent user-typed
     // percent sequences (e.g. "Ethiopia %Y") from being interpreted as

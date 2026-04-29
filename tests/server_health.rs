@@ -38,7 +38,9 @@ fn test_state(mode: TransportMode) -> AppState {
         transport_mode: mode,
         token: "test-token".to_string(),
         config: Arc::new(minimal_config()),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -218,7 +220,10 @@ async fn health_returns_cache_control_no_store() {
         .get("cache-control")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert_eq!(cc, "no-store", "Cache-Control header must be no-store on /api/v1/health");
+    assert_eq!(
+        cc, "no-store",
+        "Cache-Control header must be no-store on /api/v1/health"
+    );
 }
 
 // ---------------------------------------------------------------------------

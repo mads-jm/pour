@@ -607,12 +607,18 @@ fn resolve_path_sanitization_applied() {
 
 #[test]
 fn resolve_path_sanitization_failure_returns_none() {
-    assert_eq!(resolve_template_path("Beans/{{name}}.md", "CON", chrono::Local::now()), None);
+    assert_eq!(
+        resolve_template_path("Beans/{{name}}.md", "CON", chrono::Local::now()),
+        None
+    );
 }
 
 #[test]
 fn resolve_path_empty_name_returns_none() {
-    assert_eq!(resolve_template_path("Beans/{{name}}.md", "", chrono::Local::now()), None);
+    assert_eq!(
+        resolve_template_path("Beans/{{name}}.md", "", chrono::Local::now()),
+        None
+    );
 }
 
 #[test]
@@ -628,13 +634,19 @@ fn resolve_path_strftime_expansion() {
 
 #[test]
 fn resolve_path_multiple_name_placeholders() {
-    let result = resolve_template_path("{{name}}/{{name}}.md", "Test", chrono::Local::now()).unwrap();
+    let result =
+        resolve_template_path("{{name}}/{{name}}.md", "Test", chrono::Local::now()).unwrap();
     assert_eq!(result, "Test/Test.md");
 }
 
 #[test]
 fn resolve_path_percent_in_name_not_expanded_as_strftime() {
     // A user typing "Ethiopia %Y Blend" should NOT have %Y expanded to the year
-    let result = resolve_template_path("Beans/{{name}}.md", "Ethiopia %Y Blend", chrono::Local::now()).unwrap();
+    let result = resolve_template_path(
+        "Beans/{{name}}.md",
+        "Ethiopia %Y Blend",
+        chrono::Local::now(),
+    )
+    .unwrap();
     assert_eq!(result, "Beans/Ethiopia %Y Blend.md");
 }

@@ -72,7 +72,10 @@ pub async fn handler(
 
     if let Some(ref key) = idempotency_key {
         // Validate format: 1–256 ASCII printable characters.
-        if key.is_empty() || key.len() > 256 || !key.chars().all(|c| c.is_ascii() && !c.is_ascii_control()) {
+        if key.is_empty()
+            || key.len() > 256
+            || !key.chars().all(|c| c.is_ascii() && !c.is_ascii_control())
+        {
             return error_response(
                 StatusCode::BAD_REQUEST,
                 error_codes::VALIDATION_FAILED,
@@ -95,10 +98,8 @@ pub async fn handler(
                     .header("Idempotency-Replay", "true")
                     .body(axum::body::Body::from(body))
                     .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
-                resp.headers_mut().insert(
-                    header::CACHE_CONTROL,
-                    HeaderValue::from_static("no-store"),
-                );
+                resp.headers_mut()
+                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
                 return resp;
             }
             IdempotencyOutcome::Fresh => {
@@ -118,15 +119,16 @@ pub async fn handler(
         // cache. 4xx and 5xx are NOT cached — release the in-flight marker so
         // the client can fix the problem and retry with the same key.
         if parts.status.is_success() {
-            state.idempotency.complete(key, parts.status, bytes.to_vec());
+            state
+                .idempotency
+                .complete(key, parts.status, bytes.to_vec());
         } else {
             state.idempotency.release(key);
         }
         let mut rebuilt = Response::from_parts(parts, axum::body::Body::from(bytes));
-        rebuilt.headers_mut().insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("no-store"),
-        );
+        rebuilt
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
         rebuilt
     } else {
         resp
@@ -236,7 +238,10 @@ async fn submit_inner(
             continue;
         }
 
-        let value = field_values.get(&field.name).map(|s| s.as_str()).unwrap_or("");
+        let value = field_values
+            .get(&field.name)
+            .map(|s| s.as_str())
+            .unwrap_or("");
 
         // Required check.
         if field.required.unwrap_or(false) && value.trim().is_empty() {
@@ -246,8 +251,7 @@ async fn submit_inner(
 
         // Number parsability check.
         if field.field_type == FieldType::Number && !value.trim().is_empty() {
-            let ok = value.trim().parse::<i64>().is_ok()
-                || value.trim().parse::<f64>().is_ok();
+            let ok = value.trim().parse::<i64>().is_ok() || value.trim().parse::<f64>().is_ok();
             if !ok {
                 field_errors.push(json!({
                     "field": field.name,
@@ -377,10 +381,7 @@ async fn submit_inner(
                     };
 
                     let content = crate::autocreate::build_templated_note_content(
-                        template,
-                        &value,
-                        inputs,
-                        &today,
+                        template, &value, inputs, &today,
                     );
 
                     match state.transport.create_file(&vault_path, &content).await {
@@ -395,7 +396,9 @@ async fn submit_inner(
                             // post_create_command (best-effort, API transport only).
                             let fired = if let Some(ref cmd) = field.post_create_command {
                                 match state.transport.execute_command(cmd).await {
-                                    Ok(()) => state.transport_mode == crate::transport::TransportMode::Api,
+                                    Ok(()) => {
+                                        state.transport_mode == crate::transport::TransportMode::Api
+                                    }
                                     Err(_) => false,
                                 }
                             } else {
@@ -543,7 +546,11 @@ async fn submit_inner(
                 });
                 // Synthesize a fallback id; no counter needed here since this
                 // path is only reached when History::record fails (rare).
-                format!("{}-fallback-{}", now_utc.format("%Y%m%dT%H%M%S%3f"), module_key)
+                format!(
+                    "{}-fallback-{}",
+                    now_utc.format("%Y%m%dT%H%M%S%3f"),
+                    module_key
+                )
             }
         }
     };

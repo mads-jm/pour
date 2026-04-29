@@ -49,7 +49,9 @@ fn test_state() -> AppState {
         transport_mode: TransportMode::FileSystem,
         token: "test-token".to_string(),
         config: Arc::new(minimal_config()),
-        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp")))),
+        transport: Arc::new(Transport::Fs(FsWriter::new(std::path::PathBuf::from(
+            "/tmp",
+        )))),
         idempotency: Arc::new(IdempotencyCache::new()),
         presets: Arc::new(tokio::sync::Mutex::new(Presets::empty())),
     }
@@ -60,21 +62,32 @@ fn test_state() -> AppState {
 fn make_router(state: AppState) -> axum::Router {
     use axum::{Router, middleware, routing::get, routing::post, routing::put};
     use pour::server::{
-        auth, method_not_allowed_handler, no_store_middleware,
-        index_handler, app_js_handler, styles_css_handler,
-        manifest_handler, favicon_handler, static_asset_handler,
-        sw_js_handler, queue_js_handler,
+        app_js_handler, auth, favicon_handler, index_handler, manifest_handler,
+        method_not_allowed_handler, no_store_middleware, queue_js_handler, static_asset_handler,
+        styles_css_handler, sw_js_handler,
     };
 
     let api = Router::new()
         .route("/api/v1/health", get(handlers::health::handler))
         .route("/api/v1/config", get(handlers::config::handler))
-        .route("/api/v1/options/:module/:field", get(handlers::options::handler))
+        .route(
+            "/api/v1/options/:module/:field",
+            get(handlers::options::handler),
+        )
         .route("/api/v1/submit/:module", post(handlers::submit::handler))
-        .route("/api/v1/captures/:history_id", get(handlers::captures::handler))
+        .route(
+            "/api/v1/captures/:history_id",
+            get(handlers::captures::handler),
+        )
         .route("/api/v1/history", get(handlers::history::handler))
-        .route("/api/v1/presets/:module", get(handlers::presets::get_handler))
-        .route("/api/v1/presets/:module/order", put(handlers::presets::order_handler))
+        .route(
+            "/api/v1/presets/:module",
+            get(handlers::presets::get_handler),
+        )
+        .route(
+            "/api/v1/presets/:module/order",
+            put(handlers::presets::order_handler),
+        )
         .route(
             "/api/v1/presets/:module/:name",
             put(handlers::presets::put_handler).delete(handlers::presets::delete_handler),
@@ -120,28 +133,44 @@ fn authed_req(uri: &str) -> Request<axum::body::Body> {
 async fn index_served_without_auth() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/")).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "GET / must return 200 with no auth token");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET / must return 200 with no auth token"
+    );
 }
 
 #[tokio::test]
 async fn app_js_served_without_auth() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/app.js")).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "GET /app.js must return 200 with no auth token");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET /app.js must return 200 with no auth token"
+    );
 }
 
 #[tokio::test]
 async fn styles_css_served_without_auth() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/styles.css")).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "GET /styles.css must return 200 with no auth token");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET /styles.css must return 200 with no auth token"
+    );
 }
 
 #[tokio::test]
 async fn manifest_served_without_auth() {
     let router = make_router(test_state());
     let resp = router.oneshot(get_req("/manifest.json")).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "GET /manifest.json must return 200 with no auth token");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "GET /manifest.json must return 200 with no auth token"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -330,14 +359,20 @@ async fn app_js_does_not_have_no_store() {
 #[tokio::test]
 async fn missing_static_asset_returns_404() {
     let router = make_router(test_state());
-    let resp = router.oneshot(get_req("/static/nonexistent.html")).await.unwrap();
+    let resp = router
+        .oneshot(get_req("/static/nonexistent.html"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn missing_static_asset_is_not_json_envelope() {
     let router = make_router(test_state());
-    let resp = router.oneshot(get_req("/static/nonexistent.html")).await.unwrap();
+    let resp = router
+        .oneshot(get_req("/static/nonexistent.html"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let ct = resp
         .headers()

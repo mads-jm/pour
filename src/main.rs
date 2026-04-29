@@ -55,18 +55,16 @@ async fn main() {
         let mut i = 2usize;
         while i < args.len() {
             match args[i].as_str() {
-                "--port" => {
-                    match args.get(i + 1) {
-                        Some(v) if !v.starts_with('-') => {
-                            port_raw = Some(v.as_str());
-                            i += 2;
-                        }
-                        _ => {
-                            eprintln!("pour serve: --port requires a value (e.g. --port 8421)");
-                            process::exit(1);
-                        }
+                "--port" => match args.get(i + 1) {
+                    Some(v) if !v.starts_with('-') => {
+                        port_raw = Some(v.as_str());
+                        i += 2;
                     }
-                }
+                    _ => {
+                        eprintln!("pour serve: --port requires a value (e.g. --port 8421)");
+                        process::exit(1);
+                    }
+                },
                 flag if flag.starts_with('-') => {
                     eprintln!(
                         "pour serve: unknown flag '{flag}'\n\
@@ -86,9 +84,7 @@ async fn main() {
             None => 8421,
             Some(s) => {
                 let n: u32 = s.parse().unwrap_or_else(|_| {
-                    eprintln!(
-                        "pour serve: --port value must be a number (1–65535), got '{s}'"
-                    );
+                    eprintln!("pour serve: --port value must be a number (1–65535), got '{s}'");
                     process::exit(1);
                 });
                 if n == 0 {
@@ -99,9 +95,7 @@ async fn main() {
                     process::exit(1);
                 }
                 if n > 65535 {
-                    eprintln!(
-                        "pour serve: --port value must be 1–65535, got {n}"
-                    );
+                    eprintln!("pour serve: --port value must be 1–65535, got {n}");
                     process::exit(1);
                 }
                 n as u16
@@ -734,10 +728,14 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 .first()
                 .and_then(|f| field_values.get(&f.name))
                 .map(|v| v.as_str());
-            let history_warning = match app.history.record(&module_key, &vault_path, first_field, now_utc) {
-                Ok(_id) => None,
-                Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
-            };
+            let history_warning =
+                match app
+                    .history
+                    .record(&module_key, &vault_path, first_field, now_utc)
+                {
+                    Ok(_id) => None,
+                    Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
+                };
 
             let mut summary_message = "Entry saved successfully.".to_string();
             if let Some(w) = history_warning {
@@ -799,17 +797,18 @@ async fn handle_create_from_template(
     let today = now_local.format("%Y-%m-%d").to_string();
 
     // Resolve the vault path from the template pattern
-    let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name, now_local) {
-        Some(p) => p,
-        None => {
-            if let Some(ref mut fs) = app.form_state
-                && let Some(ref mut sf) = fs.sub_form
-            {
-                sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
+    let vault_path =
+        match pour::autocreate::resolve_template_path(&template.path, note_name, now_local) {
+            Some(p) => p,
+            None => {
+                if let Some(ref mut fs) = app.form_state
+                    && let Some(ref mut sf) = fs.sub_form
+                {
+                    sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
+                }
+                return;
             }
-            return;
-        }
-    };
+        };
 
     // Build note content from template + sub-form values
     let content = pour::autocreate::build_templated_note_content(

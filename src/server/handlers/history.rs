@@ -14,8 +14,8 @@ use serde_json::json;
 use super::super::{
     AppState,
     dto::{
-        HistoryEntryDto, HistoryResponse, HistorySummaryDto,
-        error_codes, error_response_with_details,
+        HistoryEntryDto, HistoryResponse, HistorySummaryDto, error_codes,
+        error_response_with_details,
     },
 };
 use crate::data::history::History;
@@ -41,10 +41,7 @@ pub struct HistoryQuery {
     module: Option<String>,
 }
 
-pub async fn handler(
-    State(state): State<AppState>,
-    Query(query): Query<HistoryQuery>,
-) -> Response {
+pub async fn handler(State(state): State<AppState>, Query(query): Query<HistoryQuery>) -> Response {
     // -- Parse `since` -------------------------------------------------------
     let since: Option<DateTime<Utc>> = if let Some(ref s) = query.since {
         match s.parse::<DateTime<Utc>>() {
@@ -119,8 +116,7 @@ pub async fn handler(
     // -- Load history and filter ---------------------------------------------
     let history = History::load();
     let cursor_str = query.cursor.as_deref();
-    let (entries, has_more, next_cursor) =
-        history.filter(since, until, cursor_str, module, limit);
+    let (entries, has_more, next_cursor) = history.filter(since, until, cursor_str, module, limit);
 
     // Build entry DTOs.
     let entry_dtos: Vec<HistoryEntryDto> = entries.iter().map(HistoryEntryDto::from).collect();

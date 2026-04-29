@@ -568,8 +568,11 @@ async fn submit_captured_at_valid_is_echoed_in_response() {
 
     // The response echoes the parsed/re-formatted value. Compare via DateTime
     // parse to tolerate sub-second precision differences in formatting.
-    let echoed_str = json["captured_at"].as_str().expect("captured_at must be string");
-    let echoed: chrono::DateTime<chrono::Utc> = echoed_str.parse()
+    let echoed_str = json["captured_at"]
+        .as_str()
+        .expect("captured_at must be string");
+    let echoed: chrono::DateTime<chrono::Utc> = echoed_str
+        .parse()
         .expect("captured_at in response must parse as RFC3339");
     let diff = (echoed - captured_at).num_seconds().abs();
     assert!(
@@ -603,8 +606,7 @@ async fn submit_captured_at_too_old_returns_400() {
     assert_eq!(json["error"]["code"], "validation_failed");
     let details = &json["error"]["details"];
     assert_eq!(
-        details["code"],
-        "captured_at_out_of_range",
+        details["code"], "captured_at_out_of_range",
         "details.code must be captured_at_out_of_range: {json}"
     );
 }
@@ -634,8 +636,7 @@ async fn submit_captured_at_too_far_future_returns_400() {
     assert_eq!(json["error"]["code"], "validation_failed");
     let details = &json["error"]["details"];
     assert_eq!(
-        details["code"],
-        "captured_at_out_of_range",
+        details["code"], "captured_at_out_of_range",
         "details.code: {json}"
     );
 }
@@ -661,8 +662,7 @@ async fn submit_null_captured_at_uses_server_time() {
     );
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let after = chrono::Utc::now()
-        + chrono::Duration::seconds(1); // +1s headroom for clock skew
+    let after = chrono::Utc::now() + chrono::Duration::seconds(1); // +1s headroom for clock skew
 
     let json = body_json(resp.into_body()).await;
     let ca_str = json["captured_at"].as_str().unwrap();
@@ -750,8 +750,7 @@ async fn submit_idempotency_key_replay_returns_same_body_with_header() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     assert_eq!(
-        replay_header,
-        "true",
+        replay_header, "true",
         "Idempotency-Replay header must be 'true'"
     );
 
@@ -953,10 +952,7 @@ async fn submit_idempotency_in_flight_returns_409() {
         .body(axum::body::Body::from(body.clone()))
         .unwrap();
 
-    let (resp1, resp2) = tokio::join!(
-        router.clone().oneshot(req1),
-        router.oneshot(req2),
-    );
+    let (resp1, resp2) = tokio::join!(router.clone().oneshot(req1), router.oneshot(req2),);
     let resp1 = resp1.unwrap();
     let resp2 = resp2.unwrap();
 
@@ -1050,12 +1046,18 @@ async fn submit_auto_create_templated_note_has_full_frontmatter() {
         "one auto-created note expected: {json}"
     );
     assert_eq!(auto_created[0]["field"], "bean");
-    assert_eq!(auto_created[0]["templated"], true, "must be templated: {json}");
+    assert_eq!(
+        auto_created[0]["templated"], true,
+        "must be templated: {json}"
+    );
 
     // Verify the created note has full frontmatter (origin field).
     let vault_path = auto_created[0]["vault_path"].as_str().unwrap();
     let full_path = tmp.path().join(vault_path);
-    assert!(full_path.exists(), "created note must exist at {vault_path}");
+    assert!(
+        full_path.exists(),
+        "created note must exist at {vault_path}"
+    );
     let content = std::fs::read_to_string(&full_path).unwrap();
     assert!(
         content.contains("origin:"),
@@ -1263,7 +1265,11 @@ async fn submit_idempotency_201_is_cached_replay_returns_201() {
         .body(axum::body::Body::from(body.clone()))
         .unwrap();
     let resp1 = router.clone().oneshot(req1).await.unwrap();
-    assert_eq!(resp1.status(), StatusCode::CREATED, "first request must be 201");
+    assert_eq!(
+        resp1.status(),
+        StatusCode::CREATED,
+        "first request must be 201"
+    );
     let body1 = to_bytes(resp1.into_body(), 65536).await.unwrap();
 
     // Second request with same key → 201 replay.
@@ -1276,7 +1282,11 @@ async fn submit_idempotency_201_is_cached_replay_returns_201() {
         .body(axum::body::Body::from(body.clone()))
         .unwrap();
     let resp2 = router.oneshot(req2).await.unwrap();
-    assert_eq!(resp2.status(), StatusCode::CREATED, "replay must return 201");
+    assert_eq!(
+        resp2.status(),
+        StatusCode::CREATED,
+        "replay must return 201"
+    );
 
     let replay_header = resp2
         .headers()
@@ -1289,7 +1299,10 @@ async fn submit_idempotency_201_is_cached_replay_returns_201() {
     );
 
     let body2 = to_bytes(resp2.into_body(), 65536).await.unwrap();
-    assert_eq!(body1, body2, "replay body must be byte-for-byte identical to original");
+    assert_eq!(
+        body1, body2,
+        "replay body must be byte-for-byte identical to original"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1366,8 +1379,7 @@ async fn submit_history_written_to_pour_home_not_real_home() {
     // POUR_HOME must be restored to its prior state after the guard drops.
     let restored = std::env::var("POUR_HOME").ok();
     assert_eq!(
-        restored,
-        prior_pour_home,
+        restored, prior_pour_home,
         "POUR_HOME must be restored to prior value after EnvGuard drops; \
          expected {prior_pour_home:?}, got {restored:?}"
     );

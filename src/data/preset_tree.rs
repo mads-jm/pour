@@ -82,7 +82,11 @@ pub fn build(presets: &[PresetEntry], axes: &[String]) -> PresetTree {
     sort_branches(&mut roots);
 
     let roots_with_ungrouped = make_roots_with_ungrouped(&roots, &ungrouped);
-    PresetTree { roots, ungrouped, roots_with_ungrouped }
+    PresetTree {
+        roots,
+        ungrouped,
+        roots_with_ungrouped,
+    }
 }
 
 /// Build the combined root list: sorted branches followed by the synthetic
@@ -118,7 +122,10 @@ fn insert_at_level(nodes: &mut Vec<TreeNode>, preset: &PresetEntry, axes: &[Stri
     });
 
     if let Some(pos) = branch_pos {
-        if let TreeNode::Branch { children, count, .. } = &mut nodes[pos] {
+        if let TreeNode::Branch {
+            children, count, ..
+        } = &mut nodes[pos]
+        {
             *count += 1;
             insert_at_level(children, preset, axes, depth + 1);
         }
@@ -163,21 +170,23 @@ pub fn validate_axes(axes: &[String], fields: &[FieldConfig]) -> Result<(), Vec<
 
     let errors: Vec<AxisError> = axes
         .iter()
-        .filter_map(|axis| {
-            match field_map.get(axis.as_str()) {
-                None => Some(AxisError::UnknownField(axis.clone())),
-                Some(f) if f.field_type == FieldType::CompositeArray => {
-                    Some(AxisError::CompositeArrayField(axis.clone()))
-                }
-                Some(f) if f.preset_exclude == Some(true) => {
-                    Some(AxisError::PresetExcludedField(axis.clone()))
-                }
-                Some(_) => None,
+        .filter_map(|axis| match field_map.get(axis.as_str()) {
+            None => Some(AxisError::UnknownField(axis.clone())),
+            Some(f) if f.field_type == FieldType::CompositeArray => {
+                Some(AxisError::CompositeArrayField(axis.clone()))
             }
+            Some(f) if f.preset_exclude == Some(true) => {
+                Some(AxisError::PresetExcludedField(axis.clone()))
+            }
+            Some(_) => None,
         })
         .collect();
 
-    if errors.is_empty() { Ok(()) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Build a suggested preset name from axis values, joining non-empty values with " · ".

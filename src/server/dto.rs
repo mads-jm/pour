@@ -6,9 +6,9 @@
 /// (no `skip_serializing_if` — the contract requires explicit null).
 use std::collections::HashMap;
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -344,7 +344,12 @@ pub fn build_config_response(config: &Config, transport_mode: &'static str) -> C
 
     let modules: Vec<ModuleDto> = final_keys
         .iter()
-        .filter_map(|k| config.modules.get(*k).map(|m| ModuleDto::from_module_with_key(k, m)))
+        .filter_map(|k| {
+            config
+                .modules
+                .get(*k)
+                .map(|m| ModuleDto::from_module_with_key(k, m))
+        })
         .collect();
 
     let templates: HashMap<String, TemplateDto> = config

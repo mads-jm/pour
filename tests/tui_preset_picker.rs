@@ -75,9 +75,7 @@ fn make_app_with_axes_and_presets(presets_data: Vec<PresetEntry>) -> App {
     App::new(
         config,
         transport,
-        History::load_from(std::path::PathBuf::from(
-            "/tmp/test-picker-history.json",
-        )),
+        History::load_from(std::path::PathBuf::from("/tmp/test-picker-history.json")),
         presets,
         FieldPresets::empty(),
     )
@@ -111,10 +109,7 @@ fn key(code: KeyCode) -> KeyEvent {
 }
 
 /// Set up an app with coffee module form open and the picker open at the given state.
-fn app_with_picker(
-    presets_data: Vec<PresetEntry>,
-    picker: PresetPickerState,
-) -> App {
+fn app_with_picker(presets_data: Vec<PresetEntry>, picker: PresetPickerState) -> App {
     let mut app = make_app_with_axes_and_presets(presets_data);
     let mut form = app.init_form("coffee").expect("module exists");
     form.preset_picker = Some(picker);
@@ -215,7 +210,10 @@ fn apply_on_leaf_sets_preset_name() {
         Some("V60 Onyx Classic"),
         "leaf Enter must set selected_preset_name"
     );
-    assert!(fs.preset_picker.is_none(), "picker must close after leaf apply");
+    assert!(
+        fs.preset_picker.is_none(),
+        "picker must close after leaf apply"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +294,13 @@ fn esc_does_not_apply_preset() {
     );
 
     // Confirm no preset selected before.
-    assert!(app.form_state.as_ref().unwrap().selected_preset_name.is_none());
+    assert!(
+        app.form_state
+            .as_ref()
+            .unwrap()
+            .selected_preset_name
+            .is_none()
+    );
 
     pour::tui::form::handle_key(&mut app, key(KeyCode::Esc));
 

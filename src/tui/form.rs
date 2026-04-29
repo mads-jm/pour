@@ -77,15 +77,14 @@ pub fn render(app: &App, frame: &mut Frame) {
         Line::from(vec![
             Span::styled(
                 format!(" \u{26A0} preset_axes invalid: {warn_text}"),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" — picker disabled", Style::default().fg(Color::DarkGray)),
         ])
     } else if form_state.confirm_delete_preset {
-        let name = form_state
-            .selected_preset_name
-            .clone()
-            .unwrap_or_default();
+        let name = form_state.selected_preset_name.clone().unwrap_or_default();
         Line::from(vec![
             Span::styled(
                 format!(" Delete \"{name}\"?"),
@@ -173,7 +172,13 @@ pub fn render(app: &App, frame: &mut Frame) {
 ///   0                      = preset row
 ///   1..=visible_count      = real fields (visible_indices[active_field - 1])
 ///   visible_count + 1      = submit button
-fn render_fields(frame: &mut Frame, area: Rect, fields: &[FieldConfig], form_state: &FormState, has_picker: bool) {
+fn render_fields(
+    frame: &mut Frame,
+    area: Rect,
+    fields: &[FieldConfig],
+    form_state: &FormState,
+    has_picker: bool,
+) {
     // Compute which fields are currently visible given the form's current values.
     // `vi` (visible index) is the render position; `ci` (config index) is the field's
     // position in the original `fields` slice.
@@ -686,8 +691,12 @@ fn render_preset_picker_overlay(
         return;
     }
 
-    let modal_width = (area.width * 2 / 3).max(40).min(area.width.saturating_sub(4));
-    let modal_height = (area.height * 2 / 3).max(8).min(area.height.saturating_sub(4));
+    let modal_width = (area.width * 2 / 3)
+        .max(40)
+        .min(area.width.saturating_sub(4));
+    let modal_height = (area.height * 2 / 3)
+        .max(8)
+        .min(area.height.saturating_sub(4));
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -728,21 +737,24 @@ fn render_preset_picker_overlay(
                 Style::default().fg(Color::White)
             };
             match node {
-                TreeNode::Branch { axis_value, count, .. } => {
-                    ListItem::new(Line::from(vec![
-                        Span::styled(format!("  {axis_value}"), style),
-                        Span::styled(
-                            format!("  ({count})"),
-                            if is_selected {
-                                Style::default().fg(Color::DarkGray).bg(Color::Cyan)
-                            } else {
-                                Style::default().fg(Color::DarkGray)
-                            },
-                        ),
-                        Span::styled(" ▸", style),
-                    ]))
-                }
-                TreeNode::Leaf { preset_name, description } => {
+                TreeNode::Branch {
+                    axis_value, count, ..
+                } => ListItem::new(Line::from(vec![
+                    Span::styled(format!("  {axis_value}"), style),
+                    Span::styled(
+                        format!("  ({count})"),
+                        if is_selected {
+                            Style::default().fg(Color::DarkGray).bg(Color::Cyan)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    Span::styled(" ▸", style),
+                ])),
+                TreeNode::Leaf {
+                    preset_name,
+                    description,
+                } => {
                     let name_style = style;
                     if let Some(desc) = description {
                         let desc_style = if is_selected {
@@ -767,7 +779,12 @@ fn render_preset_picker_overlay(
         })
         .collect();
 
-    let list_area = Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(1));
+    let list_area = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width,
+        inner.height.saturating_sub(1),
+    );
     frame.render_widget(List::new(items), list_area);
 
     // Scroll indicator
@@ -775,19 +792,30 @@ fn render_preset_picker_overlay(
         let pct = (picker.viewport_offset * 100) / total.max(1);
         let scroll_text = format!(" {}/{} ({}%)", picker.selected + 1, total, pct);
         let indicator_area = Rect::new(
-            modal_area.x + modal_area.width.saturating_sub(scroll_text.len() as u16 + 1),
+            modal_area.x
+                + modal_area
+                    .width
+                    .saturating_sub(scroll_text.len() as u16 + 1),
             modal_area.y,
             scroll_text.len() as u16,
             1,
         );
         frame.render_widget(
-            Paragraph::new(Span::styled(scroll_text, Style::default().fg(Color::DarkGray))),
+            Paragraph::new(Span::styled(
+                scroll_text,
+                Style::default().fg(Color::DarkGray),
+            )),
             indicator_area,
         );
     }
 
     // Hint row
-    let hint_area = Rect::new(inner.x, inner.y + inner.height.saturating_sub(1), inner.width, 1);
+    let hint_area = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(1),
+        inner.width,
+        1,
+    );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("↑↓", Style::default().fg(Color::Yellow)),
@@ -806,13 +834,21 @@ fn render_preset_picker_overlay(
 fn build_breadcrumb(picker: &PresetPickerState, axes: &[String]) -> String {
     use crate::data::preset_tree::TreeNode;
     if picker.path.is_empty() {
-        return axes.first().cloned().unwrap_or_else(|| "Preset".to_string());
+        return axes
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "Preset".to_string());
     }
     let mut parts: Vec<String> = Vec::new();
     // Walk through roots_with_ungrouped (which includes the synthetic Ungrouped branch).
     let mut nodes: &[TreeNode] = &picker.tree.roots_with_ungrouped;
     for &idx in picker.path.iter() {
-        if let Some(TreeNode::Branch { axis_value, children, .. }) = nodes.get(idx) {
+        if let Some(TreeNode::Branch {
+            axis_value,
+            children,
+            ..
+        }) = nodes.get(idx)
+        {
             parts.push(axis_value.clone());
             nodes = children;
         }
@@ -1870,10 +1906,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
         use crossterm::event::KeyCode;
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                let name = form_state
-                    .selected_preset_name
-                    .clone()
-                    .unwrap_or_default();
+                let name = form_state.selected_preset_name.clone().unwrap_or_default();
                 form_state.confirm_delete_preset = false;
                 return FormAction::DeletePreset { name };
             }
@@ -1983,7 +2016,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
     }
 
     // Delete preset: bare 'd' or Ctrl+D on preset row with a real preset selected.
-    if key.code == KeyCode::Char('d') && on_preset_row && form_state.selected_preset_name.is_some() {
+    if key.code == KeyCode::Char('d') && on_preset_row && form_state.selected_preset_name.is_some()
+    {
         form_state.confirm_delete_preset = true;
         return FormAction::None;
     }
@@ -2003,8 +2037,7 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction 
                     .contains(crossterm::event::KeyModifiers::CONTROL)));
     if picker_trigger {
         let presets = app.presets.get(&module_key);
-        let tree =
-            crate::data::preset_tree::build(&presets, &module.preset_axes);
+        let tree = crate::data::preset_tree::build(&presets, &module.preset_axes);
         form_state.preset_picker = Some(PresetPickerState {
             tree,
             path: Vec::new(),
