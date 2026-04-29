@@ -8,7 +8,7 @@ use crate::config::{FieldConfig, FieldType, ModuleConfig, TemplateConfig};
 use crate::data::cache::Cache;
 use crate::output::frontmatter::format_value;
 use crate::transport::Transport;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 
 /// A record of a note that was auto-created during form submission.
@@ -232,14 +232,20 @@ pub fn build_templated_note_content(
 /// Resolve a template path pattern into a concrete vault-relative path.
 ///
 /// Substitutes `{{name}}` with the sanitized filename stem and expands
-/// strftime specifiers (`%Y`, `%m`, etc.) against the current local time.
+/// strftime specifiers (`%Y`, `%m`, etc.) against `now`.
 /// Returns `None` if filename sanitization fails.
-pub fn resolve_template_path(template_path: &str, name: &str) -> Option<String> {
+///
+/// `now` is passed explicitly so callers can supply a `captured_at`-derived
+/// timestamp (server) or `Local::now()` (TUI) without internal clock calls.
+pub fn resolve_template_path(
+    template_path: &str,
+    name: &str,
+    now: DateTime<Local>,
+) -> Option<String> {
     let stem = sanitize_filename(name)?;
     // Expand strftime BEFORE substituting {{name}} to prevent user-typed
     // percent sequences (e.g. "Ethiopia %Y") from being interpreted as
     // format specifiers.
-    let now = Local::now();
     let expanded = now.format(template_path).to_string().replace('\\', "/");
     let resolved = expanded.replace("{{name}}", &stem);
     Some(resolved)

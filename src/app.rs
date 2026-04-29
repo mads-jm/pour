@@ -51,6 +51,26 @@ pub struct PresetSaveDialog {
     pub focus: PresetDialogFocus,
     /// What kind of preset is being saved (module-level vs. composite-field).
     pub target: PresetDialogTarget,
+    /// `true` when the user has manually edited the name field (suppresses auto-suggest re-fill).
+    pub name_was_user_edited: bool,
+    /// `true` after first Enter on a colliding name — next Enter will overwrite.
+    pub awaiting_overwrite_confirm: bool,
+}
+
+/// State for the hierarchical preset drilldown picker overlay.
+///
+/// Active when the user opens the picker via `p` on the preset row or `Ctrl+P`.
+#[derive(Debug, Clone)]
+pub struct PresetPickerState {
+    /// The built tree for the current module.
+    pub tree: crate::data::preset_tree::PresetTree,
+    /// Breadcrumb path: indices into the current branch level's children.
+    /// `path[0]` is an index into `tree.roots`, `path[1]` into that branch's children, etc.
+    pub path: Vec<usize>,
+    /// Currently highlighted index within the *current level* (roots or a branch's children).
+    pub selected: usize,
+    /// Scroll offset for the visible list window.
+    pub viewport_offset: usize,
 }
 
 /// State for the in-overlay picker that lists saved presets for a single
@@ -85,6 +105,9 @@ pub struct FormState {
     pub active_config_idx: Option<usize>,
     /// Validation error messages, populated on submit attempt.
     pub validation_errors: Vec<String>,
+    /// Warning messages produced by `validate_axes` at form open.
+    /// Non-empty → preset_axes are invalid; legacy cycler is active, picker is disabled.
+    pub axis_warnings: Vec<String>,
     /// Cursor position within the active text/number input.
     pub cursor_position: usize,
     /// Whether the dropdown for the current select field is open.
@@ -119,13 +142,14 @@ pub struct FormState {
     /// Active sub-form overlay for template-driven inline note creation.
     pub sub_form: Option<SubFormState>,
     /// Ordered list of preset names for the current module.
-    /// Index 0 conceptually represents `<none>` (no preset applied).
     pub preset_names: Vec<String>,
     /// Parallel to `preset_names`: optional description per preset.
     /// Rendered as a dim subtitle under the preset row when `Some`.
     pub preset_descriptions: Vec<Option<String>>,
-    /// Index into `preset_names`; 0 means no preset is selected.
-    pub selected_preset: usize,
+    /// Name of the currently selected preset, or `None` for `<none>`.
+    pub selected_preset_name: Option<String>,
+    /// Hierarchical preset picker overlay. `Some` while the drilldown picker is open.
+    pub preset_picker: Option<PresetPickerState>,
     /// Open preset-save dialog, if the user is naming a new preset.
     pub preset_overlay: Option<PresetSaveDialog>,
     /// Whether the delete-preset confirmation prompt is shown.
@@ -135,7 +159,7 @@ pub struct FormState {
     /// editor; `None` otherwise.
     pub field_preset_picker: Option<FieldPresetPickerState>,
     /// Last preset applied per composite field, keyed by field name.
-    /// Drives the "preset: <name>" subtitle in the composite overlay.
+    /// Drives the `preset: <name>` subtitle in the composite overlay.
     pub last_applied_field_preset: HashMap<String, String>,
     /// Transient status message shown in the composite overlay (e.g. after a
     /// preset save or a schema-adjusted apply). Cleared on next user action.
@@ -518,12 +542,37 @@ impl App {
         // The preset row is always visible at position 0 but is not the default focus.
         let start_field = if initial_config_idx.is_some() { 1 } else { 0 };
 
+        // Validate preset_axes at form-open time. Invalid axes produce warnings and
+        // disable the picker (legacy cycler resumes).
+        let axis_warnings: Vec<String> = if module.preset_axes.is_empty() {
+            Vec::new()
+        } else {
+            match crate::data::preset_tree::validate_axes(&module.preset_axes, &module.fields) {
+                Ok(()) => Vec::new(),
+                Err(errors) => errors
+                    .iter()
+                    .map(|e| match e {
+                        crate::data::preset_tree::AxisError::UnknownField(n) => {
+                            format!("unknown field \"{n}\"")
+                        }
+                        crate::data::preset_tree::AxisError::CompositeArrayField(n) => {
+                            format!("composite_array field \"{n}\" cannot be an axis")
+                        }
+                        crate::data::preset_tree::AxisError::PresetExcludedField(n) => {
+                            format!("preset_exclude field \"{n}\" cannot be an axis")
+                        }
+                    })
+                    .collect(),
+            }
+        };
+
         Some(FormState {
             field_values,
             field_options,
             active_field: start_field,
             active_config_idx: initial_config_idx,
             validation_errors: Vec::new(),
+            axis_warnings,
             cursor_position: 0,
             dropdown_open: false,
             textarea_open: false,
@@ -539,7 +588,8 @@ impl App {
             sub_form: None,
             preset_names,
             preset_descriptions,
-            selected_preset: 0,
+            selected_preset_name: None,
+            preset_picker: None,
             preset_overlay: None,
             confirm_delete_preset: false,
             field_preset_picker: None,
@@ -630,6 +680,19 @@ impl App {
                 kind: SettingKind::Toggle(vec![String::new(), "true".to_string()]),
             });
         }
+
+        settings.push(ConfigSetting {
+            label: "Mobile Visible".to_string(),
+            key: "mobile_visible".to_string(),
+            // Default is true (visible). Show "false" only when explicitly set false.
+            value: if module.mobile_visible == Some(false) {
+                "false".to_string()
+            } else {
+                String::new()
+            },
+            // Cycles: "" (default / visible) ◂ ▸ "false" (hidden)
+            kind: SettingKind::Toggle(vec![String::new(), "false".to_string()]),
+        });
 
         // Navigation link to the field list
         let field_count = module.fields.len();

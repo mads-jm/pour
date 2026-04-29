@@ -1,0 +1,528 @@
+# Pour — config.toml
+# https://github.com/mads-jm/pour
+#
+# This file defines your Obsidian vault connection and capture modules.
+# Each [modules.<name>] block becomes a `pour <name>` command.
+
+# Schema version — used for migration support when the config format changes.
+config_version = "0.2.0"
+
+# Controls dashboard order. Modules not listed appear alphabetically after.
+module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "book"]
+
+# ─── Vault Connection ────────────────────────────────────────────────────────
+[vault]
+# Absolute path to your Obsidian vault root directory
+base_path = "D:\\! System\\Documents\\! obsidian\\main"
+
+# Obsidian Local REST API (optional — Pour falls back to direct filesystem writes)
+# api_port = 27124
+# api_key = "your-api-key"  # or set POUR_API_KEY env var
+
+# strftime format string used for date-based filenames (default: %Y%m%d)
+# date_format = "%Y%m%d"
+
+# ─── Modules ─────────────────────────────────────────────────────────────────
+# Two modes:
+#   "append" — adds content under a heading in an existing note
+#   "create" — generates a new note file per entry
+#
+# Path supports strftime tokens (%Y, %m, %d, %H, %M, %S) and field name
+# interpolation ({{field_name}}), and {{date}}/{{time}} tokens for create-mode paths.
+
+# ── me ───────────────────────────────────────────────────────────────────────
+# Usage: `pour me`
+# Appends a timestamped thought to your daily note under a fixed heading.
+#
+# append_template supports {{time}} and any field name as {{field_name}}.
+[modules.me]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Journal"
+icon = "💭"
+append_under_header = "## [[Journaling|Journal]]"
+callout_type = "note"
+append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
+
+[[modules.me.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title (optional)"
+target = "body"
+
+[[modules.me.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "What's on your mind?"
+required = true
+# textarea fields default to target = "body", but can be overridden
+target = "body"
+preset_exclude = true      # journal content varies every entry
+
+# ── todo ─────────────────────────────────────────────────────────────────────
+# Usage: `pour todo`
+# Appends a task checkbox to your daily note under the Tasks heading.
+[modules.todo]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Task"
+icon = "✅"
+append_under_header = "### Tasks"
+append_template = "- [ ] {{body}}"
+append_shallow = true
+
+[[modules.todo.fields]]
+name = "body"
+field_type = "text"
+prompt = "Task"
+required = true
+target = "body"
+
+# ── log ──────────────────────────────────────────────────────────────────────
+# Usage: `pour log`
+# Appends a timestamped activity entry to your daily note under Today.
+[modules.log]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Daily Log"
+icon = "📋"
+append_under_header = "## Notes"
+append_template = "- **{{time}}** · {{entry}}"
+
+[[modules.log.fields]]
+name = "entry"
+field_type = "text"
+prompt = "What did you do?"
+required = true
+target = "body"
+
+# ── workout ──────────────────────────────────────────────────────────────────
+# Usage: `pour workout`
+# Appends a workout summary to your daily note under Today.
+[modules.workout]
+mode = "append"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Workout"
+icon = "💪"
+append_under_header = "## Notes"
+append_template = "- **{{time}}** · {{type}} — {{duration}} min{{notes}}"
+
+[[modules.workout.fields]]
+name = "type"
+field_type = "static_select"
+prompt = "Workout type"
+required = true
+options = ["Lifting", "Cardio", "Calisthenics", "Sports", "Yoga", "Walking", "Other"]
+target = "body"
+
+[[modules.workout.fields]]
+name = "duration"
+field_type = "number"
+prompt = "Minutes"
+required = true
+target = "body"
+
+[[modules.workout.fields]]
+name = "notes"
+field_type = "text"
+prompt = "Notes (optional)"
+target = "body"
+preset_exclude = true
+
+# ── note ─────────────────────────────────────────────────────────────────────
+# Usage: `pour note`
+# Creates a fleeting note for quick capture — ideas, links, fragments.
+[modules.note]
+mode = "create"
+path = "05 - Fleeting/%Y%m%d-{{title}}.md"
+display_name = "Note"
+icon = "📝"
+daily_link = true
+
+[[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter"
+preset_exclude = true      # each note has a unique title
+
+[[modules.note.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Content"
+target = "body"
+preset_exclude = true      # freeform content varies every entry
+
+# ── coffee ───────────────────────────────────────────────────────────────────
+# Usage: `pour coffee`
+# Creates a new brew-log note. Path uses both strftime tokens and a field value.
+#
+# Pattern: category → equipment → method-specific params → universal fields.
+# This pattern is reusable for any module with category-dependent workflows.
+# The `show_when` key gates field visibility on the controlling field's value.
+[modules.coffee]
+mode = "create"
+path = "02 - Areas/204 - Cooking/Coffee/Brews{{bean}}@{{time}}-%Y%m%d.md"
+display_name = "Coffee"
+icon = "☕"
+daily_link = true
+
+# ── Category ─────────────────────────────────────────────────────────────────
+[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+required = true
+options = ["Pour Over", "Espresso", "Immersion", "Cold Brew"]
+target = "frontmatter"
+
+# ── Equipment (conditional per category) ─────────────────────────────────────
+# Each category scans its own vault subfolder for equipment notes.
+
+[[modules.coffee.fields]]
+name = "brewer"
+field_type = "dynamic_select"
+prompt = "Brewer"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Pour Over"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Pour Over" }
+wikilink = true
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+[[modules.coffee.fields]]
+name = "machine"
+field_type = "dynamic_select"
+prompt = "Machine"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Espresso"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+wikilink = true
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+[[modules.coffee.fields]]
+name = "brewer_immersion"
+field_type = "dynamic_select"
+prompt = "Brewer"
+source = "02 - Areas/204 - Cooking/Coffee/Brewers/Immersion"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Immersion" }
+wikilink = true
+allow_create = true
+create_template = "brewer"
+post_create_command = "templater:run"
+
+# ── Espresso-specific ────────────────────────────────────────────────────────
+
+[[modules.coffee.fields]]
+name = "drink_type"
+field_type = "static_select"
+prompt = "Drink type"
+options = ["Double", "Cortado", "Latte", "Flat White", "Americano"]
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+[[modules.coffee.fields]]
+name = "shot_style"
+field_type = "static_select"
+prompt = "Shot style"
+options = ["Standard", "Turbo", "Soup", "Allongé"]
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+# ── Universal fields ─────────────────────────────────────────────────────────
+
+# dynamic_select populates its dropdown by listing files/folders under `source`
+# in the vault. Falls back to the cache, then freetext input if offline.
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "dynamic_select"
+prompt = "Bean"
+source = "02 - Areas/204 - Cooking/Coffee/Beans"
+target = "frontmatter"
+icon = "🫘"
+wikilink = true
+allow_create = true
+create_template = "bean"
+post_create_command = "templater:run"
+
+[[modules.coffee.fields]]
+name = "grinder"
+field_type = "dynamic_select"
+prompt = "Grinder"
+source = "02 - Areas/204 - Cooking/Coffee/Grinders"
+target = "frontmatter"
+wikilink = true
+allow_create = true
+
+[[modules.coffee.fields]]
+name = "grind_setting"
+field_type = "number"
+prompt = "Grind setting"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "dose_g"
+field_type = "number"
+prompt = "Dose (g)"
+default = "18"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "yield_g"
+field_type = "number"
+prompt = "Yield (g)"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "time_s"
+field_type = "number"
+prompt = "Total time (s)"
+target = "frontmatter"
+
+# ── Method-specific params (conditional) ─────────────────────────────────────
+
+# Espresso: pressure profile as composite (ramp-up, peak, decline)
+[[modules.coffee.fields]]
+name = "pressure_profile"
+field_type = "composite_array"
+prompt = "Pressure Profile"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Espresso" }
+
+[[modules.coffee.fields.sub_fields]]
+name = "pressure_bar"
+field_type = "number"
+prompt = "Pressure (bar)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "duration_s"
+field_type = "number"
+prompt = "Duration (s)"
+
+# Water temperature — relevant for Pour Over, Immersion, and Espresso methods
+[[modules.coffee.fields]]
+name = "water_temp_c"
+field_type = "number"
+prompt = "Water temp (°C)"
+default = "96"
+target = "frontmatter"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion", "Espresso"] }
+
+# Filter — paper/cloth/metal variants for filtered brews. Novel values typed
+# at capture time persist to this list via `allow_create`.
+[[modules.coffee.fields]]
+name = "filter"
+field_type = "static_select"
+prompt = "Filter"
+options = ["Paper", "Abaca", "Cafec Light", "Cafec Dark", "Cloth", "Metal"]
+target = "frontmatter"
+show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
+allow_create = true
+
+# Pour Over: recipe stages (bloom → pours → draw down)
+[[modules.coffee.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Brew Recipe"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Pour Over" }
+
+[[modules.coffee.fields.sub_fields]]
+name = "stage"
+field_type = "static_select"
+prompt = "Stage"
+options = ["Bloom", "First Pour", "Second Pour", "Third Pour", "Draw Down"]
+
+[[modules.coffee.fields.sub_fields]]
+name = "weight_g"
+field_type = "number"
+prompt = "Weight (g)"
+
+[[modules.coffee.fields.sub_fields]]
+name = "duration_s"
+field_type = "number"
+prompt = "Duration (s)"
+
+# Immersion: steep time
+[[modules.coffee.fields]]
+name = "steep_time_m"
+field_type = "number"
+prompt = "Steep time (min)"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Immersion" }
+
+# Cold Brew: steep duration (ratio is dose_g:yield_g — no separate field needed)
+[[modules.coffee.fields]]
+name = "steep_hours"
+field_type = "number"
+prompt = "Steep time (hours)"
+default = "18"
+target = "frontmatter"
+show_when = { field = "brew_method", equals = "Cold Brew" }
+
+# ── Wrap-up (universal) ─────────────────────────────────────────────────────
+
+[[modules.coffee.fields]]
+name = "rating"
+field_type = "number"
+prompt = "Rating (1–5)"
+default = "3"
+target = "frontmatter"
+
+[[modules.coffee.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Tasting notes"
+target = "body"
+callout = "quote"
+preset_exclude = true
+
+# ── journal ──────────────────────────────────────────────────────────────────
+# Usage: `pour journal`
+# Creates a private journal entry in 13 - Joseph/00 - Journal/ with
+# year/month subdirectory structure matching existing entries.
+[modules.journal]
+mode = "create"
+path = "13 - Joseph/00 - Journal/%Y/%m %B/%y%m%d {{title}}.md"
+display_name = "Journal"
+icon = "📓"
+daily_link = true
+
+[[modules.journal.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+required = true
+target = "frontmatter"
+preset_exclude = true
+
+[[modules.journal.fields]]
+name = "tags"
+field_type = "text"
+prompt = "Tags (comma-separated, e.g. life/love, life/wellness)"
+target = "frontmatter"
+
+[[modules.journal.fields]]
+name = "cssclasses"
+field_type = "text"
+prompt = "CSS classes"
+default = "page-dark"
+target = "frontmatter"
+
+[[modules.journal.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Write freely..."
+target = "body"
+preset_exclude = true
+
+# ── book ────────────────────────────────────────────────────────────────────
+# Usage: `pour book`
+# Appends reading notes/highlights to an existing book note in the Bookshelf.
+[modules.book]
+mode = "append"
+path = "04 - Permanent/📚Bookshelf/{{book}}.md"
+display_name = "Book Note"
+icon = "📚"
+append_under_header = "## Notes"
+callout_type = "quote"
+append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
+
+[[modules.book.fields]]
+name = "book"
+field_type = "dynamic_select"
+prompt = "Book"
+source = "04 - Permanent/📚Bookshelf"
+required = true
+target = "body"
+preset_exclude = true
+
+[[modules.book.fields]]
+name = "title"
+field_type = "text"
+prompt = "Note title (optional)"
+target = "body"
+
+[[modules.book.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Your thoughts / highlights"
+required = true
+target = "body"
+preset_exclude = true
+
+# ─── Templates ───────────────────────────────────────────────────────────────
+# Templates define the note structure created when a user adds a new entry via
+# a dynamic_select field with `allow_create = true`. The `path` is relative to
+# the vault base_path and supports {{name}} as the value the user typed.
+# Fields are prompted in order before the note is written.
+
+[templates.bean]
+# {{name}} is replaced with the value the user typed into the dynamic_select.
+path = "02 - Areas/204 - Cooking/Coffee/Beans/{{name}}.md"
+
+[[templates.bean.fields]]
+name = "roaster"
+field_type = "text"
+prompt = "Roaster"
+# wikilink wrapping happens on the parent field (bean), not template fields
+
+[[templates.bean.fields]]
+name = "origin"
+field_type = "static_select"
+prompt = "Origin"
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen"]
+# Typing a novel value at capture time appends it to this list and persists
+# to config.toml so it's available next session.
+allow_create = true
+
+[[templates.bean.fields]]
+name = "varietal"
+field_type = "static_select"
+prompt = "Varietal (optional)"
+options = ["Typica", "Bourbon", "Caturra", "Catuai", "Geisha", "SL28", "SL34", "Heirloom", "Pacamara"]
+allow_create = true
+
+[[templates.bean.fields]]
+name = "process"
+field_type = "static_select"
+prompt = "Process"
+options = ["Washed", "Natural", "Honey", "Anaerobic", "Wet Hulled"]
+default = "Washed"
+
+[[templates.bean.fields]]
+name = "roast_level"
+field_type = "static_select"
+prompt = "Roast level"
+options = ["Light", "Light-Medium", "Medium", "Medium-Dark", "Dark"]
+default = "Light"
+
+[[templates.bean.fields]]
+name = "bag_weight_g"
+field_type = "number"
+prompt = "Bag weight (g)"
+default = "250"
+
+# ── Brewer template ─────────────────────────────────────────────────────────
+# Creates a new brewer/equipment note when using allow_create on a brewer
+# dynamic_select. The {{category}} field routes the note into the correct
+# subfolder (Pour Over, Espresso, Immersion).
+
+[templates.brewer]
+path = "02 - Areas/204 - Cooking/Coffee/Brewers/{{category}}/{{name}}.md"
+
+[[templates.brewer.fields]]
+name = "category"
+field_type = "static_select"
+prompt = "Brewer category"
+options = ["Pour Over", "Espresso", "Immersion"]
+
+[[templates.brewer.fields]]
+name = "brand"
+field_type = "text"
+prompt = "Brand"

@@ -1,7 +1,7 @@
 use crate::config::ModuleConfig;
 use crate::output::{CompositeData, render_composite_table};
 use crate::visibility::visible_field_indices;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use std::collections::{HashMap, HashSet};
 
 /// Render a path template by substituting `{{field}}` placeholders and
@@ -19,13 +19,15 @@ use std::collections::{HashMap, HashSet};
 ///
 /// For example, `"Coffee/{{bean}} %Y%m%d.md"` with `bean = "Ethiopian"`
 /// becomes `"Coffee/Ethiopian 20260401.md"` on 2026-04-01.
+///
+/// `now` is passed explicitly so callers can supply a `captured_at`-derived
+/// timestamp (server) or `Local::now()` (TUI) without internal clock calls.
 pub fn render_path(
     template: &str,
     field_values: &HashMap<String, String>,
     date_format: Option<&str>,
+    now: DateTime<Local>,
 ) -> String {
-    let now = Local::now();
-
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
     let strftime_expanded = now.format(template).to_string();
@@ -79,6 +81,9 @@ pub fn render_path(
 ///
 /// Placeholders whose key is not found in `fields` (and is not a special
 /// token) are left as-is so the caller can see what was unresolved.
+///
+/// `now` is passed explicitly so callers can supply a `captured_at`-derived
+/// timestamp (server) or `Local::now()` (TUI) without internal clock calls.
 pub fn render_append_template(
     template: &str,
     fields: &HashMap<String, String>,
@@ -86,9 +91,8 @@ pub fn render_append_template(
     composite_data: &CompositeData,
     callout_overrides: &HashMap<String, String>,
     callout_titles: &HashMap<String, String>,
+    now: DateTime<Local>,
 ) -> String {
-    let now = Local::now();
-
     // Compute visible field names once; hidden fields render as empty string.
     let visible_indices = visible_field_indices(&module.fields, fields);
     let visible_names: HashSet<&str> = visible_indices

@@ -5,7 +5,7 @@
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
 # Schema version — used for migration support when the config format changes.
-config_version = "0.2.0"
+config_version = "0.3.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
 module_order = ["me", "todo", "note", "coffee"]
@@ -116,6 +116,10 @@ path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"
 display_name = "Coffee"
 icon = "☕"
 daily_link = true
+# Hierarchical preset picker (Ctrl+P or `p` on the preset row). Each axis is a
+# field name; presets drill down by their saved values. Omit to keep the legacy
+# Left/Right cycler. See `pour - docs/08 specs/pour-preset-hierarchy.md`.
+preset_axes = ["brew_method", "bean"]
 
 # ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]

@@ -7,7 +7,7 @@ aliases:
   - obsidian-local-rest-api
   - obsidian rest api
 date created: Tuesday, March 31st 2026, 12:14:49 am
-date modified: Tuesday, April 7th 2026, 3:30:36 am
+date modified: Wednesday, April 29th 2026, 5:31:55 pm
 ---
 
 # Obsidian Local REST API - Reference

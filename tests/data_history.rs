@@ -32,6 +32,7 @@ fn today_noon_utc() -> DateTime<Utc> {
 
 fn entry(module: &str, hours_ago: i64) -> HistoryEntry {
     HistoryEntry {
+        id: None,
         module_key: module.to_string(),
         timestamp: today_noon_utc() - Duration::hours(hours_ago),
         vault_path: format!("test/{module}.md"),
@@ -41,6 +42,7 @@ fn entry(module: &str, hours_ago: i64) -> HistoryEntry {
 
 fn entry_days_ago(module: &str, days: i64) -> HistoryEntry {
     HistoryEntry {
+        id: None,
         module_key: module.to_string(),
         timestamp: today_noon_utc() - Duration::days(days),
         vault_path: format!("test/{module}.md"),
@@ -155,8 +157,13 @@ fn record_persists_to_disk() {
     let mut h = History::load_from(path.clone());
 
     assert_eq!(h.today_count(), 0);
-    h.record("coffee", "Coffee/2026/test.md", Some("Ethiopia Yirg"))
-        .expect("record should succeed");
+    h.record(
+        "coffee",
+        "Coffee/2026/test.md",
+        Some("Ethiopia Yirg"),
+        chrono::Utc::now(),
+    )
+    .expect("record should succeed");
     assert_eq!(h.today_count(), 1);
 
     // Reload from disk
@@ -312,9 +319,12 @@ fn record_appends_without_rewriting() {
     let path = dir.path().join("history.jsonl");
     let mut h = History::load_from(path.clone());
 
-    h.record("coffee", "test1.md", None).expect("record 1");
-    h.record("me", "test2.md", None).expect("record 2");
-    h.record("music", "test3.md", None).expect("record 3");
+    h.record("coffee", "test1.md", None, chrono::Utc::now())
+        .expect("record 1");
+    h.record("me", "test2.md", None, chrono::Utc::now())
+        .expect("record 2");
+    h.record("music", "test3.md", None, chrono::Utc::now())
+        .expect("record 3");
 
     // File should have exactly 3 lines
     let contents = std::fs::read_to_string(&path).expect("read");
@@ -333,7 +343,7 @@ fn summary_cache_is_written() {
     let path = dir.path().join("history.jsonl");
     let mut h = History::load_from(path.clone());
 
-    h.record("coffee", "test.md", Some("Ethiopia"))
+    h.record("coffee", "test.md", Some("Ethiopia"), chrono::Utc::now())
         .expect("record");
 
     let summary_path = dir.path().join("history-summary.json");
@@ -346,4 +356,43 @@ fn summary_cache_is_written() {
     let summary: serde_json::Value = serde_json::from_str(&contents).expect("parse summary");
     assert_eq!(summary["version"], 1);
     assert_eq!(summary["total_entries"], 1);
+}
+
+#[test]
+fn record_same_module_same_second_produces_distinct_ids() {
+    // Regression test for the history id collision bug: two submits to the same
+    // module within one second previously produced the same id (YYYYMMDDTHHMMSS-module),
+    // making the second entry unreachable via /api/v1/captures/{id}.
+    //
+    // The fix appends milliseconds (%3f), producing e.g. 20260425T143302123-coffee.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("history.jsonl");
+    let mut h = History::load_from(path.clone());
+
+    // Use the exact same UTC timestamp for both records (simulates same-second submit).
+    let ts = chrono::Utc::now();
+    let id1 = h
+        .record("coffee", "Coffee/note1.md", Some("Ethiopia"), ts)
+        .expect("record 1");
+    let id2 = h
+        .record("coffee", "Coffee/note2.md", Some("Colombia"), ts)
+        .expect("record 2");
+
+    assert_ne!(
+        id1, id2,
+        "two records to the same module at the same UTC instant must have distinct ids.\n\
+         id1={id1}, id2={id2}\n\
+         (If this fails, the ms-suffix fix in History::record was reverted.)"
+    );
+
+    // Both must be findable by id.
+    let h2 = History::load_from(path);
+    assert!(
+        h2.find_by_id(&id1).is_some(),
+        "first id must be findable: {id1}"
+    );
+    assert!(
+        h2.find_by_id(&id2).is_some(),
+        "second id must be findable: {id2}"
+    );
 }

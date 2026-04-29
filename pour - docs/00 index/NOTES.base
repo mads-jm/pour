@@ -5,6 +5,7 @@ views:
   - type: table
     name: Recent First
     order:
+      - file.name
       - date modified
     sort:
       - property: date modified

@@ -111,6 +111,8 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
+        preset_axes: Vec::new(),
     }
 }
 
@@ -593,30 +595,37 @@ fn templated_content_field_ordering() {
 
 #[test]
 fn resolve_path_basic_substitution() {
-    let result = resolve_template_path("Beans/{{name}}.md", "Ethiopia Guji");
+    let result = resolve_template_path("Beans/{{name}}.md", "Ethiopia Guji", chrono::Local::now());
     assert_eq!(result, Some("Beans/Ethiopia Guji.md".to_string()));
 }
 
 #[test]
 fn resolve_path_sanitization_applied() {
-    let result = resolve_template_path("Beans/{{name}}.md", "foo:bar");
+    let result = resolve_template_path("Beans/{{name}}.md", "foo:bar", chrono::Local::now());
     assert_eq!(result, Some("Beans/foo-bar.md".to_string()));
 }
 
 #[test]
 fn resolve_path_sanitization_failure_returns_none() {
-    assert_eq!(resolve_template_path("Beans/{{name}}.md", "CON"), None);
+    assert_eq!(
+        resolve_template_path("Beans/{{name}}.md", "CON", chrono::Local::now()),
+        None
+    );
 }
 
 #[test]
 fn resolve_path_empty_name_returns_none() {
-    assert_eq!(resolve_template_path("Beans/{{name}}.md", ""), None);
+    assert_eq!(
+        resolve_template_path("Beans/{{name}}.md", "", chrono::Local::now()),
+        None
+    );
 }
 
 #[test]
 fn resolve_path_strftime_expansion() {
-    let result = resolve_template_path("Beans/%Y/{{name}}.md", "Test").unwrap();
-    let year = chrono::Local::now().format("%Y").to_string();
+    let now = chrono::Local::now();
+    let result = resolve_template_path("Beans/%Y/{{name}}.md", "Test", now).unwrap();
+    let year = now.format("%Y").to_string();
     assert!(
         result.contains(&year),
         "path should contain current year {year}: {result}"
@@ -625,13 +634,19 @@ fn resolve_path_strftime_expansion() {
 
 #[test]
 fn resolve_path_multiple_name_placeholders() {
-    let result = resolve_template_path("{{name}}/{{name}}.md", "Test").unwrap();
+    let result =
+        resolve_template_path("{{name}}/{{name}}.md", "Test", chrono::Local::now()).unwrap();
     assert_eq!(result, "Test/Test.md");
 }
 
 #[test]
 fn resolve_path_percent_in_name_not_expanded_as_strftime() {
     // A user typing "Ethiopia %Y Blend" should NOT have %Y expanded to the year
-    let result = resolve_template_path("Beans/{{name}}.md", "Ethiopia %Y Blend").unwrap();
+    let result = resolve_template_path(
+        "Beans/{{name}}.md",
+        "Ethiopia %Y Blend",
+        chrono::Local::now(),
+    )
+    .unwrap();
     assert_eq!(result, "Beans/Ethiopia %Y Blend.md");
 }

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
 /// Top-level configuration, deserialized from `config.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub vault: VaultConfig,
     pub modules: HashMap<String, ModuleConfig>,
@@ -23,7 +23,7 @@ pub struct Config {
 /// Vault connection settings.
 // The vault name is not persisted here; it is implicit in the section name
 // and is resolved at runtime from the config path.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct VaultConfig {
     pub base_path: String,
     #[serde(default = "default_api_port")]
@@ -43,7 +43,7 @@ fn default_config_version() -> Option<String> {
 }
 
 /// A single module definition (e.g. `[modules.coffee]`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModuleConfig {
     pub mode: WriteMode,
     pub path: String,
@@ -66,10 +66,28 @@ pub struct ModuleConfig {
     /// `#### Completed` sub-headings).
     #[serde(default)]
     pub append_shallow: Option<bool>,
+    /// When `false`, this module is hidden from the mobile PWA (`/api/v1/config`
+    /// omits it entirely). Defaults to `true` — all modules are mobile-visible
+    /// unless explicitly opted out.
+    #[serde(default)]
+    pub mobile_visible: Option<bool>,
+    /// Ordered list of field names used as drilldown axes in the preset picker.
+    /// Empty/absent → no picker; the legacy Left/Right cycler stays active.
+    #[serde(default)]
+    pub preset_axes: Vec<String>,
+}
+
+impl ModuleConfig {
+    /// Returns whether this module should be included in the mobile PWA config response.
+    ///
+    /// `None` and `Some(true)` both mean visible; only `Some(false)` hides it.
+    pub fn is_mobile_visible(&self) -> bool {
+        self.mobile_visible.unwrap_or(true)
+    }
 }
 
 /// Whether a module appends to an existing note or creates a new one.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum WriteMode {
     Append,
@@ -90,7 +108,7 @@ pub struct ShowWhen {
 }
 
 /// A single field within a module form.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FieldConfig {
     pub name: String,
     pub field_type: FieldType,
@@ -147,7 +165,7 @@ pub struct FieldConfig {
 }
 
 /// The kind of input widget for a field.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
     Text,
@@ -239,6 +257,8 @@ pub struct ModuleUpdates {
     pub daily_link: Option<Option<bool>>,
     /// New append_shallow value. `Some(None)` removes the key.
     pub append_shallow: Option<Option<bool>>,
+    /// New mobile_visible value. `Some(None)` removes the key (treated as true).
+    pub mobile_visible: Option<Option<bool>>,
 }
 
 /// Partial updates to apply to the vault section of the config file.
@@ -377,7 +397,7 @@ fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
 
 impl Config {
     /// The config schema version this build of Pour understands.
-    pub const CURRENT_CONFIG_VERSION: &'static str = "0.2.0";
+    pub const CURRENT_CONFIG_VERSION: &'static str = "0.3.0";
 
     /// Load and validate the configuration.
     ///
@@ -553,6 +573,74 @@ impl Config {
         let _ = std::fs::remove_file(&tmp_path); // clean up orphan if rename failed
         result?;
 
+        // Restrict secrets.toml to owner-read/write only (0600) on Unix.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            let _ = std::fs::set_permissions(&path, perms);
+        }
+
+        Ok(())
+    }
+
+    /// Read `mobile_token` from `secrets.toml`.
+    ///
+    /// Returns `None` if the file is absent or the key is not present.
+    /// The `POUR_MOBILE_TOKEN` env var overrides this value (mirrors the
+    /// `POUR_API_KEY` precedence story).
+    pub fn read_mobile_token() -> Option<String> {
+        // Env var takes precedence.
+        if let Ok(env_tok) = std::env::var("POUR_MOBILE_TOKEN")
+            && !env_tok.is_empty()
+        {
+            return Some(env_tok);
+        }
+
+        let content = std::fs::read_to_string(Self::secrets_path()).ok()?;
+        let doc = content.parse::<DocumentMut>().ok()?;
+        let value = doc.get("mobile_token")?.as_str()?;
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    }
+
+    /// Write `mobile_token` to `secrets.toml`.
+    ///
+    /// Creates parent directories and the file itself if they don't exist.
+    /// Preserves any existing keys in the file (e.g. `api_key`).
+    pub fn write_mobile_token(token: &str) -> Result<(), ConfigError> {
+        let path = Self::secrets_path();
+
+        // Create parent dir if needed.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(ConfigError::WriteError)?;
+        }
+
+        // Load existing doc or start fresh.
+        let mut doc: DocumentMut = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| c.parse::<DocumentMut>().ok())
+            .unwrap_or_default();
+
+        doc["mobile_token"] = toml_edit::value(token);
+
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
+        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
+        let _ = std::fs::remove_file(&tmp_path);
+        result?;
+
+        // Restrict secrets.toml to owner-read/write only (0600) on Unix.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            let _ = std::fs::set_permissions(&path, perms);
+        }
+
         Ok(())
     }
 
@@ -680,6 +768,17 @@ impl Config {
                 }
                 None => {
                     module.remove("append_shallow");
+                }
+            }
+        }
+
+        if let Some(ref mobile_visible_update) = updates.mobile_visible {
+            match mobile_visible_update {
+                Some(v) => {
+                    module["mobile_visible"] = toml_edit::value(*v);
+                }
+                None => {
+                    module.remove("mobile_visible");
                 }
             }
         }

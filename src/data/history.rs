@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A single recorded capture event.
 ///
@@ -14,6 +15,12 @@ use std::path::{Path, PathBuf};
 /// (a dateless entry has no meaningful place in any time-based query).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
+    /// Opaque identifier in the form `<YYYYMMDDTHHmmss>-<module_key>`.
+    /// Used by the API to identify captures in `/api/v1/captures/{id}`.
+    /// Absent on legacy entries (pre-Step-C); callers should treat `None` as
+    /// meaning the entry predates the API and has no associated capture id.
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(default)]
     pub module_key: String,
     pub timestamp: DateTime<Utc>,
@@ -77,6 +84,14 @@ fn summary_version_default() -> u32 {
     1
 }
 
+/// Monotonically-increasing counter for within-millisecond id uniqueness.
+///
+/// When two `record()` calls arrive at the same millisecond (e.g. test fixtures
+/// or rapid concurrent PWA submits), the counter suffix prevents duplicate ids.
+/// The counter resets to 0 on process restart which is fine — the ms prefix
+/// already provides sufficient real-world uniqueness.
+static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 /// Manages the capture history log persisted at `~/.pour/cache/history.jsonl`.
 ///
 /// Write path: append a single JSON line per capture (O(1)).
@@ -125,15 +140,35 @@ impl History {
     }
 
     /// Record a successful capture and persist to disk.
+    ///
+    /// `at` is the canonical timestamp for this capture. The TUI passes
+    /// `Utc::now()`; the server passes the `captured_at`-derived UTC value
+    /// so that offline replays are dated correctly (contract §10).
+    ///
+    /// Returns the opaque `id` string assigned to the new entry.
     pub fn record(
         &mut self,
         module_key: &str,
         vault_path: &str,
         first_field: Option<&str>,
-    ) -> Result<()> {
+        at: DateTime<Utc>,
+    ) -> Result<String> {
+        // Build a collision-resistant id by appending milliseconds and a
+        // monotonic in-process counter.
+        //
+        // Format: YYYYMMDDTHHmmSSsss-<counter>-<module_key>
+        // - ms suffix: prevents same-second collisions under real concurrent load.
+        // - counter suffix: prevents same-millisecond collisions in tests or when
+        //   the same captured_at value is replayed (the counter resets on restart
+        //   but ms already handles real-world concurrent PWA submits).
+        // - Legacy entries (no ms/counter) remain uniquely findable — find_by_id
+        //   uses exact-string matching so old ids resolve correctly.
+        let seq = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let id = format!("{}-{}-{}", at.format("%Y%m%dT%H%M%S%3f"), seq, module_key);
         let entry = HistoryEntry {
+            id: Some(id.clone()),
             module_key: module_key.to_owned(),
-            timestamp: Utc::now(),
+            timestamp: at,
             vault_path: vault_path.to_owned(),
             first_field: first_field.map(|s| s.to_owned()),
         };
@@ -147,7 +182,7 @@ impl History {
         self.summary = compute_summary(&self.entries);
         let _ = write_summary(&summary_path(&self.path), &self.summary);
 
-        Ok(())
+        Ok(id)
     }
 
     /// Persist history to disk (full rewrite — used only for migration/tests).
@@ -165,6 +200,16 @@ impl History {
         // Also update summary
         let _ = write_summary(&summary_path(&self.path), &self.summary);
         Ok(())
+    }
+
+    /// All entries, oldest first.
+    pub fn entries(&self) -> &[HistoryEntry] {
+        &self.entries
+    }
+
+    /// Find an entry by its opaque `id` string.
+    pub fn find_by_id(&self, id: &str) -> Option<&HistoryEntry> {
+        self.entries.iter().find(|e| e.id.as_deref() == Some(id))
     }
 
     /// Most recent entry, if any.
@@ -271,6 +316,95 @@ impl History {
     /// Last N entries (most recent first).
     pub fn recent(&self, n: usize) -> Vec<&HistoryEntry> {
         self.entries.iter().rev().take(n).collect()
+    }
+
+    /// Paginated, filtered history query (§6.5 cursor pagination).
+    ///
+    /// Filters by:
+    /// - `since`: inclusive lower bound (`timestamp >= since`).
+    /// - `until`: exclusive upper bound (`timestamp < until`). Raw timestamp
+    ///   filter — kept for direct "older than X date" use. NOT used as the
+    ///   pagination cursor; use `cursor` for pagination.
+    /// - `cursor`: opaque string cursor (the `id` of the last entry from the
+    ///   previous page). Filters to entries whose `id` is lexicographically
+    ///   less than the cursor. Because ids are `YYYYMMDDTHHmmSSsss-seq-module`,
+    ///   lexicographic order == chronological+counter order, so this correctly
+    ///   handles same-millisecond entries that a timestamp-only cursor would drop.
+    /// - `module`: exact `module_key` match.
+    ///
+    /// Returns entries in descending id order (most recent first).
+    ///
+    /// `limit` must be ≥ 1. The method fetches up to `limit + 1` entries to
+    /// detect whether a next page exists:
+    /// - If > `limit` found: `has_more = true`,
+    ///   `next_cursor = Some(entries[limit - 1].id)`.
+    /// - Otherwise: `has_more = false`, `next_cursor = None`.
+    pub fn filter(
+        &self,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+        cursor: Option<&str>,
+        module: Option<&str>,
+        limit: usize,
+    ) -> (Vec<HistoryEntry>, bool, Option<String>) {
+        let mut filtered: Vec<&HistoryEntry> = self
+            .entries
+            .iter()
+            .filter(|e| {
+                if let Some(s) = since
+                    && e.timestamp < s
+                {
+                    return false;
+                }
+                if let Some(u) = until
+                    && e.timestamp >= u
+                {
+                    return false;
+                }
+                // Cursor: id-based exclusive upper bound. Entries whose id is
+                // lexicographically >= cursor are on a previous page.
+                if let Some(c) = cursor {
+                    let entry_id = e.id.as_deref().unwrap_or("");
+                    if entry_id >= c {
+                        return false;
+                    }
+                }
+                if let Some(m) = module
+                    && e.module_key != m
+                {
+                    return false;
+                }
+                true
+            })
+            .collect();
+
+        // Sort descending by id (lexicographic == chronological+counter for our
+        // id format). Entries without an id (legacy) sort last (empty string).
+        filtered.sort_by(|a, b| {
+            let a_id = a.id.as_deref().unwrap_or("");
+            let b_id = b.id.as_deref().unwrap_or("");
+            b_id.cmp(a_id)
+        });
+
+        let has_more = filtered.len() > limit;
+        // next_cursor is the id of the last entry we return on this page.
+        // The client passes it as `?cursor=<next_cursor>` for the next page.
+        let next_cursor: Option<String> = if has_more {
+            filtered
+                .get(limit.saturating_sub(1))
+                .and_then(|e| e.id.clone())
+        } else {
+            None
+        };
+
+        let entries: Vec<HistoryEntry> = filtered.into_iter().take(limit).cloned().collect();
+
+        (entries, has_more, next_cursor)
+    }
+
+    /// Returns the precomputed summary, recomputing if stale.
+    pub fn summary(&self) -> &HistorySummary {
+        &self.summary
     }
 
     /// Most recent timestamp per module key.

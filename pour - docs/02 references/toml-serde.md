@@ -8,7 +8,7 @@ aliases:
   - toml
   - serde
 date created: Tuesday, March 31st 2026, 12:14:44 am
-date modified: Tuesday, April 7th 2026, 3:30:36 am
+date modified: Wednesday, April 29th 2026, 5:31:54 pm
 ---
 
 # TOML & Serde - Config Parsing Reference

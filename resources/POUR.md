@@ -28,7 +28,7 @@ API-key precedence: `POUR_API_KEY` env var > `secrets.toml` > `config.toml [vaul
 ## Top-level config structure
 
 ```toml
-config_version = "0.2.0"                           # schema version
+config_version = "0.3.0"                           # schema version
 module_order = ["me", "note", "coffee"]             # dashboard display order
 
 [vault]
@@ -193,12 +193,29 @@ Behavior:
 
 No `pour --check` flag (v1). The cheapest check is `pour <module> --help` or opening the dashboard — both parse and validate the full config, surfacing errors to stderr with specific field paths. If the dashboard opens without error, the config is valid.
 
+## Runtime API for agents and remote clients
+
+The capture-time surface above (config edits, file inspection) is *one* way for an agent to operate on a Pour install. The other is the runtime HTTP API exposed by `pour serve`.
+
+**When to use which:**
+
+- **Edit `config.toml` / `presets.json` directly** when the user is asking you to add a module, change a field, define a template, or curate presets. These are schema changes — they belong in the file, not behind an API call. The rules in this document govern.
+- **Use the HTTP API** when the user is asking you to *capture* something ("log that I just had a V60 with the Onyx Ethiopia at 1:15"), query their history, or retrieve a prior capture. These are runtime operations against a running daemon.
+
+The HTTP API is a complete agent surface: schema discovery (`GET /api/v1/config`), valid-choices for dynamic dropdowns (`GET /api/v1/options/{module}/{field}`), idempotent submits with offline-time-preserving `captured_at` (`POST /api/v1/submit/{module}`), read-back of any prior capture (`GET /api/v1/captures/{history_id}`), and history queries (`GET /api/v1/history`). Auth is a Bearer token from `~/.pour/secrets.toml` `mobile_token` field.
+
+A hand-written OpenAPI 3.1 spec ships at `pour - docs/02 references/pour-openapi.yaml` (Phase 1) and will be auto-generated from the Rust handler signatures via `utoipa` in Phase 2. An MCP companion (`pour mcp`) is on the Phase 4 roadmap.
+
+**Authoritative spec:** `pour - docs/08 specs/pour-api-contract.md`. When in doubt, the contract is canonical over this document for runtime operations.
+
 ## Where to find more
 
 Everything in this file is derived from the full reference docs in the (Pour)[https://github.com/mads-jm/pour] source repo:
 
 - `pour - docs/02 references/field-types.md` — authoritative field-type reference, including edge cases and output examples
+- `pour - docs/02 references/pour-openapi.yaml` — machine-readable runtime API spec (Phase 1: hand-written; Phase 2: `utoipa`-generated)
 - `pour - docs/08 specs/pour-design-spec.md` — design vision (aspirational; deviations annotated inline)
+- `pour - docs/08 specs/pour-api-contract.md` — runtime HTTP API contract (human narrative)
 - `pour - docs/04 architecture/System-Architecture-Overview.md` — subsystem map
 
-When in doubt, field-types.md is canonical over this document.
+When in doubt, field-types.md is canonical for the config schema; pour-api-contract.md is canonical for the runtime API.

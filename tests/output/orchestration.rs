@@ -1,3 +1,4 @@
+use chrono::{Local, TimeZone};
 use pour::config::Config;
 use pour::output::render_composite_table;
 use pour::output::{CompositeData, apply_wikilink, write_append, write_create};
@@ -147,6 +148,7 @@ async fn write_create_produces_file_with_frontmatter_and_body() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -208,6 +210,7 @@ async fn write_create_rejects_append_module() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await;
     assert!(result.is_err(), "write_create on append module should fail");
@@ -242,6 +245,7 @@ async fn write_append_inserts_rendered_template() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_append should succeed");
@@ -273,6 +277,7 @@ async fn write_append_rejects_create_module() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await;
     assert!(result.is_err(), "write_append on create module should fail");
@@ -305,6 +310,7 @@ async fn wikilink_true_wraps_frontmatter_value() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -344,6 +350,7 @@ async fn wikilink_true_wraps_body_value() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -381,6 +388,7 @@ async fn wikilink_no_double_wrap() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -422,6 +430,7 @@ async fn wikilink_default_false_no_behavior_change() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -460,6 +469,7 @@ async fn wikilink_wraps_each_comma_separated_item() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -501,6 +511,7 @@ async fn write_create_skips_empty_body_section() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -564,6 +575,7 @@ async fn write_create_wraps_body_in_callout() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -648,6 +660,7 @@ async fn hidden_field_excluded_from_frontmatter() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -690,6 +703,7 @@ async fn visible_conditional_field_included_in_frontmatter() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -728,6 +742,7 @@ async fn hidden_field_excluded_from_body() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -791,6 +806,7 @@ async fn write_append_wraps_body_in_field_callout() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_append should succeed");
@@ -838,6 +854,7 @@ async fn write_append_callout_override_in_template() {
         None,
         &overrides,
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_append should succeed");
@@ -898,6 +915,7 @@ async fn create_mode_includes_module_icon_in_frontmatter() {
         None,
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -981,6 +999,7 @@ async fn daily_link_injects_daily_frontmatter_key() {
         Some("%Y%m%d"),
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -1020,6 +1039,7 @@ async fn daily_link_uses_date_format_from_caller() {
         Some("%Y-%m-%d"),
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -1059,6 +1079,7 @@ async fn daily_link_false_does_not_inject_daily_key() {
         Some("%Y%m%d"),
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -1111,6 +1132,7 @@ prompt = "Daily"
         Some("%Y%m%d"),
         &HashMap::new(),
         &::std::collections::HashMap::new(),
+        chrono::Local::now(),
     )
     .await
     .expect("write_create should succeed");
@@ -1217,4 +1239,75 @@ fn composite_table_width_accounts_for_cjk() {
         table.contains("日本語"),
         "CJK cell content should appear in table, got:\n{table}"
     );
+}
+
+// --- §10 regression: date: frontmatter must use captured_at, not server clock ---
+
+#[tokio::test]
+async fn write_create_date_frontmatter_uses_now_not_server_clock() {
+    // This test locks the §10 regression: the `date:` frontmatter key must
+    // reflect the `now` passed by the caller (captured_at-derived in the
+    // server path), NOT `Local::now()` at write time.
+    //
+    // Use a fixed date from last week. If the frontmatter writer calls
+    // `Local::now()` internally it will produce today's date, failing the
+    // assertion.
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = create_config(&base);
+    let module = &config.modules["coffee"];
+
+    std::fs::create_dir_all(tmp.path().join("Coffee")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+
+    // Build a fixed `now` representing "last week" (7 days ago at noon local).
+    let today_naive = Local::now().date_naive();
+    let last_week_naive = today_naive - chrono::Duration::days(7);
+    let last_week_local = Local
+        .from_local_datetime(&last_week_naive.and_hms_opt(12, 0, 0).unwrap())
+        .single()
+        .expect("noon last week is unambiguous");
+    let expected_date = last_week_naive.format("%Y-%m-%d").to_string();
+
+    let mut fields = HashMap::new();
+    fields.insert("brew_method".to_string(), "V60".to_string());
+
+    write_create(
+        &transport,
+        module,
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        last_week_local, // pass past timestamp, not Local::now()
+    )
+    .await
+    .expect("write_create should succeed");
+
+    let content = std::fs::read_to_string(tmp.path().join("Coffee/note.md")).unwrap();
+
+    // Extract the date: line from the frontmatter.
+    let date_line = content
+        .lines()
+        .find(|l| l.starts_with("date:"))
+        .expect("date: key must exist in frontmatter");
+
+    assert_eq!(
+        date_line,
+        format!("date: {expected_date}"),
+        "date: frontmatter must reflect the `now` param (captured_at), not server clock.\n\
+         If this fails, Local::now() is still called inside the write path.\n\
+         Content:\n{content}"
+    );
+
+    // Verify it is NOT today's date (belt-and-suspenders — catches regression).
+    let today_str = today_naive.format("%Y-%m-%d").to_string();
+    if expected_date != today_str {
+        assert!(
+            !date_line.contains(&today_str),
+            "date: must NOT be today ({today_str}) when now is last week ({expected_date})"
+        );
+    }
 }

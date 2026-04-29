@@ -5,7 +5,7 @@ tags:
   - tui
   - dynamic_select
 date created: Friday, April 3rd 2026, 2:20:35 am
-date modified: Tuesday, April 7th 2026, 3:30:38 am
+date modified: Wednesday, April 29th 2026, 5:31:55 pm
 ---
 
 # Inline Note Creation

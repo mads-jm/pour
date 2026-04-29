@@ -7,6 +7,34 @@ use anyhow::Result;
 use api::ApiClient;
 use fs::FsWriter;
 
+/// Typed error for `Transport::read_file`.
+///
+/// Using a typed enum instead of substring-matching on error messages ensures
+/// correct classification on all platforms (Windows error strings differ from
+/// Unix) and avoids false positives when vault paths happen to contain
+/// substrings like "not found".
+#[derive(Debug)]
+pub enum TransportReadError {
+    /// The requested file does not exist in the vault.
+    NotFound,
+    /// The transport backend (API) is unreachable — connect/timeout error.
+    Unreachable(String),
+    /// Any other error (permission denied, I/O error, parse failure, etc.).
+    Other(String),
+}
+
+impl std::fmt::Display for TransportReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransportReadError::NotFound => write!(f, "file not found"),
+            TransportReadError::Unreachable(msg) => write!(f, "transport unreachable: {msg}"),
+            TransportReadError::Other(msg) => write!(f, "read error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for TransportReadError {}
+
 /// A single entry returned by directory listing — either a file or a subdirectory.
 #[derive(Debug, Clone)]
 pub struct VaultEntry {
@@ -120,6 +148,24 @@ impl Transport {
         match self {
             Transport::Api(client) => client.list_directory_entries(vault_dir_path).await,
             Transport::Fs(writer) => writer.list_directory_all(vault_dir_path),
+        }
+    }
+
+    /// Read a single file at `vault_path` and return its UTF-8 content.
+    ///
+    /// Returns a typed `TransportReadError` so callers can distinguish "not
+    /// found" from "transport unreachable" from other errors without string
+    /// matching on platform-specific error messages.
+    ///
+    /// - API backend: `NOT_FOUND` status → `NotFound`; connect/timeout → `Unreachable`.
+    /// - FS backend: `io::ErrorKind::NotFound` → `NotFound`; other I/O → `Other`.
+    pub async fn read_file(
+        &self,
+        vault_path: &str,
+    ) -> std::result::Result<String, TransportReadError> {
+        match self {
+            Transport::Api(client) => client.read_file(vault_path).await,
+            Transport::Fs(writer) => writer.read_file(vault_path),
         }
     }
 

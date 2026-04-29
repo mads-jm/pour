@@ -70,6 +70,7 @@ fn update_preserves_comments() {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("update should succeed");
@@ -110,6 +111,7 @@ fn update_mode_toggle() {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     Config::update_module_on_disk("journal", &updates).expect("mode toggle should succeed");
@@ -152,6 +154,7 @@ fn update_validation_prevents_bad_writes() {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     let result = Config::update_module_on_disk("journal", &updates);
@@ -184,6 +187,7 @@ fn update_nonexistent_module_errors() {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     let result = Config::update_module_on_disk("nonexistent", &updates);
@@ -840,6 +844,8 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
+        preset_axes: Vec::new(),
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,
@@ -1290,6 +1296,7 @@ fn icon_round_trips_through_update_module() {
         icon: Some(Some("☕".to_string())),
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     Config::update_module_on_disk("coffee", &updates).expect("update should succeed");
@@ -1364,6 +1371,7 @@ prompt = "Note?"
         icon: Some(None),
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
     };
 
     Config::update_module_on_disk("coffee", &updates).expect("update should succeed");

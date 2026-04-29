@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, March 31st 2026, 12:12:23 am
-date modified: Tuesday, April 7th 2026, 3:30:37 am
+date modified: Wednesday, April 29th 2026, 5:31:31 pm
 ---
 
 # Pour Documentation
@@ -10,6 +10,7 @@ date modified: Tuesday, April 7th 2026, 3:30:37 am
 > __For LLMs__: Start here. Navigate to a directory index for scoped exploration, or jump directly to a core document below.
 
 > __For Humans:__ See above… but use the graph to guide your exploration!
+> [[BACKLOG.kanban]] is a good place to see where you can help :)
 
 ---
 
@@ -19,19 +20,20 @@ date modified: Tuesday, April 7th 2026, 3:30:37 am
 
 ## Vault Structure
 
-| Directory | Index | Contents |
-|-----------|-------|----------|
-| `00 index/` | `this note` | Root navigation hub for the vault |
-| `01 concepts/` | - | Atomic concept notes and durable project knowledge |
-| `02 references/` | [[REFERENCES]] | Library API references and external docs |
-| `03 guides/` | - | Developer workflow and implementation guides |
-| `04 architecture/` | [[ARCHITECTURE]] | Design spec, ADRs |
-| `05 notes/` | [[NOTES]] | Legacy fleeting notes and pre-atomic working notes |
-| `06 reports/` | - | Sprint reports and progress snapshots |
-| `07 stories/` | [[STORIES]] | Vision and manifesto |
-| `08 specs/` | [[SPECS]] | Feature and component specifications |
-| `09 milestones/` | - | Release and milestone summaries |
-| `99 meta/` | - | Templates and vault maintenance material |
+| Directory          | Index            | Contents                                                                    |
+| ------------------ | ---------------- | --------------------------------------------------------------------------- |
+| `00 index/`        | `this note`      | Root navigation hub for the vault                                           |
+| `01 concepts/`     | [[CONCEPTS]]     | Atomic concept notes and durable project knowledge                          |
+| `02 references/`   | [[REFERENCES]]   | Library API references and external docs                                    |
+| `03 guides/`       | [[GUIDES]]       | Developer workflow and implementation guides                                |
+| `04 architecture/` | [[ARCHITECTURE]] | Design spec, ADRs                                                           |
+| `05 notes/`        | [[NOTES]]        | Legacy fleeting notes and pre-atomic working notes                          |
+| `06 reports/`      | -                | Sprint reports and progress snapshots                                       |
+| `07 stories/`      | [[STORIES]]      | Vision and manifesto                                                        |
+| `08 specs/`        | [[SPECS]]        | Feature and component specifications                                        |
+| `09 milestones/`   | -                | Release and milestone summaries — [[v0.2.0-Foundation]], [[v1.0.0-Release]] |
+| `10 PRs/`          | [[PRS]]          | Plaintext persisted GitHub PRs with Context and linking                     |
+| `99 meta/`         | -                | Templates and vault maintenance material                                    |
 
 `.obsidian/` is vault configuration and snippet state, not part of the documentation corpus.
 
@@ -42,7 +44,9 @@ date modified: Tuesday, April 7th 2026, 3:30:37 am
 - __[[pour-design-spec]]__ — Complete design specification (source of truth)
 - __[[the_pour_manifesto]]__ — Why we build Pour
 - __[[System-Architecture-Overview]]__ — Concise subsystem map
-- __[[v1.0.0-Release]]__ — Current release milestone
+- __[[pour-preset-hierarchy]]__ — Preset hierarchy drilldown spec (TUI picker, `preset_axes`, ungrouped, validation)
+- __[[v0.2.0-Foundation]]__ — Capture-loop foundation (shipped)
+- __[[v1.0.0-Release]]__ — Aspirational freeze criteria
 
 ---
 
@@ -75,17 +79,17 @@ cargo fmt                # format
 
 ## Architecture Overview
 
-Pour writes to Obsidian via a __hybrid transport layer__:
+Pour writes to Obsidian via a [[ADR-001-Hybrid-Transport-Layer|__hybrid transport layer__]]:
 1. __API__ — HTTPS via [[reqwest]] to [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs)
-2. __File System__ — Direct `std::fs` fallback if API unavailable
+2. __File System__ — Direct `std::fs` fallback if API unavailable. In append mode, this fallback materialises as an [[Atomic-Note-Fallback|atomic timestamped note]] rather than a destructive in-place write.
 
-### Dynamic Data Fetching (3-tier fallback)
+### Dynamic Data Fetching ([[The-3-Tier-Data-Fallback|3-tier fallback]])
 
-API query -> disk scan -> `~/.pour/cache/state.json` cache -> freetext input
+API query -> disk scan -> `~/.pour/cache/state.json` cache -> freetext input. Novel values entered into [[field-types|`dynamic_select`]] fields trigger [[Inline-Note-Creation|inline note creation]] back into the vault.
 
 ---
 
-__Last Updated__: 2026-03-31
+__Last Updated__: 2026-04-29
 __Documentation Version__: v0.1.0
 
 

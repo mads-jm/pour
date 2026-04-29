@@ -68,7 +68,8 @@ Project documentation lives in `pour - docs/`, an Obsidian vault. **After any ta
 - `pour - docs/08 specs/pour-design-spec.md` — Design spec. Aspirational; annotate deviations inline with `*[Deviation: ...]*` rather than rewriting the vision.
 - `pour - docs/04 architecture/System-Architecture-Overview.md` — Subsystem map. Keep in sync with `src/` structure.
 - `pour - docs/02 references/field-types.md` — Field types, config keys, validation rules, output targets. Update when adding or changing field types or config schema.
-- `pour - docs/09 milestones/v1.0.0-Release.md` — Current release state. Update known limitations as they are resolved.
+- `pour - docs/09 milestones/v0.2.0-Foundation.md` — Foundation retrospective (capture loop shipped in v0.2.x). Update known limitations as they are resolved.
+- `pour - docs/09 milestones/v1.0.0-Release.md` — Aspirational freeze criteria. Update gates as they close.
 - `pour - docs/00 index/` — Index files for architecture, specs, references. Link new docs here.
 - `README.md` — Config examples and tech stack. Keep in sync with actual schema and dependencies.
 - Sprint reports (`pour - docs/06 reports/sprints/`) are **frozen historical records** — do not update them.

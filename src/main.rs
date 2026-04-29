@@ -47,6 +47,89 @@ async fn main() {
         }
     }
 
+    // Handle `pour serve [--port <N>]` before config loading (mirrors `pour init` pattern)
+    if args.get(1).map(|s| s.as_str()) == Some("serve") {
+        // Strict flag parsing — reject unknown flags and malformed --port values.
+        // Accepted: --port <N>  (where N is 1–65535)
+        let mut port_raw: Option<&str> = None;
+        let mut i = 2usize;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--port" => match args.get(i + 1) {
+                    Some(v) if !v.starts_with('-') => {
+                        port_raw = Some(v.as_str());
+                        i += 2;
+                    }
+                    _ => {
+                        eprintln!("pour serve: --port requires a value (e.g. --port 8421)");
+                        process::exit(1);
+                    }
+                },
+                flag if flag.starts_with('-') => {
+                    eprintln!(
+                        "pour serve: unknown flag '{flag}'\n\
+                         accepted flags: --port <port>"
+                    );
+                    process::exit(1);
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+
+        // Default port 8421 — chosen to avoid common dev ports (3000/8080/8000/5000)
+        // while being memorable as a Pour-specific port.
+        let port: u16 = match port_raw {
+            None => 8421,
+            Some(s) => {
+                let n: u32 = s.parse().unwrap_or_else(|_| {
+                    eprintln!("pour serve: --port value must be a number (1–65535), got '{s}'");
+                    process::exit(1);
+                });
+                if n == 0 {
+                    eprintln!(
+                        "pour serve: port 0 is not allowed (OS-assigned ports are surprising);\
+                        \n             use an explicit port, e.g. --port 8421"
+                    );
+                    process::exit(1);
+                }
+                if n > 65535 {
+                    eprintln!("pour serve: --port value must be 1–65535, got {n}");
+                    process::exit(1);
+                }
+                n as u16
+            }
+        };
+
+        let config = match pour::config::Config::load() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("pour serve: {e}");
+                process::exit(1);
+            }
+        };
+
+        let transport = pour::transport::Transport::connect(&config).await;
+
+        // Resolve or generate the mobile auth token.
+        // Precedence: POUR_MOBILE_TOKEN env var > secrets.toml > generate new.
+        let token = pour::server::startup::resolve_token();
+
+        // Print the styled startup banner (QR, URL, transport, footer hint).
+        pour::server::startup::print_banner(&pour::server::startup::StartupContext {
+            port,
+            token: token.clone(),
+            transport_mode: transport.mode(),
+        });
+
+        if let Err(e) = pour::server::run(config, transport, port, token).await {
+            eprintln!("pour serve: {e}");
+            process::exit(1);
+        }
+        process::exit(0);
+    }
+
     let fast_path_module = args.get(1).cloned();
 
     // Load config — exit with user-friendly error on failure
@@ -277,6 +360,143 @@ async fn run_loop(
                     app.transport = pour::transport::Transport::connect(&app.config).await;
                 }
 
+                // Suspend the TUI, run the PWA server inline, then resume.
+                //
+                // Lifecycle:
+                //   1. Register the Ctrl+C signal handler immediately via a spawned
+                //      task + oneshot, BEFORE leaving the TUI. This closes the window
+                //      where a Ctrl+C during banner/bind setup would kill the process
+                //      with no TUI restore.
+                //   2. `ratatui::restore()` — leave alt-screen, exit raw mode so the
+                //      cooked terminal is available for QR/banner output.
+                //   3. Probe the port: bind it now to detect conflicts before printing
+                //      the banner (TOCTOU-free — the listener is passed through).
+                //   4. `print_banner` — QR code + URL + footer hint to cooked terminal.
+                //   5. `run_with_shutdown` with the oneshot shutdown future — Ctrl+C
+                //      fires the signal task, which sends on the channel, which resolves
+                //      the server's shutdown future.
+                //   6. Bounded drain: 5s timeout on the server future; force-drop on
+                //      timeout so we always return to the dashboard.
+                //   7. `ratatui::init()` + `terminal.clear()` — re-enter alt-screen.
+                //   8. Any error (port conflict, bind error, drain timeout) is pushed to
+                //      `app.startup_warnings` so it surfaces as a dismissable overlay on
+                //      the very next dashboard render.
+                tui::Action::Serve => {
+                    use std::net::SocketAddr;
+                    use std::time::Duration;
+
+                    let port: u16 = 8421;
+
+                    // C3: Install the Ctrl+C signal handler NOW, before any setup work.
+                    // A tokio::spawn'd task registers the handler immediately; a oneshot
+                    // channel carries the signal to the server's shutdown future.
+                    // If ctrl_c() returns Err (signal handler install fails — sandbox,
+                    // conflicting handler, Windows ConsoleCtrlHandler issues), the task
+                    // just exits without sending, which means the server will drain only
+                    // on the 5s timeout — acceptable fallback behavior.
+                    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+                    let _signal_task = tokio::spawn(async move {
+                        if tokio::signal::ctrl_c().await.is_ok() {
+                            let _ = shutdown_tx.send(());
+                        }
+                        // On Err: handler install failed. The server will run until the
+                        // 5s drain timeout fires, then return control to the dashboard.
+                    });
+
+                    // Leave TUI before printing anything.
+                    ratatui::restore();
+
+                    // Probe the port. Passing the already-bound listener into the server
+                    // eliminates the TOCTOU race between "port free?" and "server bind".
+                    let probe_addr = SocketAddr::from(([0, 0, 0, 0], port));
+                    match tokio::net::TcpListener::bind(probe_addr).await {
+                        Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                            // Port is in use — return to dashboard with a visible warning.
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                            app.startup_warnings.push(format!(
+                                "serve: port {port} already in use — is `pour serve` running elsewhere?"
+                            ));
+                        }
+                        Err(e) => {
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                            app.startup_warnings
+                                .push(format!("serve: could not bind port {port}: {e}"));
+                        }
+                        Ok(listener) => {
+                            // H1: Reuse app.config and app.transport so the server and TUI share
+                            // the same config view, eliminating reload latency and divergence.
+                            let config_clone = app.config.clone();
+                            let transport_mode = app.transport.mode();
+
+                            // Resolve or generate the mobile token (same semantics as CLI).
+                            let token = pour::server::startup::resolve_token();
+
+                            // Print the styled banner (QR, URL, transport, footer hint).
+                            pour::server::startup::print_banner(
+                                &pour::server::startup::StartupContext {
+                                    port,
+                                    token: token.clone(),
+                                    transport_mode,
+                                },
+                            );
+
+                            // Build the shutdown future from the oneshot receiver installed
+                            // above. This is safe: shutdown_rx.await resolves to Ok(()) when
+                            // the signal task fires, or Err if the sender was dropped (which
+                            // means the signal handler failed — the future still resolves and
+                            // triggers shutdown, which is the desired safe behavior).
+                            let shutdown = async move {
+                                let _ = shutdown_rx.await;
+                            };
+
+                            // H1: Reconnect transport for the server using the same config.
+                            // We can't move `app.transport` (app is borrowed mutably by this
+                            // loop), so we connect a fresh transport from the shared config.
+                            let server_transport =
+                                pour::transport::Transport::connect(&config_clone).await;
+
+                            let serve_fut = pour::server::run_with_shutdown(
+                                config_clone,
+                                server_transport,
+                                port,
+                                token,
+                                listener,
+                                shutdown,
+                            );
+
+                            // Await with a 5s drain timeout. Ctrl+C fires the oneshot above;
+                            // axum drains open connections and then resolves. We print
+                            // "Stopping…" + outcome after the future resolves.
+                            match tokio::time::timeout(Duration::from_secs(5), serve_fut).await {
+                                Ok(Ok(())) => {
+                                    eprintln!("\nStopping…\nServer stopped.");
+                                }
+                                Ok(Err(e)) => {
+                                    eprintln!("\nStopping…");
+                                    app.startup_warnings
+                                        .push(format!("serve: server error: {e}"));
+                                }
+                                Err(_) => {
+                                    eprintln!("\nStopping…");
+                                    app.startup_warnings.push(
+                                        "serve: server did not drain within 5s; forced exit."
+                                            .to_string(),
+                                    );
+                                }
+                            }
+
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                        }
+                    }
+                    // H4: Discard any keys that were buffered in this same poll batch.
+                    // Without this, a key pressed just after 's' (e.g. 'q') would be
+                    // processed against the freshly re-initialised dashboard and quit.
+                    break;
+                }
+
                 tui::Action::CreateFromTemplate {
                     field_name,
                     template_name,
@@ -383,14 +603,9 @@ fn handle_save_preset(
     let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
     let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names
-            .iter()
-            .position(|n| n == name)
-            .map(|i| i + 1)
-            .unwrap_or(0);
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = new_idx;
+        fs.selected_preset_name = Some(name.to_string());
     }
 }
 
@@ -416,7 +631,7 @@ fn handle_delete_preset(app: &mut App, name: &str) {
     if let Some(ref mut fs) = app.form_state {
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = 0; // Back to <none>, but keep current field values.
+        fs.selected_preset_name = None;
     }
 }
 
@@ -437,14 +652,10 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
     let names: Vec<String> = saved.iter().map(|p| p.name.clone()).collect();
     let descriptions: Vec<Option<String>> = saved.iter().map(|p| p.description.clone()).collect();
     if let Some(ref mut fs) = app.form_state {
-        let new_idx = names
-            .iter()
-            .position(|n| n == name)
-            .map(|i| i + 1)
-            .unwrap_or(fs.selected_preset);
         fs.preset_names = names;
         fs.preset_descriptions = descriptions;
-        fs.selected_preset = new_idx;
+        // Do NOT overwrite selected_preset_name here: reordering changes list position
+        // but not identity. The name-keyed selection survives unchanged.
     }
 }
 
@@ -536,8 +747,12 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     }
     let transport_mode = app.transport.mode();
 
+    // Capture current time once so all engine calls use the same instant.
+    let now_local = chrono::Local::now();
+    let now_utc = chrono::Utc::now();
+
     // Auto-create bare notes for novel dynamic_select values (best-effort, before main write)
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = now_local.format("%Y-%m-%d").to_string();
     let auto_created = pour::autocreate::run(
         module,
         &field_values,
@@ -561,6 +776,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 date_fmt,
                 &callout_overrides,
                 &callout_titles,
+                now_local,
             )
             .await
         }
@@ -573,6 +789,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 date_fmt,
                 &callout_overrides,
                 &callout_titles,
+                now_local,
             )
             .await
         }
@@ -587,10 +804,14 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 .first()
                 .and_then(|f| field_values.get(&f.name))
                 .map(|v| v.as_str());
-            let history_warning = match app.history.record(&module_key, &vault_path, first_field) {
-                Ok(()) => None,
-                Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
-            };
+            let history_warning =
+                match app
+                    .history
+                    .record(&module_key, &vault_path, first_field, now_utc)
+                {
+                    Ok(_id) => None,
+                    Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
+                };
 
             let mut summary_message = "Entry saved successfully.".to_string();
             if let Some(w) = history_warning {
@@ -648,20 +869,22 @@ async fn handle_create_from_template(
         }
     };
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now_local = chrono::Local::now();
+    let today = now_local.format("%Y-%m-%d").to_string();
 
     // Resolve the vault path from the template pattern
-    let vault_path = match pour::autocreate::resolve_template_path(&template.path, note_name) {
-        Some(p) => p,
-        None => {
-            if let Some(ref mut fs) = app.form_state
-                && let Some(ref mut sf) = fs.sub_form
-            {
-                sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
+    let vault_path =
+        match pour::autocreate::resolve_template_path(&template.path, note_name, now_local) {
+            Some(p) => p,
+            None => {
+                if let Some(ref mut fs) = app.form_state
+                    && let Some(ref mut sf) = fs.sub_form
+                {
+                    sf.error_message = Some(format!("failed to resolve path for '{note_name}'"));
+                }
+                return;
             }
-            return;
-        }
-    };
+        };
 
     // Build note content from template + sub-form values
     let content = pour::autocreate::build_templated_note_content(
@@ -1243,6 +1466,8 @@ fn handle_save_new_module(app: &mut App) {
         icon: None,
         daily_link: None,
         append_shallow: None,
+        mobile_visible: None,
+        preset_axes: Vec::new(),
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,
@@ -1497,6 +1722,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
     let mut icon: Option<Option<String>> = None;
     let mut daily_link: Option<Option<bool>> = None;
     let mut append_shallow: Option<Option<bool>> = None;
+    let mut mobile_visible: Option<Option<bool>> = None;
 
     for setting in &state.settings {
         match setting.key.as_str() {
@@ -1550,6 +1776,13 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
                     None
                 });
             }
+            "mobile_visible" => {
+                mobile_visible = Some(if setting.value == "false" {
+                    Some(false)
+                } else {
+                    None
+                });
+            }
             _ => {}
         }
     }
@@ -1563,6 +1796,7 @@ fn build_module_updates(state: &pour::app::ConfigureState) -> pour::config::Modu
         icon,
         daily_link,
         append_shallow,
+        mobile_visible,
     }
 }
 

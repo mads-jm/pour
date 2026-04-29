@@ -130,6 +130,8 @@ pub enum Action {
         field_name: String,
         preset_name: String,
     },
+    /// Suspend the TUI and run the PWA server inline until the user hits Ctrl+C.
+    Serve,
 }
 
 /// Dispatch rendering to the correct view based on the current screen.
@@ -176,6 +178,7 @@ pub fn handle_event(app: &mut App, key: crossterm::event::KeyEvent) -> Action {
             dashboard::DashboardAction::NewModule => Action::NewModule,
             dashboard::DashboardAction::RefreshTransport => Action::RefreshTransport,
             dashboard::DashboardAction::OpenInObsidian => Action::OpenInObsidian(None),
+            dashboard::DashboardAction::Serve => Action::Serve,
             dashboard::DashboardAction::None => Action::None,
         },
 

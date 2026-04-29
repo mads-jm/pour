@@ -5,7 +5,7 @@
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
 # Schema version — used for migration support when the config format changes.
-config_version = "0.2.0"
+config_version = "0.3.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
 module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "book"]
@@ -14,13 +14,11 @@ module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "bo
 [vault]
 # Absolute path to your Obsidian vault root directory
 base_path = "D:\\! System\\Documents\\! obsidian\\main"
-
-# Obsidian Local REST API (optional — Pour falls back to direct filesystem writes)
-# api_port = 27124
+# Obsidian Local REST API port (optional — Pour falls back to direct filesystem writes)
+api_port = 27124
 # api_key = "your-api-key"  # or set POUR_API_KEY env var
-
-# strftime format string used for date-based filenames (default: %Y%m%d)
-# date_format = "%Y%m%d"
+# strftime format string used for date-based filenames
+date_format = "%Y%m%d"
 
 # ─── Modules ─────────────────────────────────────────────────────────────────
 # Two modes:
@@ -163,10 +161,15 @@ preset_exclude = true      # freeform content varies every entry
 # The `show_when` key gates field visibility on the controlling field's value.
 [modules.coffee]
 mode = "create"
-path = "02 - Areas/204 - Cooking/Coffee/Brews{{bean}}@{{time}}-%Y%m%d.md"
+path = "02 - Areas/204 - Cooking/Coffee/Brews/{{bean}}@{{time}}-%Y%m%d.md"
 display_name = "Coffee"
 icon = "☕"
 daily_link = true
+# Hierarchical preset picker (Ctrl+P or `p` on the preset row).
+# Drilldown order: brew method → bean → intent (character target).
+# Presets missing an axis value land under "Ungrouped" at the root level.
+# See `pour - docs/08 specs/pour-preset-hierarchy.md`.
+preset_axes = ["brew_method", "bean", "intent"]
 
 # ── Category ─────────────────────────────────────────────────────────────────
 [[modules.coffee.fields]]
@@ -176,6 +179,17 @@ prompt = "Brew method"
 required = true
 options = ["Pour Over", "Espresso", "Immersion", "Cold Brew"]
 target = "frontmatter"
+
+# ── Intent (3rd preset axis — character you're aiming for) ──────────────────
+# Universal field (no show_when). Pair with brew_method + bean for a 3-level
+# preset drilldown. allow_create lets you persist new intents on the fly.
+[[modules.coffee.fields]]
+name = "intent"
+field_type = "static_select"
+prompt = "Intent"
+options = ["Tea-like", "Bright", "Balanced", "Body", "Sweet"]
+target = "frontmatter"
+allow_create = true
 
 # ── Equipment (conditional per category) ─────────────────────────────────────
 # Each category scans its own vault subfolder for equipment notes.
@@ -250,6 +264,14 @@ allow_create = true
 create_template = "bean"
 post_create_command = "templater:run"
 
+# Days since the bean's roast date — single best signal for taste drift
+# across brews of the same bean. Optional; leave blank if you don't track.
+[[modules.coffee.fields]]
+name = "days_off_roast"
+field_type = "number"
+prompt = "Days off roast"
+target = "frontmatter"
+
 [[modules.coffee.fields]]
 name = "grinder"
 field_type = "dynamic_select"
@@ -304,14 +326,14 @@ name = "duration_s"
 field_type = "number"
 prompt = "Duration (s)"
 
-# Water temperature — relevant for Pour Over, Immersion, and Espresso methods
+# Water temperature — universal across all brew methods (cold brew uses cold,
+# but you may still want to track ambient/refrigerator temp for consistency).
 [[modules.coffee.fields]]
 name = "water_temp_c"
 field_type = "number"
 prompt = "Water temp (°C)"
 default = "96"
 target = "frontmatter"
-show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion", "Espresso"] }
 
 # Filter — paper/cloth/metal variants for filtered brews. Novel values typed
 # at capture time persist to this list via `allow_create`.
@@ -319,10 +341,11 @@ show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion", "Espres
 name = "filter"
 field_type = "static_select"
 prompt = "Filter"
-options = ["Paper", "Abaca", "Cafec Light", "Cafec Dark", "Cloth", "Metal"]
+options = ["Paper", "Sibarist FAST", "Sibarist B3", "Abaca", "Cafec Light", "Cafec Dark", "Cloth", "Metal"]
 target = "frontmatter"
 show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
 allow_create = true
+icon = "✦"
 
 # Pour Over: recipe stages (bloom → pours → draw down)
 [[modules.coffee.fields]]
@@ -366,6 +389,14 @@ target = "frontmatter"
 show_when = { field = "brew_method", equals = "Cold Brew" }
 
 # ── Wrap-up (universal) ─────────────────────────────────────────────────────
+
+# TDS % from a refractometer reading. Optional — only set if you actually
+# measure. Pair with dose/yield to derive extraction yield (EY%).
+[[modules.coffee.fields]]
+name = "tds_pct"
+field_type = "number"
+prompt = "TDS %"
+target = "frontmatter"
 
 [[modules.coffee.fields]]
 name = "rating"
@@ -472,11 +503,19 @@ field_type = "text"
 prompt = "Roaster"
 # wikilink wrapping happens on the parent field (bean), not template fields
 
+# Roast date — the source of truth for `days_off_roast` at brew time.
+# Stored as YYYY-MM-DD plain text today; will become the lookup target when
+# the `field_type = "lookup"` mechanism lands (see pour-lookup-fields.md).
+[[templates.bean.fields]]
+name = "roast_date"
+field_type = "text"
+prompt = "Roast date (YYYY-MM-DD)"
+
 [[templates.bean.fields]]
 name = "origin"
 field_type = "static_select"
 prompt = "Origin"
-options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen"]
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen", "Nicaragua"]
 # Typing a novel value at capture time appends it to this list and persists
 # to config.toml so it's available next session.
 allow_create = true
