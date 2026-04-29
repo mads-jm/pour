@@ -114,75 +114,14 @@ async fn main() {
 
         // Resolve or generate the mobile auth token.
         // Precedence: POUR_MOBILE_TOKEN env var > secrets.toml > generate new.
-        let token = match pour::config::Config::read_mobile_token() {
-            Some(t) => t,
-            None => {
-                // Generate 32 bytes of entropy, encode as URL-safe base64 (no padding).
-                // uuid v4 gives 122 bits of randomness — more than enough; we use it
-                // because it's already a dep and produces a clean URL-safe string.
-                let token = uuid::Uuid::new_v4().simple().to_string();
-                if let Err(e) = pour::config::Config::write_mobile_token(&token) {
-                    eprintln!("pour serve: warning: could not persist mobile token: {e}");
-                } else {
-                    eprintln!("pour serve: new mobile token generated and saved to secrets.toml");
-                }
-                token
-            }
-        };
+        let token = pour::server::startup::resolve_token();
 
-        // Determine the LAN IP for the QR URL.
-        // TODO: add --host flag to let users specify a known IP when auto-detection fails.
-        match local_ip_address::local_ip() {
-            Ok(ip) => {
-                let lan_ip = ip.to_string();
-                let url = format!("http://{lan_ip}:{port}/?token={token}");
-
-                // Print QR code using Dense1x2 unicode renderer (renders cleanly in most terminals).
-                use qrcode::QrCode;
-                use qrcode::render::unicode;
-                match QrCode::new(url.as_bytes()) {
-                    Ok(code) => {
-                        let image = code
-                            .render::<unicode::Dense1x2>()
-                            .dark_color(unicode::Dense1x2::Dark)
-                            .light_color(unicode::Dense1x2::Light)
-                            .build();
-                        println!("\n{image}");
-                    }
-                    Err(e) => {
-                        eprintln!("pour serve: warning: could not render QR code: {e}");
-                    }
-                }
-
-                println!("Scan the QR code or open: {url}");
-                println!(
-                    "Transport: {}  |  Listening on 0.0.0.0:{port}",
-                    transport.mode()
-                );
-            }
-            Err(e) => {
-                // LAN IP detection failed — the QR code would encode 127.0.0.1, which a
-                // phone cannot reach. Skip QR rendering entirely and print a loud banner.
-                eprintln!();
-                eprintln!("┌─────────────────────────────────────────────────────────────────┐");
-                eprintln!("│  WARNING: LAN IP could not be detected ({e})");
-                eprintln!("│");
-                eprintln!("│  The QR code has been skipped — it would encode 127.0.0.1,");
-                eprintln!("│  which is unreachable from a phone on the same network.");
-                eprintln!("│");
-                eprintln!("│  Local testing URL (same machine only):");
-                eprintln!("│    http://127.0.0.1:{port}/?token={token}");
-                eprintln!("│");
-                eprintln!("│  To fix: specify your LAN IP explicitly once --host is available.");
-                eprintln!("│  (TODO: add --host flag to bind a known IP)");
-                eprintln!("└─────────────────────────────────────────────────────────────────┘");
-                eprintln!();
-                println!(
-                    "Transport: {}  |  Listening on 0.0.0.0:{port}",
-                    transport.mode()
-                );
-            }
-        }
+        // Print the styled startup banner (QR, URL, transport, footer hint).
+        pour::server::startup::print_banner(&pour::server::startup::StartupContext {
+            port,
+            token: token.clone(),
+            transport_mode: transport.mode(),
+        });
 
         if let Err(e) = pour::server::run(config, transport, port, token).await {
             eprintln!("pour serve: {e}");
@@ -419,6 +358,143 @@ async fn run_loop(
 
                 tui::Action::RefreshTransport => {
                     app.transport = pour::transport::Transport::connect(&app.config).await;
+                }
+
+                // Suspend the TUI, run the PWA server inline, then resume.
+                //
+                // Lifecycle:
+                //   1. Register the Ctrl+C signal handler immediately via a spawned
+                //      task + oneshot, BEFORE leaving the TUI. This closes the window
+                //      where a Ctrl+C during banner/bind setup would kill the process
+                //      with no TUI restore.
+                //   2. `ratatui::restore()` — leave alt-screen, exit raw mode so the
+                //      cooked terminal is available for QR/banner output.
+                //   3. Probe the port: bind it now to detect conflicts before printing
+                //      the banner (TOCTOU-free — the listener is passed through).
+                //   4. `print_banner` — QR code + URL + footer hint to cooked terminal.
+                //   5. `run_with_shutdown` with the oneshot shutdown future — Ctrl+C
+                //      fires the signal task, which sends on the channel, which resolves
+                //      the server's shutdown future.
+                //   6. Bounded drain: 5s timeout on the server future; force-drop on
+                //      timeout so we always return to the dashboard.
+                //   7. `ratatui::init()` + `terminal.clear()` — re-enter alt-screen.
+                //   8. Any error (port conflict, bind error, drain timeout) is pushed to
+                //      `app.startup_warnings` so it surfaces as a dismissable overlay on
+                //      the very next dashboard render.
+                tui::Action::Serve => {
+                    use std::net::SocketAddr;
+                    use std::time::Duration;
+
+                    let port: u16 = 8421;
+
+                    // C3: Install the Ctrl+C signal handler NOW, before any setup work.
+                    // A tokio::spawn'd task registers the handler immediately; a oneshot
+                    // channel carries the signal to the server's shutdown future.
+                    // If ctrl_c() returns Err (signal handler install fails — sandbox,
+                    // conflicting handler, Windows ConsoleCtrlHandler issues), the task
+                    // just exits without sending, which means the server will drain only
+                    // on the 5s timeout — acceptable fallback behavior.
+                    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+                    let _signal_task = tokio::spawn(async move {
+                        if tokio::signal::ctrl_c().await.is_ok() {
+                            let _ = shutdown_tx.send(());
+                        }
+                        // On Err: handler install failed. The server will run until the
+                        // 5s drain timeout fires, then return control to the dashboard.
+                    });
+
+                    // Leave TUI before printing anything.
+                    ratatui::restore();
+
+                    // Probe the port. Passing the already-bound listener into the server
+                    // eliminates the TOCTOU race between "port free?" and "server bind".
+                    let probe_addr = SocketAddr::from(([0, 0, 0, 0], port));
+                    match tokio::net::TcpListener::bind(probe_addr).await {
+                        Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                            // Port is in use — return to dashboard with a visible warning.
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                            app.startup_warnings.push(format!(
+                                "serve: port {port} already in use — is `pour serve` running elsewhere?"
+                            ));
+                        }
+                        Err(e) => {
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                            app.startup_warnings
+                                .push(format!("serve: could not bind port {port}: {e}"));
+                        }
+                        Ok(listener) => {
+                            // H1: Reuse app.config and app.transport so the server and TUI share
+                            // the same config view, eliminating reload latency and divergence.
+                            let config_clone = app.config.clone();
+                            let transport_mode = app.transport.mode();
+
+                            // Resolve or generate the mobile token (same semantics as CLI).
+                            let token = pour::server::startup::resolve_token();
+
+                            // Print the styled banner (QR, URL, transport, footer hint).
+                            pour::server::startup::print_banner(
+                                &pour::server::startup::StartupContext {
+                                    port,
+                                    token: token.clone(),
+                                    transport_mode,
+                                },
+                            );
+
+                            // Build the shutdown future from the oneshot receiver installed
+                            // above. This is safe: shutdown_rx.await resolves to Ok(()) when
+                            // the signal task fires, or Err if the sender was dropped (which
+                            // means the signal handler failed — the future still resolves and
+                            // triggers shutdown, which is the desired safe behavior).
+                            let shutdown = async move {
+                                let _ = shutdown_rx.await;
+                            };
+
+                            // H1: Reconnect transport for the server using the same config.
+                            // We can't move `app.transport` (app is borrowed mutably by this
+                            // loop), so we connect a fresh transport from the shared config.
+                            let server_transport =
+                                pour::transport::Transport::connect(&config_clone).await;
+
+                            let serve_fut = pour::server::run_with_shutdown(
+                                config_clone,
+                                server_transport,
+                                port,
+                                token,
+                                listener,
+                                shutdown,
+                            );
+
+                            // Await with a 5s drain timeout. Ctrl+C fires the oneshot above;
+                            // axum drains open connections and then resolves. We print
+                            // "Stopping…" + outcome after the future resolves.
+                            match tokio::time::timeout(Duration::from_secs(5), serve_fut).await {
+                                Ok(Ok(())) => {
+                                    eprintln!("\nStopping…\nServer stopped.");
+                                }
+                                Ok(Err(e)) => {
+                                    eprintln!("\nStopping…");
+                                    app.startup_warnings
+                                        .push(format!("serve: server error: {e}"));
+                                }
+                                Err(_) => {
+                                    eprintln!("\nStopping…");
+                                    app.startup_warnings.push(
+                                        "serve: server did not drain within 5s; forced exit."
+                                            .to_string(),
+                                    );
+                                }
+                            }
+
+                            *terminal = ratatui::init();
+                            terminal.clear()?;
+                        }
+                    }
+                    // H4: Discard any keys that were buffered in this same poll batch.
+                    // Without this, a key pressed just after 's' (e.g. 'q') would be
+                    // processed against the freshly re-initialised dashboard and quit.
+                    break;
                 }
 
                 tui::Action::CreateFromTemplate {

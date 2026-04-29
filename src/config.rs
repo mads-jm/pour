@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
 /// Top-level configuration, deserialized from `config.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub vault: VaultConfig,
     pub modules: HashMap<String, ModuleConfig>,
@@ -23,7 +23,7 @@ pub struct Config {
 /// Vault connection settings.
 // The vault name is not persisted here; it is implicit in the section name
 // and is resolved at runtime from the config path.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct VaultConfig {
     pub base_path: String,
     #[serde(default = "default_api_port")]
@@ -43,7 +43,7 @@ fn default_config_version() -> Option<String> {
 }
 
 /// A single module definition (e.g. `[modules.coffee]`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModuleConfig {
     pub mode: WriteMode,
     pub path: String,
@@ -87,7 +87,7 @@ impl ModuleConfig {
 }
 
 /// Whether a module appends to an existing note or creates a new one.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum WriteMode {
     Append,
@@ -108,7 +108,7 @@ pub struct ShowWhen {
 }
 
 /// A single field within a module form.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FieldConfig {
     pub name: String,
     pub field_type: FieldType,
@@ -165,7 +165,7 @@ pub struct FieldConfig {
 }
 
 /// The kind of input widget for a field.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
     Text,

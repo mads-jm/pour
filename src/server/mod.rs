@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod handlers;
 pub mod idempotency;
+pub mod startup;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -448,10 +449,23 @@ pub fn init_logging() {
         .try_init();
 }
 
-/// Build and run the axum server.
+/// Build and run the axum server, shutting down when `shutdown` resolves.
 ///
-/// Blocks until the process is interrupted (Ctrl+C).
-pub async fn run(config: Config, transport: Transport, port: u16, token: String) -> Result<()> {
+/// The TUI handoff calls this with a `tokio::signal::ctrl_c()` future so that
+/// Ctrl+C stops the server but does not exit the process — allowing the TUI to
+/// resume. The CLI `run` delegates here with the same signal, but lets the
+/// process exit naturally after `run` returns.
+pub async fn run_with_shutdown<F>(
+    config: Config,
+    transport: Transport,
+    port: u16,
+    token: String,
+    listener: tokio::net::TcpListener,
+    shutdown: F,
+) -> Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
     init_logging();
 
     let transport_mode = transport.mode();
@@ -461,8 +475,14 @@ pub async fn run(config: Config, transport: Transport, port: u16, token: String)
         TransportMode::Api => "API",
         TransportMode::FileSystem => "FileSystem",
     };
+    // Use the actual bound address from the listener, not the requested port,
+    // so that port-0 (OS-assigned) binds are logged correctly in tests.
+    let bound_addr = listener
+        .local_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|_| format!("0.0.0.0:{port}"));
     tracing::info!(
-        address = %format!("0.0.0.0:{port}"),
+        address = %bound_addr,
         transport = transport_label,
         vault = %vault_path,
         "serving"
@@ -478,8 +498,31 @@ pub async fn run(config: Config, transport: Transport, port: u16, token: String)
         presets: Arc::new(Mutex::new(presets)),
     };
 
+    let app = build_app(state);
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await?;
+    Ok(())
+}
+
+/// Build and run the axum server.
+///
+/// Blocks until the process is interrupted (Ctrl+C via OS signal).
+/// The CLI relies on the process being killed externally; the shutdown future
+/// never resolves so axum blocks indefinitely, matching the old behavior.
+pub async fn run(config: Config, transport: Transport, port: u16, token: String) -> Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    serve_on_listener(listener, state).await
+    // `std::future::pending()` never resolves — the OS SIGINT kills the process
+    // directly, which is the same as before this refactor.
+    run_with_shutdown(
+        config,
+        transport,
+        port,
+        token,
+        listener,
+        std::future::pending(),
+    )
+    .await
 }

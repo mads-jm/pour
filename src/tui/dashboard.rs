@@ -309,6 +309,8 @@ pub fn render(app: &App, frame: &mut Frame) {
     }
     footer_spans.push(Span::styled("o", Style::default().fg(Color::Yellow)));
     footer_spans.push(Span::raw(" open  "));
+    footer_spans.push(Span::styled("s", Style::default().fg(Color::Yellow)));
+    footer_spans.push(Span::raw(" serve  "));
     footer_spans.push(Span::styled("?", Style::default().fg(Color::Yellow)));
     footer_spans.push(Span::raw(" help  "));
     footer_spans.push(Span::styled("q", Style::default().fg(Color::Yellow)));
@@ -365,6 +367,10 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from(vec![
             Span::styled("  o         ", key_style),
             Span::styled("open vault in Obsidian", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  s         ", key_style),
+            Span::styled("serve PWA (suspend TUI)", desc_style),
         ]),
         Line::from(vec![
             Span::styled("  r         ", key_style),
@@ -466,6 +472,8 @@ pub enum DashboardAction {
     RefreshTransport,
     /// Open the vault in Obsidian.
     OpenInObsidian,
+    /// Suspend the TUI and run the PWA server inline (handoff).
+    Serve,
 }
 
 /// Handle a key event while on the dashboard.
@@ -546,6 +554,8 @@ pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> DashboardAc
         KeyCode::Char('r') => DashboardAction::RefreshTransport,
         // o — open vault in Obsidian
         KeyCode::Char('o') => DashboardAction::OpenInObsidian,
+        // s — suspend TUI and run the PWA server inline
+        KeyCode::Char('s') => DashboardAction::Serve,
 
         KeyCode::Up => {
             if !app.module_keys.is_empty() {

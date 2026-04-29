@@ -8,6 +8,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-29 — Mobile / PWA Capture Surface
+
+### Added — `pour serve` + PWA companion
+
+- `pour serve` subcommand: HTTP server on port 8421 (default, `--port` overrides), `0.0.0.0` binding, QR code + URL printed at startup. Bearer-token auth via `mobile_token` in `~/.pour/secrets.toml` (auto-generated on first run); `?token=` bootstrap flow for QR scans.
+- Nine `/api/v1/*` endpoints — `health`, `config`, `options`, `submit`, `captures`, `history`, `presets` (CRUD + reorder). Contract frozen in `pour - docs/08 specs/pour-api-contract.md`; OpenAPI at `pour - docs/02 references/pour-openapi.yaml`.
+- Embedded PWA via `rust-embed` — vanilla HTML/CSS/JS shell with module list, dynamic form rendering, submit, history, "Add to Home Screen" support on iOS/Android.
+- Idempotency layer — in-memory LRU (1024 cap), in-flight TTL 60 s, done TTL 5 min. `Idempotency-Key` header per contract §9 makes submit retries safe.
+- Client-supplied `captured_at` ISO 8601 timestamp on submit preserves moment-of-capture from the phone.
+- `mobile_visible = false` per-module opt-out from the phone interface.
+- Phase 2 PWA scope (closed 2026-04-27): IndexedDB offline queue, service worker app-shell cache, sub-form overlay for `create_template` fields, preset mutation UI (save/edit/delete/reorder from PWA), 90-day history heatmap, bottom-tab navigation, cursor-paginated history list. Closeout report: `pour - docs/06 reports/v1.0.0-phase2-closeout.md`.
+
+### Added — TUI ↔ Serve handoff
+
+- Press `s` from the dashboard to suspend the TUI and run `pour serve` inline with the QR code visible in the terminal. Ctrl+C drains gracefully (5 s budget) and returns to the dashboard. One process, one terminal, transient server. Plan + audit notes: `pour - docs/08 specs/pour-tui-serve-handoff.md`.
+- New `src/server/startup.rs` — shared banner + token resolution between `pour serve` CLI and the TUI handoff. Banner uses fixed-width Unicode box-drawing (70 chars), truncates URLs with ellipsis when they exceed inner width.
+- New `src/server/run_with_shutdown` — cancellable axum entry point using `with_graceful_shutdown`. CLI `run` delegates with `tokio::signal::ctrl_c()`; TUI handoff installs its signal handler via a spawned task before any setup work to eliminate the pre-poll Ctrl+C kill window.
+- Errors from the handoff (port-in-use, drain timeout, bind failure) surface through `app.startup_warnings` as a dismissable overlay on the next dashboard render.
+
+### Added — Hierarchical preset picker
+
+- `preset_axes` config (config v3) — multi-axis preset organisation.
+- `preset_tree` build / validate / suggest — TUI overlay with key handling and rendering tests.
+
+### Added — TUI form rework
+
+- Sub-form UX with inline `◂ ▸` cycling indicators; Up/Down navigates rows, Left/Right cycles values inline (no dropdowns inside overlays).
+
+### Changed
+
+- `config_version` bumped to `0.3.0`.
+- `Config` and sub-types now derive `Clone` so the TUI handoff can pass a config snapshot to the server without reloading from disk.
+- `run_with_shutdown` derives the bound address from `listener.local_addr()` rather than a separate `port` parameter; logs report the actual bound address.
+
+### Fixed
+
+- Integration tests now panic if `POUR_HOME` is unset, preventing tests from writing to a real `~/.pour/`.
+- CI fixes post-PWA merge.
+
+### Documentation
+
+- v0.2.0 accuracy + linking pass across `pour - docs/`.
+- New plan + audit doc for the TUI ↔ Serve handoff at `pour - docs/08 specs/pour-tui-serve-handoff.md`.
+- Phase 2 closeout report at `pour - docs/06 reports/v1.0.0-phase2-closeout.md`.
+
+## [0.2.2] — 2026-04-22
+
+### Changed
+
+- Release bundling improvements.
+- Test bump.
+
+## [0.2.1] — 2026-04-22
+
 ### Added
 
 - `list` field option (default `false`) — when `true`, values containing `", "` split into a YAML list or into multiple wikilinks. Valid on `text`, `static_select`, and `dynamic_select`; rejected at load on other field types.

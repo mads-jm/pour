@@ -268,6 +268,10 @@ For the full story, see [Pour Without Obsidian](pour%20-%20docs/07%20stories/pou
 
 The terminal is the right answer at your desk. It's the wrong answer at the kitchen counter or away from the laptop. `pour serve` is the second front door — same engine, same vault, same Markdown output, accessible from any browser on your LAN.
 
+**From the TUI dashboard**, press `s` to suspend the dashboard and start the server inline. The QR code appears in the cooked terminal. Step away, capture from your phone, come back, press Ctrl+C — the dashboard resumes. One process, one terminal, no second window.
+
+**From the command line:**
+
 ```bash
 pour serve            # default port 8421
 pour serve --port 9000
