@@ -341,6 +341,33 @@ cargo fmt -- --check
 
 Tests live in `tests/` mirroring `src/` structure. Use `POUR_CONFIG` env var to point tests at a temporary config file.
 
+### Justfile workflows
+
+Install [`just`](https://github.com/casey/just) (`cargo install just`) and run `just` to list recipes. Two flows are supported:
+
+**Init from a tracked template** — copies a resources file into `~/.pour/`:
+
+```bash
+just pour    # init from resources/default_config.toml (sanitized contributor template)
+just mads    # init from resources/mads_config.toml (a real-world working example)
+```
+
+**Live edits via symlink** — bypass the `pour init` round-trip; edits to the source file show up in `git diff` directly:
+
+```bash
+just install   # cargo install --path . --force — drops `pour` on $PATH
+just link      # ~/.pour/config.toml -> resources/mads_config.toml (default)
+just unlink    # remove the symlink (no-op if not a symlink)
+```
+
+`just link <path>` accepts any tracked config as the target — `just link resources/default_config.toml` for the contributor template, or point at your own `resources/<name>_config.toml`.
+
+`resources/mads_config.toml` is kept in version control as a real-world working example (the maintainer's personal config); `resources/default_config.toml` is the sanitized contributor template that ships with `pour init`.
+
+**Caution:** while a symlink is in place, `pour init` (and `just pour` / `just mads`) writes *through* the link and overwrites the source file — `just unlink` first if you want to reset.
+
+**Windows:** symlink creation requires [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/developer-mode-features-and-debugging) enabled or an elevated terminal.
+
 ## Documentation
 
 Full docs in [`pour - docs/`](pour%20-%20docs/index.md) - design spec, field type reference, architecture overview, and release notes.
