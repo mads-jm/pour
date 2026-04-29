@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Tuesday, April 7th 2026, 3:30:34 am
+date modified: Wednesday, April 29th 2026, 5:31:41 pm
 ---
 
 # Field Types Reference
@@ -24,6 +24,7 @@ Every module defined in `[modules.<name>]` supports these keys:
 | `append_template` | string | no | Template string for append-mode output. Supports `{{field}}`, `{{date}}`, `{{time}}`, `{{callout}}` placeholders. |
 | `callout_type` | string | no | Default Obsidian callout type for `{{callout}}` in templates. |
 | `icon` | string | no | Optional icon displayed on the TUI dashboard next to the module name (e.g. `"☕"`). For create-mode modules, also written to output frontmatter as `icon: <value>`, making it queryable by Dataview and compatible with Iconize/Supercharged Links. |
+| `preset_axes` | string[] | no | Ordered list of field names used as drilldown axes in the preset picker. Empty/absent → no picker; the legacy `←→` cycler stays active. See [[pour-preset-hierarchy]]. |
 
 ## Field Config Keys
 
@@ -66,7 +67,7 @@ Any field can override its default via `target = "frontmatter"` or `target = "bo
 
 ---
 
-## Conditional Visibility
+## [[Conditional-Visibility|Conditional Visibility]]
 
 Any field can be conditionally shown using a `show_when` block. Hidden fields are skipped during rendering and navigation.
 
@@ -206,7 +207,7 @@ __Validation__: `options` must be present and non-empty. Config load fails other
 
 ## `dynamic_select`
 
-Dropdown populated from vault directory contents at runtime.
+Dropdown populated from vault directory contents at runtime via [[The-3-Tier-Data-Fallback|the 3-tier fallback pipeline]]. With `allow_create = true`, novel values trigger [[Inline-Note-Creation|inline note creation]] back into the vault.
 
 ```toml
 [[modules.coffee.fields]]
@@ -380,7 +381,7 @@ ingredients:
 __Output (body)__: Rendered as a Markdown table.
 __Validation__: `sub_fields` must be present and non-empty. Sub-field names must be unique. `static_select` sub-fields must have non-empty `options`.
 
-### Per-field presets
+### Per-field Presets
 
 Composite-array fields support saved row-set presets so high-friction inputs (recipes, pressure profiles, ingredient lists) can be replayed with a single keypress. Presets are scoped per `module.field` — `coffee.recipe` and `coffee.pressure_profile` have independent lists.
 
@@ -398,7 +399,11 @@ __Apply behaviour__: Always replaces all existing rows silently — no confirmat
 
 __Schema drift__: If `sub_fields` changed since the preset was saved (column added or removed), each saved row is right-padded with empty strings or truncated to match the current sub-field count on apply. The status line reads "preset shape adjusted to current schema" so the change is visible; the on-disk preset is not rewritten — re-save with `s` to clean it up.
 
-### Template fields and `allow_create`
+### PWA Overlay Rendering (Phase 2)
+
+The Phase 2 PWA sub-form overlay renders template fields using the same field-type contract defined in this document. __Overlay rendering does not change any field-type semantics__: `text` and `number` fields render as standard inputs; `static_select` fields render as inline-cycling controls (◂ ▸ chevrons) instead of a `<select>` element (PWA-only, no `<select>` in overlays per UX convention). The `dynamic_select` and `composite_array` types are not permitted as template fields (§7.4 already restricts templates to `text | number | static_select`). Output targets, required semantics, and default-value behavior are identical to the TUI sub-form overlay.
+
+### Template Fields and `allow_create`
 
 Template fields (`[[templates.<name>.fields]]`) support `allow_create = true` on `static_select` fields only. When set, typing a novel value in the sub-form is accepted; after the templated note is written successfully, the new value is appended to the template field's `options` array in `config.toml` so it appears next session. Without `allow_create`, the sub-form static_select remains locked to the configured cycle of options.
 

@@ -11,16 +11,30 @@
             "id": "6c2879caa85fe5ed",
             "type": "leaf",
             "state": {
-              "type": "kanban",
+              "type": "markdown",
               "state": {
-                "file": "00 index/BACKLOG.kanban.md",
-                "kanbanViewState": {
-                  "kanban-plugin": "board",
-                  "list-collapse": []
-                }
+                "file": "index.md",
+                "mode": "source",
+                "source": false
               },
-              "icon": "lucide-trello",
-              "title": "BACKLOG.kanban"
+              "icon": "lucide-file",
+              "title": "index"
+            }
+          }
+        ]
+      },
+      {
+        "id": "8f56dd01486da436",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f72cad0926777938",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
             }
           }
         ]
@@ -89,7 +103,7 @@
       {
         "id": "fcb1d4b43c31bc60",
         "type": "tabs",
-        "dimension": 31.238273921200747,
+        "dimension": 31.238273921200754,
         "children": [
           {
             "id": "9ecf195dd71bc4ea",
@@ -226,7 +240,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 684.5
+    "width": 789.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -244,43 +258,43 @@
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "6629666eed5eef8f",
+  "active": "6c2879caa85fe5ed",
   "lastOpenFiles": [
-    "00 index/BACKLOG.kanban.md",
-    "05 notes/inline-creation-future-phases.md",
+    "00 index/ADR.base",
+    "00 index/PRS.base",
+    "00 index/CONCEPTS.base",
     "01 concepts/Inline-Note-Creation.md",
-    "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
-    "01 concepts/The-3-Tier-Data-Fallback.md",
-    "index.md",
-    "09 milestones/v1.0.0-Release.md",
-    "03 guides/Design-Language.md",
-    "02 references/ratatui.md",
+    "02 references/chrono.md",
+    "02 references/obsidian-local-rest-api.md",
     "02 references/crossterm.md",
     "02 references/reqwest.md",
-    "02 references/chrono.md",
+    "02 references/ratatui.md",
+    "03 guides/Design-Language.md",
     "02 references/toml-serde.md",
-    "02 references/obsidian-local-rest-api.md",
-    "07 stories/the_pour_manifesto.md",
     "03 guides/Guide-Adding-New-Field-Types.md",
+    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
+    "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
     "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
     "04 architecture/adr/ADR-002-Custom-YAML-Serialization.md",
-    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
+    "05 notes/inline-creation-future-phases.md",
     "04 architecture/v1-implementation-plan.md",
-    "README.md",
+    "06 reports/v0.1.0-report.md",
     "08 specs/pour-fit-module-brief.md",
-    "02 references/field-types.md",
-    "04 architecture/System-Architecture-Overview.md",
-    "08 specs/pour-design-spec.md",
+    "01 concepts/The-3-Tier-Data-Fallback.md",
+    "07 stories/STORIES.md",
+    "07 stories/history_heatmap_dashboard.md",
+    "README.md",
+    "05 notes/clippy-ci-parity.md",
+    "02 references/keyboard-shortcuts.md",
     "03 guides/Guide-Config-to-Vault.md",
+    "06 reports/v1.0.0-pre-release-assessment.md",
     "00 index/REFERENCES.base",
-    "00 index/ADR.base",
-    "00 index/CONCEPTS.base",
-    "00 index/GUIDES.base",
     "00 index/SPECS.base",
-    "00 index/PRS.base",
     "00 index/NOTES.base",
-    "10 PRs",
-    "09 milestones/v1.0.0-Release.md.tmp.12080.1775098712344",
-    "04 architecture/System-Architecture-Overview.md.tmp.12080.1775098691668"
+    "00 index/GUIDES.base",
+    "03 guides/GUIDES.md.tmp.34792.1777483083022",
+    "09 milestones/v0.2.0-Foundation.md.tmp.34792.1777483064960",
+    "09 milestones/v1.0.0-Release.md.tmp.34792.1777483049628",
+    "09 milestones/v1.0.0-Release.md.tmp.34792.1777483041238"
   ]
 }

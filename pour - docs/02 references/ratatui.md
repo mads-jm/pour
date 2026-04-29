@@ -6,7 +6,7 @@ tags:
 aliases:
   - ratatui
 date created: Tuesday, March 31st 2026, 12:14:35 am
-date modified: Tuesday, April 7th 2026, 3:30:37 am
+date modified: Wednesday, April 29th 2026, 5:31:54 pm
 ---
 
 # Ratatui - TUI Framework Reference

@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Tuesday, April 7th 2026, 3:30:34 am
+date modified: Wednesday, April 29th 2026, 5:31:42 pm
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -99,7 +99,7 @@ v1 limitations: no AND/OR combinators, no negation, case-sensitive matching only
 
 *[Deviation: not in original spec. Added to support fast re-entry for repeated captures with the same base configuration (e.g., same bean, method, and dose across a brew series).]*
 
-Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.pour/presets.json` keyed by module name.
+Per-module named presets let users save the current form's field values and recall them on future runs. Presets are stored in `~/.pour/presets.json` keyed by module name. The hierarchical drilldown picker on top of this is specified in [[pour-preset-hierarchy]].
 
 __Keybindings:__
 - `Ctrl+S` — save current form values as a named preset (name input overlay appears)
@@ -133,7 +133,7 @@ mobile_visible = false   # hides this module from the PWA
 
 #### Wikilink Output (`wikilink`)
 
-When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, the output value is wrapped in Obsidian wikilink syntax (`[[value]]`) before being written to frontmatter. This creates graph edges between the current note and the named note. For comma-separated multi-values, each item is wrapped individually. *[Deviation: wikilink wrapping was not in the original field spec; added alongside inline creation.]*
+When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, the output value is wrapped in Obsidian wikilink syntax (`[[value]]`) before being written to frontmatter. This creates graph edges between the current note and the named note. For comma-separated multi-values, each item is wrapped individually. See [[field-types]] for the full key reference. *[Deviation: wikilink wrapping was not in the original field spec; added alongside [[Inline-Note-Creation|inline creation]].]*
 
 ## __4. Configuration, Field Types & Validation__
 
@@ -152,7 +152,7 @@ config_version = "0.3.0"
 - __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`, `0.3.0`). The current version is `0.3.0`.
 - __Purpose:__ Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. *[Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.]*
 
-#### Version history
+#### Version History
 
 | Version | Changes |
 |---------|---------|
@@ -175,23 +175,23 @@ config_version = "0.3.0"
 The following are explicitly __in scope__ for v0.1:
 
 - Dashboard with connection status and module menu
-- `pour me` (append mode with Templater integration + atomic note fallback)
+- `pour me` (append mode with Templater integration + [[Atomic-Note-Fallback|atomic note fallback]])
 - `pour coffee` (create mode with frontmatter generation)
-- Hybrid transport layer (API → filesystem fallback)
-- Dynamic data fetching (API → disk scan → cache → freetext)
+- [[ADR-001-Hybrid-Transport-Layer|Hybrid transport layer]] (API → filesystem fallback)
+- [[The-3-Tier-Data-Fallback|Dynamic data fetching]] (API → disk scan → cache → freetext)
 - Configurable append templates with `{{callout}}` placeholder resolved from module-level `callout_type`; field-level `callout` wraps textarea body output in `> [!type]` blockquote syntax
-- `allow_create` on `dynamic_select` fields — inline creation with freetext filtering, "Create new" affordance, and auto-created bare notes
-- `wikilink` on `text`, `static_select`, and `dynamic_select` fields — wraps output in `[[...]]` for Obsidian graph connectivity
+- `allow_create` on `dynamic_select` fields — [[Inline-Note-Creation|inline creation]] with freetext filtering, "Create new" affordance, and auto-created bare notes
+- `wikilink` on `text`, `static_select`, and `dynamic_select` fields — wraps output in `[[...]]` for Obsidian graph connectivity (see [[field-types]])
 - Configurable theme (accent color, border style) *[Deviation: not implemented in v1 — all styling is inline via ratatui's Style builder.]*
 - Post-execution summary view
 - `required` field validation
 
 The following are explicitly __in scope__ for v0.2:
 
-- Template-driven inline creation with sub-form overlay (`create_template` + `[templates]`)
+- Template-driven [[Inline-Note-Creation|inline creation]] with [[Sub-Form-Overlay|sub-form overlay]] (`create_template` + `[templates]`)
 - Post-creation command hook (`post_create_command`) for Obsidian plugin integration
 - Command execution via REST API transport (`/commands/{commandId}/`)
-- Conditional field visibility (`show_when`) — gates field rendering, navigation, validation, and output on another field's value
+- [[Conditional-Visibility|Conditional field visibility]] (`show_when`) — gates field rendering, navigation, validation, and output on another field's value
 
 The following are explicitly __deferred__:
 
@@ -202,6 +202,73 @@ The following are explicitly __deferred__:
 - Nested templates / recursive sub-forms
 - Dynamic data sources in template fields (only static_select, not dynamic_select)
 - TUI configure screen support for `create_template` / `post_create_command` fields
+
+## __7. Mobile Capture (PWA Companion)__
+
+*[Deviation: the original product framing was terminal-only. The mobile companion was always directionally correct given the manifesto ("near-zero time between thought and capture") but landed as a separate initiative. See [[ADR-005-PWA-Companion]] for the decision record.]*
+
+The engine is library-shaped. The TUI has always been a thin presentation layer over pure data functions. `pour serve` is a second presentation layer over that same engine — distributed in the same binary, writing the same Markdown.
+
+### __7.1 `pour serve` Subcommand__
+
+```
+pour serve            # bind 0.0.0.0:8421
+pour serve --port 9000
+```
+
+On startup: binds `0.0.0.0:<port>` (LAN-accessible, not loopback), generates a `mobile_token` if absent, writes it to `~/.pour/secrets.toml`, and prints a QR code + raw URL to stdout. The URL carries `?token=<token>` for the bootstrap first-visit. Off-LAN access is the user's responsibility (Tailscale / ZeroTier are orthogonal to Pour's scope).
+
+### __7.2 Auth__
+
+Bearer token stored as `mobile_token` in `~/.pour/secrets.toml`. Two acceptance paths, with explicit precedence:
+
+1. `Authorization: Bearer <token>` header — authoritative. Used by the PWA after first contact.
+2. `?token=<token>` query param — bootstrap-only. The QR code URL uses this so the phone can open the app without a manual paste step. Once the PWA has stored the token client-side, it sends the header exclusively — keeping the token out of access logs after first contact.
+
+All comparisons are constant-time (`subtle::ConstantTimeEq`). Plain `==` is forbidden on secret values. Static assets (the PWA shell itself) require no auth — the browser must load the page before it can present a token.
+
+*[Deviation: an earlier draft specified "32 bytes base64-url." The implementation uses `Uuid::new_v4().simple()` — 122 bits of entropy, URL-safe by construction, consistent with `uuid` already being a dependency.]*
+
+### __7.3 Endpoint Surface__
+
+Nine endpoints under `/api/v1/`, all responding with `Cache-Control: no-store`. Full shape definitions: [[pour-api-contract]].
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/v1/health` | Transport status, vault path, server uptime |
+| `GET` | `/api/v1/config` | All mobile-visible modules and fields |
+| `GET` | `/api/v1/options/:module/:field` | Dynamic select options (3-tier fallback) |
+| `POST` | `/api/v1/submit/:module` | Submit a form — full engine reuse |
+| `GET` | `/api/v1/captures/:history_id` | Read back a vault file by history ID |
+| `GET` | `/api/v1/history` | Recent captures |
+| `GET` | `/api/v1/presets/:module` | Saved presets for a module |
+| `POST` | `/api/v1/presets/:module` | Save a preset |
+| `PUT` | `/api/v1/presets/:module/reorder` | Reorder presets |
+
+The submit handler is the same call sequence as the TUI's `handle_submit` — `autocreate` → `write_create` / `write_append` → `History::record` — driven by JSON request body instead of TUI state.
+
+### __7.4 Embedded PWA__
+
+Vanilla HTML/CSS/JS (~600 LOC), embedded in the binary at compile time via `rust-embed`. Served at `/`. No build step, no `npm`. Static assets carry no auth requirement — the page must load before a token can be presented.
+
+Phase 1 (shipped): module list as tappable tiles, per-module forms rendered dynamically from `/api/v1/config`, form submit with success/error feedback, history list. "Add to Home Screen" gives an app-like icon on iOS and Android.
+
+Why vanilla JS and not a Rust→WASM framework: see [[Rust-WASM-Frontend-Tradeoffs]].
+
+*[Deviation: the plan sketched ~300 LOC. Shipped closer to ~600. The form rendering is fully data-driven from the config JSON, so the delta is mostly defensive handling and mobile UX polish.]*
+
+### __7.5 Offline-Correctness Foundations__
+
+Phase 1 ships two correctness primitives:
+
+- __`Idempotency-Key` header__ (optional, 1–128 bytes): the server maintains an in-memory LRU (capacity 1024) per [[pour-api-contract]] §9. In-flight entries TTL at 60 s; completed entries TTL at 5 min. Duplicate submits within that window return the original response without re-writing to the vault.
+- __`captured_at` timestamp__: the submit body may include a client-side ISO 8601 timestamp. If present and parseable, it is used as the entry's timestamp instead of server time — preserving the moment of capture even when connectivity is restored later.
+
+Phase 2 (deferred): offline queue via IndexedDB, service worker app-shell cache, background sync on reconnect. See §6 deferred list.
+
+### __7.6 Module Visibility (`mobile_visible`)__
+
+Described in §3.6. Repeated here for completeness: `mobile_visible = false` in a module section hides it entirely from `/api/v1/config`. The PWA cannot see or submit to hidden modules. Default is `true`. Bumped `config_version` to `0.3.0`.
 
 
 

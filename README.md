@@ -200,10 +200,24 @@ Save and recall named field-value sets per module.
 |-----|--------|
 | `Ctrl+S` | Save current form as preset |
 | `Ctrl+D` | Delete current preset |
-| `Left / Right` | Cycle through saved presets |
+| `p` / `Ctrl+P` | Open hierarchical picker (when `preset_axes` is configured) |
+| `Left / Right` | Cycle through saved presets (only when no `preset_axes`) |
 | `Ctrl+Left/Right` | Reorder presets |
 
 Fields with `preset_exclude = true` are skipped during save and apply - useful for notes or observations that change every entry.
+
+#### Preset Hierarchy (drilldown picker)
+
+When you have many presets organised by brewer × bean × intent, add `preset_axes` to the module and press `p` to drill through them one level at a time instead of cycling linearly.
+
+```toml
+[modules.coffee]
+mode = "create"
+path = "Coffee/log.md"
+preset_axes = ["method", "bean"]   # drilldown order: Method → Bean → preset list
+```
+
+Inside the picker: `↑↓` navigate, `Enter` drill/apply, `Backspace`/`←` pop back, `Esc` cancel. The name field is auto-filled with `<method> · <bean>` when saving a new preset.
 
 ### Per-field presets (composite_array)
 
@@ -250,12 +264,67 @@ A few config options are Obsidian-flavored (`wikilink = true`, `post_create_comm
 
 For the full story, see [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
 
+## Capturing from your phone
+
+The terminal is the right answer at your desk. It's the wrong answer at the kitchen counter or away from the laptop. `pour serve` is the second front door — same engine, same vault, same Markdown output, accessible from any browser on your LAN.
+
+```bash
+pour serve            # default port 8421
+pour serve --port 9000
+```
+
+On startup, a QR code prints to the terminal alongside the raw URL. Scan it with your phone. The URL carries your auth token as a query param for the first-visit bootstrap; after that the PWA stores the token client-side and sends it as a header.
+
+The PWA lists your modules as tappable tiles. Tap a module, fill the form, submit. The capture path is:
+
+```
+Phone → POST /api/v1/submit/:module → axum → engine → vault
+```
+
+Identical to what the TUI writes. The vault never knows or cares which front door was used.
+
+**Add to Home Screen** — on iOS and Android the browser offers an "Add to Home Screen" prompt. This gives the PWA an app-like icon and launch behavior; no app store involved.
+
+**PNG icons.** The PWA ships a vector `web/icon.svg`. Android and iOS also accept raster PNGs for the home screen icon. ImageMagick is not bundled with the project; to generate them yourself run:
+
+```bash
+magick web/icon.svg -resize 180x180 web/icon-180.png
+magick web/icon.svg -resize 192x192 web/icon-192.png
+magick web/icon.svg -resize 512x512 web/icon-512.png
+```
+
+The Rust server embeds everything under `web/` and serves files under `web/` at `/static/{filename}`. Place PNGs in `web/` and they will be served at `/static/icon-{size}.png` automatically.
+
+**LAN-only by design.** The server binds `0.0.0.0:<port>` — reachable from any device on the same network, not exposed to the internet. Off-LAN access is your responsibility. [Tailscale](https://tailscale.com) and ZeroTier are both effective zero-config options.
+
+**Auth.** A `mobile_token` is generated on first `pour serve` run and written to `~/.pour/secrets.toml`. All token comparisons are constant-time; the query-param bootstrap is only accepted on first contact. Rotate by deleting the key from `secrets.toml` — the next `pour serve` generates a new one and prints a new QR code.
+
+**Logs.** `pour serve` emits structured, level-filtered logs to stderr. The default level is `info`. Control it with the `POUR_LOG` env var:
+
+```bash
+POUR_LOG=debug pour serve            # verbose — all targets
+POUR_LOG=pour=debug,tower_http=warn  # fine-grained
+```
+
+What is logged at `info`: server startup (bind address, transport mode, vault path), every API request/response (method, URI, status, latency), auth outcomes (`accepted_via_query`, `rejected`), and submit results (module name, vault path, autocreate count). What is **never** logged: token values, request bodies, field values, or any user content.
+
+**Per-module opt-out.** Add `mobile_visible = false` to any module section to hide it from the phone entirely. The PWA cannot see or submit to hidden modules.
+
+```toml
+[modules.secret]
+mobile_visible = false
+```
+
+**Today vs. Phase 2.** Phase 1 (shipped): module list, form rendering for all field types, submit, history list. Phase 2 (deferred): offline queue via IndexedDB, service worker app-shell cache, sub-form overlay for `create_template` fields.
+
 ## Tech Stack
 
 | Area | Crate |
 |------|-------|
 | TUI | `ratatui` + `crossterm` |
-| HTTP | `reqwest` + `tokio` |
+| HTTP server | `axum` + `tokio` |
+| HTTP client | `reqwest` |
+| Static assets | `rust-embed` — PWA shell embedded in the binary at compile time |
 | Serialization | `serde` + `toml` + `toml_edit` + `serde_json` |
 | Time | `chrono` |
 | URL encoding | `percent-encoding` — encodes vault paths with spaces in REST API URLs |

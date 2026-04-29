@@ -1,0 +1,1915 @@
+openapi: "3.1.0"
+
+info:
+  title: Pour HTTP API
+  description: |
+    Machine-readable contract for the HTTP interface exposed by `pour serve`.
+    Human narrative is in `pour - docs/08 specs/pour-api-contract.md` (the single
+    source of truth). This file is the Phase 1 hand-written companion; Phase 2
+    replaces it with `utoipa`-generated output derived from the Rust types.
+
+    **Synopsis**: Pour's server exposes a LAN-only JSON API consumed by the PWA
+    companion. All endpoints require Bearer token authentication. Field values
+    cross the wire as strings (including numbers), matching the engine's internal
+    `HashMap<String, String>`. The API is versioned under `/api/v1/`; the PWA
+    checks `schema_version` in `/health` on load and refuses to render on a major
+    version mismatch. Offline captures are supported via the `captured_at` field
+    and idempotency via `Idempotency-Key`.
+
+    **Auth bootstrap**: A `?token=<token>` query parameter may be used on the
+    first visit (e.g. via QR code). After first contact the PWA stores the token
+    in `localStorage` and switches to the `Authorization: Bearer <token>` header.
+    The query parameter is only consulted when the `Authorization` header is
+    absent or carries an empty Bearer suffix.
+  version: "1.0.0"
+
+servers:
+  - url: "http://{host}:{port}/api/v1"
+    description: >
+      LAN-only deployment. Off-LAN access is the user's responsibility
+      (Tailscale, ZeroTier, etc.). TLS deferred to Phase 3.
+    variables:
+      host:
+        default: "127.0.0.1"
+        description: Bind address for the pour server.
+      port:
+        default: "8421"
+        description: Bind port for the pour server.
+
+security:
+  - bearerAuth: []
+  - queryToken: []
+
+tags:
+  - name: Health
+    description: Liveness and capabilities probe.
+  - name: Schema
+    description: Module/field/template configuration schema.
+  - name: Capture
+    description: Dynamic options, form submission, and capture read-back.
+  - name: History
+    description: Recent capture log and dashboard statistics.
+  - name: Presets
+    description: Named preset CRUD and reorder operations.
+
+paths:
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness + capabilities probe
+      tags: [Health]
+      description: |
+        Returns server liveness, binary version, API schema version, current
+        transport mode, and a capabilities array. The PWA reads this on every
+        load and refuses to render if `schema_version` does not match the
+        expected major version.
+
+        Auth is required (§3). There is no unauthenticated health endpoint.
+      responses:
+        "200":
+          description: Server is alive and authenticated.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                ok: true
+                version: "0.2.2"
+                schema_version: "1"
+                transport_mode: "API"
+                vault_base_path: "/Users/joseph/Documents/Vault"
+                capabilities:
+                  - composite_array
+                  - create_template
+                  - post_create_command
+                  - show_when
+                  - presets
+                  - history
+                  - idempotency_key
+                  - captured_at
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /config:
+    get:
+      operationId: getConfig
+      summary: Full module/field/template schema
+      tags: [Schema]
+      description: |
+        Returns the complete config used to render forms in the PWA. Modules
+        with `mobile_visible = false` are omitted entirely — the response
+        contains only the modules the PWA is allowed to render.
+
+        The `modules` array is ordered: keys from `module_order` first (filtered
+        to visible), then unlisted visible modules alphabetically.
+      responses:
+        "200":
+          description: Current configuration.
+          headers:
+            Cache-Control:
+              description: Always `no-store`. Config can change at runtime.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+              example:
+                modules:
+                  - key: coffee
+                    display_name: Coffee
+                    icon: "☕"
+                    mode: create
+                    fields:
+                      - name: bean
+                        field_type: dynamic_select
+                        prompt: Bean
+                        required: true
+                        default: null
+                        options: null
+                        source: "Coffee/Beans"
+                        target: null
+                        callout: null
+                        callout_title: null
+                        allow_create: true
+                        wikilink: true
+                        create_template: bean
+                        post_create_command: "templater:run"
+                        show_when: null
+                        icon: "🫘"
+                        preset_exclude: false
+                        list: false
+                        sub_fields: null
+                    callout_type: null
+                    append_under_header: null
+                    append_template: null
+                    append_shallow: false
+                    daily_link: false
+                module_order:
+                  - coffee
+                  - me
+                templates:
+                  bean:
+                    path: "Coffee/Beans/{{name}}.md"
+                    fields:
+                      - name: roaster
+                        field_type: text
+                        prompt: Roaster
+                        options: null
+                        default: null
+                        allow_create: false
+                vault:
+                  date_format: "%Y%m%d"
+                  transport_mode: API
+                config_version: "0.3.0"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /options/{module}/{field}:
+    get:
+      operationId: getOptions
+      summary: Resolve dynamic_select options (3-tier fallback)
+      tags: [Capture]
+      description: |
+        Resolves the option list for a `dynamic_select` field using a 3-tier
+        fallback: transport (Obsidian API or filesystem scan) → cache
+        (`~/.pour/cache/state.json`) → empty. The `tier` field tells the PWA
+        which level served the result so it can display "live" vs "cached" badges.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key (e.g. `coffee`).
+          schema:
+            type: string
+          example: coffee
+        - name: field
+          in: path
+          required: true
+          description: Field name within the module (e.g. `bean`).
+          schema:
+            type: string
+          example: bean
+      responses:
+        "200":
+          description: Option list resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionsResponse"
+              example:
+                options:
+                  - "Ethiopia Guji"
+                  - "Yirgacheffe"
+                  - "Sumatra Mandheling"
+                source_path: "Coffee/Beans"
+                tier: transport
+        "400":
+          description: Field exists but is not a `dynamic_select`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: validation_failed
+                  message: "Field is not a dynamic_select."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Module or field not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: not_found
+                  message: "Unknown module."
+
+  /captures/{history_id}:
+    get:
+      operationId: getCapture
+      summary: Read back vault file content for a prior capture
+      tags: [Capture]
+      description: |
+        Returns the full UTF-8 content of the vault file written by a prior
+        submit. Enables PWA and agent workflows like "summarize my last 5 coffee
+        logs" without direct vault access. Content is the raw file as written
+        (YAML frontmatter + Markdown body).
+      parameters:
+        - name: history_id
+          in: path
+          required: true
+          description: >
+            Opaque identifier returned by `POST /submit/{module}` and listed in
+            `GET /history`. Format: `<YYYYMMDDTHHmmSSsss>-<counter>-<module_key>`.
+          schema:
+            type: string
+          example: "20260425T183042000-0-coffee"
+      responses:
+        "200":
+          description: Vault file content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureResponse"
+              example:
+                id: "20260425T183042000-0-coffee"
+                module_key: coffee
+                timestamp: "2026-04-25T18:30:42Z"
+                vault_path: "Coffee/2026/20260425 18-30-42.md"
+                content: "---\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: 18\n---\n\nBright, blueberry, mid-body.\n"
+                transport_mode: API
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown history_id or the vault file has been deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: not_found
+                  message: "Unknown history id."
+        "500":
+          description: Underlying read failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: read_error
+                  message: "Failed to read vault file."
+                  details:
+                    engine_error: "permission denied"
+        "502":
+          description: Both API and filesystem transports are unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: transport_error
+                  message: "Transport unreachable."
+                  details:
+                    engine_error: "connection refused"
+
+  /submit/{module}:
+    post:
+      operationId: submitCapture
+      summary: Execute a form submit (the keystone endpoint)
+      tags: [Capture]
+      description: |
+        Executes a full form submission for the given module. Mirrors the TUI's
+        `handle_submit` pipeline: field validation → auto-create (best-effort) →
+        `write_create`/`write_append` → history record → 201 response.
+
+        **Idempotency**: supply `Idempotency-Key` to enable safe replay. Within
+        the 5-minute window a duplicate key replays the original response
+        byte-for-byte with an `Idempotency-Replay: true` header. A key currently
+        being processed returns 409 `idempotency_replay_in_flight`.
+
+        **Offline captures**: supply `captured_at` (ISO 8601 UTC) to back-date
+        the entry. History timestamp, file `date` frontmatter, and path strftime
+        tokens all resolve against `captured_at`, not the server's `now`.
+        Valid window: 30 days past → 5 minutes future. Outside this range → 400
+        `validation_failed` with `code: captured_at_out_of_range`.
+
+        **Auto-create**: when a `dynamic_select` field with `allow_create: true`
+        receives a novel value, the server creates a stub or templated note
+        before the main write. This is best-effort; failures append to
+        `warnings[]` rather than rejecting the submit. When `create_template` is
+        set, `auto_create_inputs` MUST supply the sub-form values for that field.
+
+        **Body size limit**: 1 MiB. Exceeding it returns 413 `payload_too_large`.
+
+        **Synthetic 202 — PWA service worker only (contract §6.4 round-6 amendment)**:
+        The server NEVER returns `202 Accepted` from this endpoint. The status
+        `202` is a client-side construct emitted exclusively by the PWA service
+        worker to its own page when a submit is queued for offline replay (e.g.
+        while the device is offline or the server returns 5xx). Clients written
+        directly against this contract — including a future MCP companion that
+        bypasses the service worker — will never see 202. They receive 201 on
+        success or the 4xx/5xx responses listed below.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key (e.g. `coffee`).
+          schema:
+            type: string
+          example: coffee
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: >
+            Opaque string, 1–256 ASCII printable characters. Recommended: UUIDv4.
+            Enables safe replay of offline-queued submits. The service-worker
+            reuses the same key on retry; the server replays the cached response.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitRequest"
+            example:
+              field_values:
+                bean: "Ethiopia Guji"
+                dose_g: "18"
+                yield_g: "36"
+                ratio: "1:2"
+                method: Espresso
+                notes: "Bright, blueberry, mid-body."
+              composite_data: {}
+              callout_overrides: {}
+              callout_titles: {}
+              auto_create_inputs: {}
+              captured_at: "2026-04-25T14:33:02Z"
+              client_id: phone-pwa
+      responses:
+        "201":
+          description: Capture written successfully.
+          headers:
+            Location:
+              description: URL of the history entry for this capture.
+              schema:
+                type: string
+              example: "/api/v1/history/20260425T143302000-0-coffee"
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+                example: no-store
+            Idempotency-Replay:
+              description: >
+                Present and `true` when this response is a replay of a prior
+                identical `Idempotency-Key` request.
+              schema:
+                type: string
+                enum: ["true"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitResponse"
+              example:
+                vault_path: "Coffee/2026/20260425 14-33-02.md"
+                transport_mode: API
+                auto_created:
+                  - field: bean
+                    value: "Ethiopia Guji"
+                    vault_path: "Coffee/Beans/Ethiopia Guji.md"
+                    templated: true
+                post_create_commands:
+                  - field: bean
+                    command: "templater:run"
+                    fired: true
+                history_id: "20260425T143302000-0-coffee"
+                captured_at: "2026-04-25T14:33:02Z"
+        "400":
+          description: >
+            Validation failure (required field empty, invalid number, unknown
+            field, bad JSON, invalid `captured_at` range, or missing
+            `auto_create_inputs` for a templated field).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: validation_failed
+                  message: "Submit rejected because required fields are empty or invalid."
+                  details:
+                    fields:
+                      - field: bean
+                        code: required
+                      - field: dose_g
+                        code: invalid_number
+                        value: "abc"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown module key (or module has `mobile_visible = false`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: not_found
+                  message: "Unknown module."
+        "409":
+          description: Same `Idempotency-Key` is currently being processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: idempotency_replay_in_flight
+                  message: "This Idempotency-Key is currently being processed."
+        "413":
+          description: Request body exceeds the 1 MiB limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: payload_too_large
+                  message: "Request body exceeds the 1 MiB limit."
+        "415":
+          description: Content-Type is not `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: unsupported_media_type
+                  message: "Content-Type must be application/json."
+        "500":
+          description: Engine write failed or unhandled internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: write_error
+                  message: "Engine write failed."
+                  details:
+                    engine_error: "file already exists"
+        "502":
+          description: Obsidian API and filesystem fallback both unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: transport_error
+                  message: "API + filesystem both unreachable."
+
+  /history:
+    get:
+      operationId: getHistory
+      summary: Recent capture log with optional dashboard summary
+      tags: [History]
+      description: |
+        Returns a paginated, filtered list of capture entries. When called
+        without `since` or `until` (the dashboard call), the response also
+        includes a precomputed `summary` object with streak, counts, and
+        `last_pour`. Windowed queries (any `since` or `until` present) omit
+        `summary` to keep the payload small.
+
+        Pagination is cursor-based: if `has_more` is `true`, pass
+        `?cursor=<next_cursor>` to fetch the preceding page. Use `until` only
+        as a raw timestamp filter, not as a pagination cursor — same-millisecond
+        entries share a timestamp and would be silently dropped at the boundary.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: ISO 8601 inclusive lower bound on `timestamp`.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-04-01T00:00:00Z"
+        - name: until
+          in: query
+          required: false
+          description: >
+            ISO 8601 exclusive upper bound on `timestamp`. Raw timestamp filter —
+            returns entries with timestamp < until. Do NOT use as a pagination
+            cursor; use `cursor` instead.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-04-25T18:30:42Z"
+        - name: cursor
+          in: query
+          required: false
+          description: >
+            Opaque pagination cursor from the previous response's `next_cursor`.
+            When present, returns entries whose id is lexicographically less than
+            the cursor value. This is the correct way to paginate; `until` alone
+            is incorrect because same-millisecond entries share a timestamp.
+          schema:
+            type: string
+          example: "20260425T183042000-0-coffee"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of entries to return. Range 1–1000, default 100.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          example: 50
+        - name: module
+          in: query
+          required: false
+          description: Filter to a single module key.
+          schema:
+            type: string
+          example: coffee
+      responses:
+        "200":
+          description: History entries (and optional summary for the dashboard call).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+              example:
+                entries:
+                  - id: "20260425T183042000-0-coffee"
+                    module_key: coffee
+                    timestamp: "2026-04-25T18:30:42Z"
+                    vault_path: "Coffee/2026/20260425 18-30-42.md"
+                    first_field: "Ethiopia Guji"
+                summary:
+                  version: 1
+                  last_pour:
+                    id: "20260425T183042000-0-coffee"
+                    module_key: coffee
+                    timestamp: "2026-04-25T18:30:42Z"
+                    vault_path: "Coffee/2026/20260425 18-30-42.md"
+                    first_field: "Ethiopia Guji"
+                  today_count: 3
+                  week_count: 14
+                  streak_days: 7
+                  per_module_today:
+                    coffee: 2
+                    me: 1
+                has_more: false
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /presets/{module}:
+    get:
+      operationId: getPresets
+      summary: List presets for a module
+      tags: [Presets]
+      description: >
+        Returns the ordered list of presets for the given module. Order matches
+        the on-disk order (which the TUI lets users reorder via Ctrl+Left/Right).
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key.
+          schema:
+            type: string
+          example: coffee
+      responses:
+        "200":
+          description: Preset list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetsListResponse"
+              example:
+                presets:
+                  - name: "Morning Onyx"
+                    description: "default for weekday espresso"
+                    values:
+                      bean: "Ethiopia Guji"
+                      dose_g: "18"
+                      method: Espresso
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown module key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: not_found
+                  message: "Unknown module."
+
+  /presets/{module}/{name}:
+    put:
+      operationId: upsertPreset
+      summary: Upsert a named preset
+      tags: [Presets]
+      description: |
+        Create or update a preset by name. Returns 201 Created for a new preset,
+        200 OK when an existing preset is overwritten in-place.
+
+        Names containing `/` are rejected by the router's path matcher (they
+        would be treated as a deeper path segment). Names should be URL-encoded
+        when they contain spaces or special characters; the PWA handles this
+        transparently.
+
+        **Reserved names:** the literal name `order` (case-insensitive) is
+        reserved. The route `/presets/{module}/order` (§6.10) is a fixed segment
+        registered before `/{name}`; a PUT for the literal path segment `/order`
+        routes to the reorder handler instead. Percent-encoded variants (e.g.
+        `ord%65r`) reach `put_handler` and are rejected with `400
+        validation_failed` (`details.code: "reserved_name"`). Clients MUST
+        reject this name in validation before sending. *(contract round 8)*
+
+        **Body size limit**: 256 KiB.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key.
+          schema:
+            type: string
+          example: coffee
+        - name: name
+          in: path
+          required: true
+          description: Preset name (URL-encoded).
+          schema:
+            type: string
+          example: "Morning%20Onyx"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresetUpsertRequest"
+            example:
+              description: "default for weekday espresso"
+              values:
+                bean: "Ethiopia Guji"
+                dose_g: "18"
+                method: Espresso
+      responses:
+        "200":
+          description: Existing preset updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetUpsertResponse"
+              example:
+                preset:
+                  name: "Morning Onyx"
+                  description: "default for weekday espresso"
+                  values:
+                    bean: "Ethiopia Guji"
+                    dose_g: "18"
+                    method: Espresso
+        "201":
+          description: New preset created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetUpsertResponse"
+              example:
+                preset:
+                  name: "Morning Onyx"
+                  description: "default for weekday espresso"
+                  values:
+                    bean: "Ethiopia Guji"
+                    dose_g: "18"
+                    method: Espresso
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown module key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Body exceeds the 256 KiB limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Content-Type is not `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      operationId: deletePreset
+      summary: Delete a named preset
+      tags: [Presets]
+      description: Removes the named preset from the module. 404 if not found.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key.
+          schema:
+            type: string
+          example: coffee
+        - name: name
+          in: path
+          required: true
+          description: Preset name (URL-encoded).
+          schema:
+            type: string
+          example: "Morning%20Onyx"
+      responses:
+        "204":
+          description: Preset deleted successfully. No response body.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Module or preset not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: not_found
+                  message: "Preset not found."
+
+  /presets/{module}/order:
+    put:
+      operationId: reorderPresets
+      summary: Reorder presets within a module
+      tags: [Presets]
+      description: |
+        Reorders the preset list to match the supplied `names` array. The array
+        must be an exact permutation of all current preset names — no missing
+        names, no extra names, no duplicates. Any violation is rejected with 400
+        `validation_failed` (see 400 response for per-case `details` fields).
+
+        **Body size limit**: 256 KiB.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          description: Module key.
+          schema:
+            type: string
+          example: coffee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresetReorderRequest"
+            example:
+              names:
+                - "Morning Onyx"
+                - "Aeropress quick"
+                - "Decaf evening"
+      responses:
+        "200":
+          description: Presets reordered. Returns the full updated list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresetsListResponse"
+              example:
+                presets:
+                  - name: "Morning Onyx"
+                    description: "default for weekday espresso"
+                    values:
+                      bean: "Ethiopia Guji"
+                      dose_g: "18"
+                      method: Espresso
+                  - name: "Aeropress quick"
+                    description: null
+                    values:
+                      bean: "Yirgacheffe"
+                      dose_g: "15"
+                      method: Aeropress
+        "400":
+          description: >
+            The supplied list is not an exact permutation of the current preset
+            names. Three sub-cases, all returned as `validation_failed`:
+
+            - **Missing names**: names present on disk but absent from the
+              request — `details.missing` contains the absent names.
+
+            - **Extra names**: names in the request that do not exist on disk —
+              `details.extra` contains the unknown names.
+
+            - **Duplicate names**: the request body itself contains the same
+              name more than once — `details.duplicates` contains the repeated
+              names.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: validation_failed
+                  message: "Names list must be an exact permutation of current presets."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Unknown module key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Content-Type is not `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+
+  securitySchemes:
+
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Authoritative auth mechanism. The token is stored in
+        `~/.pour/secrets.toml` under `mobile_token` (UUIDv4, 122-bit hex).
+        Comparison is constant-time. A wrong value returns 401 regardless of
+        any query parameter. Override via `POUR_MOBILE_TOKEN` env var.
+
+    queryToken:
+      type: apiKey
+      in: query
+      name: token
+      description: >
+        Bootstrap-only. Consulted only when the `Authorization` header is absent
+        or carries an empty Bearer suffix. Used by the QR-code first-visit URL.
+        After first contact the PWA stores the token in `localStorage` and
+        switches to `bearerAuth`. Do not use for subsequent requests.
+
+  responses:
+
+    Unauthorized:
+      description: Missing, empty, or incorrect token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: unauthorized
+              message: "Missing or invalid token."
+
+  schemas:
+
+    # -------------------------------------------------------------------------
+    # Health
+    # -------------------------------------------------------------------------
+
+    HealthResponse:
+      type: object
+      required:
+        - ok
+        - version
+        - schema_version
+        - transport_mode
+        - vault_base_path
+        - capabilities
+      properties:
+        ok:
+          type: boolean
+          description: Always `true` when the endpoint returns 200.
+          example: true
+        version:
+          type: string
+          description: Pour binary version from `CARGO_PKG_VERSION`.
+          example: "0.2.2"
+        schema_version:
+          type: string
+          description: >
+            API schema major version (currently `"1"`). The PWA refuses to
+            render on a major version mismatch.
+          example: "1"
+        transport_mode:
+          type: string
+          enum: [API, FileSystem]
+          description: >
+            Active transport backend. `"API"` = Obsidian Local REST API;
+            `"FileSystem"` = direct filesystem writes. The PWA surfaces this
+            in a status pill.
+          example: API
+        vault_base_path:
+          type: string
+          description: >
+            Absolute path to the vault root. For display only; the phone never
+            reads vault files directly.
+          example: "/Users/joseph/Documents/Vault"
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: >
+            Feature flags. Future PWA versions check these to detect older
+            servers before exercising a feature.
+          example:
+            - composite_array
+            - create_template
+            - post_create_command
+            - show_when
+            - presets
+            - history
+            - idempotency_key
+            - captured_at
+
+    # -------------------------------------------------------------------------
+    # Config
+    # -------------------------------------------------------------------------
+
+    ConfigResponse:
+      type: object
+      required:
+        - modules
+        - module_order
+        - templates
+        - vault
+        - config_version
+      properties:
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Module"
+          description: >
+            Ordered module list (module_order keys first, unlisted modules
+            alphabetically). Only `mobile_visible = true` modules are included.
+        module_order:
+          type: array
+          items:
+            type: string
+          description: >
+            Ordered module keys that survived the `mobile_visible` filter.
+            Phantom keys (hidden modules) are removed.
+          example: [coffee, me, music]
+        templates:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Template"
+          description: Keyed by template name (e.g. `"bean"`).
+        vault:
+          $ref: "#/components/schemas/Vault"
+        config_version:
+          type: string
+          description: >
+            Version of the pour config schema (e.g. `"0.3.0"`). The PWA may
+            use this to detect incompatible config shapes across updates.
+          example: "0.3.0"
+
+    Module:
+      type: object
+      required:
+        - key
+        - display_name
+        - icon
+        - mode
+        - fields
+        - callout_type
+        - append_under_header
+        - append_template
+        - append_shallow
+        - daily_link
+      properties:
+        key:
+          type: string
+          description: Unique module identifier (kebab-case recommended).
+          example: coffee
+        display_name:
+          type: ["string", "null"]
+          description: Human-readable name shown in the PWA tile. Null = use `key`.
+          example: Coffee
+        icon:
+          type: ["string", "null"]
+          description: Emoji or text icon shown in the PWA tile and module header.
+          example: "☕"
+        mode:
+          type: string
+          enum: [create, append]
+          description: >
+            `create` = new file per capture; `append` = append under a header
+            in the daily note.
+          example: create
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/Field"
+          description: Ordered list of fields in this module.
+        callout_type:
+          type: ["string", "null"]
+          description: Default Obsidian callout type for `textarea` fields (e.g. `"note"`).
+          example: null
+        append_under_header:
+          type: ["string", "null"]
+          description: >
+            Header string to append under in `append` mode (e.g. `"## Today"`).
+            Null = append at end of file.
+          example: null
+        append_template:
+          type: ["string", "null"]
+          description: Template string used to format append-mode entries.
+          example: null
+        append_shallow:
+          type: boolean
+          description: >
+            When true in `append` mode, search only the top-level heading (not
+            nested headings).
+          example: false
+        daily_link:
+          type: boolean
+          description: Whether to add a `[[date]]` link in `append` mode.
+          example: false
+
+    Field:
+      type: object
+      required:
+        - name
+        - field_type
+        - prompt
+        - required
+        - default
+        - options
+        - source
+        - target
+        - callout
+        - callout_title
+        - allow_create
+        - wikilink
+        - create_template
+        - post_create_command
+        - show_when
+        - icon
+        - preset_exclude
+        - list
+        - sub_fields
+      description: >
+        All optional config keys are present and explicitly `null` (not omitted).
+        This keeps client decoders simple — no optional-field handling needed.
+      properties:
+        name:
+          type: string
+          description: Internal field name. Used as the key in `field_values`.
+          example: bean
+        field_type:
+          type: string
+          enum: [text, textarea, number, static_select, dynamic_select, composite_array]
+          description: Wire name for the Rust `FieldType` enum (snake_case).
+          example: dynamic_select
+        prompt:
+          type: string
+          description: Label shown in the PWA form.
+          example: Bean
+        required:
+          type: boolean
+          description: >
+            Whether the field must be non-empty for submit to proceed. Hidden
+            fields (show_when false) are never validated for required.
+          example: true
+        default:
+          type: ["string", "null"]
+          description: Pre-filled default value. Null = no default.
+          example: null
+        options:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: >
+            Static option list for `static_select` fields. Null for all other
+            field types.
+          example: null
+        source:
+          type: ["string", "null"]
+          description: >
+            Vault-relative folder path used to resolve `dynamic_select` options
+            (e.g. `"Coffee/Beans"`). Null for non-dynamic fields.
+          example: "Coffee/Beans"
+        target:
+          type: ["string", "null"]
+          enum: [frontmatter, body, null]
+          description: >
+            Output target override. `null` = use field-type default (most fields
+            → `frontmatter`; `textarea` → `body`).
+          example: null
+        callout:
+          type: ["string", "null"]
+          description: Obsidian callout type override for this `textarea` field.
+          example: null
+        callout_title:
+          type: ["string", "null"]
+          description: Callout title override for this `textarea` field.
+          example: null
+        allow_create:
+          type: ["boolean", "null"]
+          description: >
+            Whether the user can type a novel value for a `dynamic_select` to
+            create a new note. Null for non-dynamic fields.
+          example: true
+        wikilink:
+          type: ["boolean", "null"]
+          description: Whether the value is wrapped in `[[...]]` in frontmatter output.
+          example: true
+        create_template:
+          type: ["string", "null"]
+          description: >
+            Template name (key in `/config`.templates) to use when autocreating
+            a note for this `dynamic_select` field with a novel value.
+          example: bean
+        post_create_command:
+          type: ["string", "null"]
+          description: >
+            Obsidian command string fired after autocreating a note (API
+            transport only). E.g. `"templater:run"`.
+          example: "templater:run"
+        show_when:
+          oneOf:
+            - $ref: "#/components/schemas/ShowWhen"
+            - type: "null"
+          description: >
+            Visibility rule evaluated client-side. Null = always visible.
+            The server also re-evaluates at submit time.
+        icon:
+          type: ["string", "null"]
+          description: Per-field emoji icon shown in the PWA form.
+          example: "🫘"
+        preset_exclude:
+          type: boolean
+          description: >
+            When true, this field is excluded from preset capture and
+            application (e.g. a timestamp field that should always be fresh).
+          example: false
+        list:
+          type: boolean
+          description: >
+            When true, the frontmatter value is written as a YAML list
+            (`- value`) rather than a scalar.
+          example: false
+        sub_fields:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/SubField"
+          description: >
+            Column definitions for `composite_array` fields. Null for all other
+            field types.
+          example: null
+
+    ShowWhen:
+      type: object
+      description: >
+        Visibility rule. Exactly one of `equals` or `one_of` must be present.
+        Client-side evaluation only; the server ships these verbatim.
+      required:
+        - field
+      properties:
+        field:
+          type: string
+          description: Name of the controlling field.
+          example: method
+        equals:
+          type: ["string", "null"]
+          description: >
+            Show this field only when the controlling field equals this value
+            (case-sensitive). Mutually exclusive with `one_of`.
+          example: Espresso
+        one_of:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: >
+            Show this field when the controlling field matches any value in this
+            list (case-sensitive). Mutually exclusive with `equals`.
+          example: [Espresso, Moka]
+
+    SubField:
+      type: object
+      description: Column definition for a `composite_array` field.
+      required:
+        - name
+        - field_type
+        - prompt
+        - options
+      properties:
+        name:
+          type: string
+          description: Column identifier.
+          example: ingredient
+        field_type:
+          type: string
+          enum: [text, number, static_select]
+          description: >
+            Restricted field type — `composite_array` columns cannot themselves
+            be composite or dynamic.
+          example: text
+        prompt:
+          type: string
+          description: Column header label.
+          example: Ingredient
+        options:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: Static option list for `static_select` sub-fields. Null otherwise.
+          example: null
+
+    Template:
+      type: object
+      description: Definition for an autocreate template (used by `create_template` fields).
+      required:
+        - path
+        - fields
+      properties:
+        path:
+          type: string
+          description: >
+            Vault-relative path template. Supports `{{name}}` placeholder
+            (replaced with the sanitized field value) and strftime tokens.
+          example: "Coffee/Beans/{{name}}.md"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateField"
+          description: Fields shown in the sub-form when creating a new note.
+
+    TemplateField:
+      type: object
+      description: >
+        Field definition within an autocreate template. A simpler subset of
+        `Field` — only `text | number | static_select` are permitted.
+      required:
+        - name
+        - field_type
+        - prompt
+        - options
+        - default
+        - allow_create
+      properties:
+        name:
+          type: string
+          example: roaster
+        field_type:
+          type: string
+          enum: [text, number, static_select]
+          description: Restricted to non-dynamic, non-composite types.
+          example: text
+        prompt:
+          type: string
+          example: Roaster
+        options:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: Static options for `static_select`. Null otherwise.
+          example: null
+        default:
+          type: ["string", "null"]
+          description: Pre-filled default value. Null = no default.
+          example: null
+        allow_create:
+          type: boolean
+          description: Whether the user can type a novel value (legacy flag; usually false).
+          example: false
+
+    Vault:
+      type: object
+      description: Vault-level settings echoed in the config response.
+      required:
+        - date_format
+        - transport_mode
+      properties:
+        date_format:
+          type: string
+          description: >
+            strftime format string used for date tokens in file paths and
+            frontmatter. Default `"%Y%m%d"`.
+          example: "%Y%m%d"
+        transport_mode:
+          type: string
+          enum: [API, FileSystem]
+          description: Active transport backend (same as in `/health`).
+          example: API
+
+    # -------------------------------------------------------------------------
+    # Options
+    # -------------------------------------------------------------------------
+
+    OptionsResponse:
+      type: object
+      required:
+        - options
+        - source_path
+        - tier
+      properties:
+        options:
+          type: array
+          items:
+            type: string
+          description: Resolved option list (file stems from the source folder).
+          example: ["Ethiopia Guji", "Yirgacheffe", "Sumatra Mandheling"]
+        source_path:
+          type: string
+          description: >
+            Vault-relative folder path that was queried. Echoed for PWA
+            dropdown header labelling. Empty string when no source is
+            configured.
+          example: "Coffee/Beans"
+        tier:
+          type: string
+          enum: [transport, cache, empty]
+          description: >
+            Which fallback tier served the result. `transport` = live from
+            Obsidian API or filesystem scan; `cache` = from
+            `~/.pour/cache/state.json`; `empty` = no source configured or all
+            tiers returned zero results.
+          example: transport
+
+    # -------------------------------------------------------------------------
+    # Submit
+    # -------------------------------------------------------------------------
+
+    SubmitRequest:
+      type: object
+      required:
+        - field_values
+      properties:
+        field_values:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            All form values. Every value is a string, including numbers
+            (`"18"`, not `18`). This matches the engine's internal
+            `HashMap<String, String>`. Empty string = field not filled.
+          example:
+            bean: "Ethiopia Guji"
+            dose_g: "18"
+            yield_g: "36"
+            ratio: "1:2"
+            method: Espresso
+            notes: "Bright, blueberry, mid-body."
+        composite_data:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: array
+              items:
+                type: string
+          description: >
+            Row data for `composite_array` fields. Outer key = field name;
+            inner = rows of cell values (all strings). Empty rows are stripped
+            server-side. Absent or empty object when no composite fields are
+            present.
+          example: {}
+        callout_overrides:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            Runtime callout type overrides keyed by `textarea` field name.
+            Used when the user cycles the callout type in the PWA.
+          example: {}
+        callout_titles:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            Runtime callout title overrides keyed by `textarea` field name.
+          example: {}
+        auto_create_inputs:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+          description: >
+            Sub-form values for `dynamic_select` fields with `create_template`
+            set when the user types a novel value. Outer key = parent field
+            name; inner = template field values. Required (not just optional)
+            when the field has `create_template` and the value is novel;
+            absence returns 400 `validation_failed`.
+          example: {}
+        captured_at:
+          type: ["string", "null"]
+          format: date-time
+          description: >
+            ISO 8601 UTC timestamp of when the user tapped Submit on the phone.
+            Used for offline-queue replays. The History entry timestamp, file
+            `date` frontmatter, and path strftime tokens all resolve against
+            this value (in the server's local timezone). Valid window: 30 days
+            past → 5 minutes future. Null or absent = server uses `Local::now()`.
+          example: "2026-04-25T14:33:02Z"
+        client_id:
+          type: ["string", "null"]
+          description: >
+            Opaque label to disambiguate clients in logs. Free-form. Null or
+            absent = unlabelled.
+          example: phone-pwa
+
+    SubmitResponse:
+      type: object
+      required:
+        - vault_path
+        - transport_mode
+        - auto_created
+        - post_create_commands
+        - history_id
+        - captured_at
+      properties:
+        vault_path:
+          type: string
+          description: Vault-relative path of the file written by this submit.
+          example: "Coffee/2026/20260425 14-33-02.md"
+        transport_mode:
+          type: string
+          enum: [API, FileSystem]
+          description: Transport backend used for this write.
+          example: API
+        auto_created:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutoCreatedNote"
+          description: >
+            Notes created by the autocreate pipeline for novel `dynamic_select`
+            values. Empty array when no autocreation occurred.
+        post_create_commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/PostCreateCommandResult"
+          description: >
+            Post-create commands attempted after each autocreation. Empty array
+            when no commands were configured or no autocreation occurred.
+        history_id:
+          type: string
+          description: >
+            Opaque identifier for this capture. Use with `GET /captures/{id}`
+            and as the `Location` header target.
+          example: "20260425T143302000-0-coffee"
+        captured_at:
+          type: string
+          format: date-time
+          description: >
+            The effective capture time as recorded in the history entry
+            (ISO 8601 UTC). Equals the submitted `captured_at` if provided,
+            otherwise the server's `now` at receipt time.
+          example: "2026-04-25T14:33:02Z"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Warning"
+          description: >
+            Non-fatal issues. Present only when non-empty. Autocreate failures,
+            history record failures, etc. The parent submit still succeeded.
+
+    AutoCreatedNote:
+      type: object
+      required:
+        - field
+        - value
+        - vault_path
+        - templated
+      properties:
+        field:
+          type: string
+          description: The `dynamic_select` field name that triggered this autocreation.
+          example: bean
+        value:
+          type: string
+          description: The novel value the user typed.
+          example: "Ethiopia Guji"
+        vault_path:
+          type: string
+          description: Vault-relative path of the newly created note.
+          example: "Coffee/Beans/Ethiopia Guji.md"
+        templated:
+          type: boolean
+          description: >
+            `true` when the `create_template` path was used (sub-form data
+            applied); `false` for a bare date-only stub note.
+          example: true
+
+    PostCreateCommandResult:
+      type: object
+      required:
+        - field
+        - command
+        - fired
+      properties:
+        field:
+          type: string
+          description: The field name whose autocreation triggered this command.
+          example: bean
+        command:
+          type: string
+          description: Obsidian command string that was attempted.
+          example: "templater:run"
+        fired:
+          type: boolean
+          description: >
+            `true` only when API transport was active and the command executed
+            without error. `false` on FileSystem transport (best-effort; not an
+            error).
+          example: true
+
+    Warning:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: >
+            Machine-readable warning slug, e.g. `"autocreate_failed"`,
+            `"history_record_failed"`.
+          example: autocreate_failed
+        field:
+          type: ["string", "null"]
+          description: >
+            The field name associated with this warning, if applicable. Absent
+            (not serialized) for non-field warnings such as history record
+            failures.
+          example: bean
+        message:
+          type: string
+          description: Human-readable description of the warning.
+          example: "template 'bean' not found"
+
+    # -------------------------------------------------------------------------
+    # Captures read-back
+    # -------------------------------------------------------------------------
+
+    CaptureResponse:
+      type: object
+      required:
+        - id
+        - module_key
+        - timestamp
+        - vault_path
+        - content
+        - transport_mode
+      properties:
+        id:
+          type: string
+          description: The opaque history id for this capture.
+          example: "20260425T183042000-0-coffee"
+        module_key:
+          type: string
+          description: Module that produced this capture.
+          example: coffee
+        timestamp:
+          type: string
+          format: date-time
+          description: >
+            Capture timestamp (ISO 8601 UTC). This is the `captured_at`-derived
+            value, not necessarily the server receipt time.
+          example: "2026-04-25T18:30:42Z"
+        vault_path:
+          type: string
+          description: Vault-relative path of the file.
+          example: "Coffee/2026/20260425 18-30-42.md"
+        content:
+          type: string
+          description: >
+            Full UTF-8 file content as written (YAML frontmatter + Markdown
+            body). Trusted user data; no sanitization is applied.
+          example: "---\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: 18\n---\n\nBright, blueberry, mid-body.\n"
+        transport_mode:
+          type: string
+          enum: [API, FileSystem]
+          description: >
+            Transport backend that served this read (may differ from the
+            write-time mode).
+          example: API
+
+    # -------------------------------------------------------------------------
+    # History
+    # -------------------------------------------------------------------------
+
+    HistoryEntry:
+      type: object
+      required:
+        - id
+        - module_key
+        - timestamp
+        - vault_path
+        - first_field
+      description: >
+        A single recorded capture event. Legacy entries (pre-Step-C) may have
+        `id: null` — the API returns only entries that have an id, but callers
+        should handle null defensively.
+      properties:
+        id:
+          type: ["string", "null"]
+          description: >
+            Opaque identifier. Format: `<YYYYMMDDTHHmmSSsss>-<counter>-<module_key>`.
+            Null on legacy entries that predate the API.
+          example: "20260425T183042000-0-coffee"
+        module_key:
+          type: string
+          description: Module key for this capture.
+          example: coffee
+        timestamp:
+          type: string
+          format: date-time
+          description: Capture timestamp (ISO 8601 UTC).
+          example: "2026-04-25T18:30:42Z"
+        vault_path:
+          type: string
+          description: Vault-relative path of the written file.
+          example: "Coffee/2026/20260425 18-30-42.md"
+        first_field:
+          type: ["string", "null"]
+          description: >
+            Value of the first non-textarea, non-composite visible field at
+            capture time. Shown in the dashboard entry list. Null when no such
+            field was filled.
+          example: "Ethiopia Guji"
+
+    HistorySummary:
+      type: object
+      description: >
+        Precomputed dashboard statistics. Included in `/history` responses only
+        when neither `since` nor `until` filters are present (the dashboard
+        call). Omitted on windowed queries to keep the payload small.
+      required:
+        - version
+        - last_pour
+        - today_count
+        - week_count
+        - streak_days
+        - per_module_today
+      properties:
+        version:
+          type: integer
+          description: Schema version for this summary object. Current value is `1`.
+          example: 1
+        last_pour:
+          oneOf:
+            - $ref: "#/components/schemas/HistoryEntry"
+            - type: "null"
+          description: The most recent capture entry, or null if no history exists.
+        today_count:
+          type: integer
+          description: Number of captures logged today (local time).
+          example: 3
+        week_count:
+          type: integer
+          description: Number of captures in the current calendar week (Mon–Sun, local time).
+          example: 14
+        streak_days:
+          type: integer
+          description: >
+            Consecutive days ending today (or yesterday) with at least one
+            capture. Resets to 0 if no capture in the past 2 days.
+          example: 7
+        per_module_today:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of module_key → capture count for today.
+          example:
+            coffee: 2
+            me: 1
+
+    HistoryResponse:
+      type: object
+      required:
+        - entries
+        - has_more
+        - next_cursor
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryEntry"
+          description: >
+            Capture entries in descending timestamp order (most recent first).
+        summary:
+          oneOf:
+            - $ref: "#/components/schemas/HistorySummary"
+            - type: "null"
+          description: >
+            Dashboard statistics. Present only when neither `since` nor `until`
+            query parameters are supplied. Null or absent on windowed queries.
+        has_more:
+          type: boolean
+          description: >
+            Whether more entries exist before the oldest entry in this page.
+            When `true`, pass `?cursor=<next_cursor>` to fetch the preceding page.
+          example: false
+        next_cursor:
+          type: ["string", "null"]
+          description: >
+            Opaque cursor for the next page; null when no more entries exist.
+            Pass as `?cursor=<next_cursor>` to fetch entries older than the
+            current page. The cursor is the id of the last returned entry and
+            is lexicographically sortable (format: YYYYMMDDTHHmmSSsss-N-module).
+          example: null
+
+    # -------------------------------------------------------------------------
+    # Presets
+    # -------------------------------------------------------------------------
+
+    Preset:
+      type: object
+      required:
+        - name
+        - description
+        - values
+      properties:
+        name:
+          type: string
+          description: Unique preset name within the module.
+          example: "Morning Onyx"
+        description:
+          type: ["string", "null"]
+          description: >
+            Optional human-readable description for disambiguating similar
+            presets. Shown as a dim subtitle in the form view.
+          example: "default for weekday espresso"
+        values:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            Maps field_name → field_value for all fields captured in this
+            preset. Fields with `preset_exclude: true` are not included.
+          example:
+            bean: "Ethiopia Guji"
+            dose_g: "18"
+            method: Espresso
+
+    PresetsListResponse:
+      type: object
+      required:
+        - presets
+      properties:
+        presets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Preset"
+          description: Ordered preset list.
+
+    PresetUpsertRequest:
+      type: object
+      required:
+        - values
+      description: Body for `PUT /presets/{module}/{name}`. The name comes from the path.
+      properties:
+        description:
+          type: ["string", "null"]
+          description: Optional description. Null or absent = no description.
+          example: "default for weekday espresso"
+        values:
+          type: object
+          additionalProperties:
+            type: string
+          description: Field values to store in this preset.
+          example:
+            bean: "Ethiopia Guji"
+            dose_g: "18"
+            method: Espresso
+
+    PresetUpsertResponse:
+      type: object
+      required:
+        - preset
+      properties:
+        preset:
+          $ref: "#/components/schemas/Preset"
+
+    PresetReorderRequest:
+      type: object
+      required:
+        - names
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+          description: >
+            Full ordered list of preset names. Must be an exact permutation of
+            the current preset names for this module — missing or extra names
+            return 400 `validation_failed`.
+          example: ["Morning Onyx", "Aeropress quick", "Decaf evening"]
+
+    # -------------------------------------------------------------------------
+    # Error envelope (§5.2)
+    # -------------------------------------------------------------------------
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - unauthorized
+            - not_found
+            - method_not_allowed
+            - validation_failed
+            - unsupported_media_type
+            - payload_too_large
+            - transport_error
+            - write_error
+            - internal_error
+            - idempotency_replay_in_flight
+            - read_error
+            - captured_at_out_of_range
+            - unknown_module
+            - not_dynamic_select
+            - missing_source
+            - autocreate_failed
+            - auto_create_input_required
+          description: >
+            Machine-readable error slug. `unknown_module`, `not_dynamic_select`,
+            and `missing_source` are logical sub-variants of `not_found` /
+            `validation_failed` that may appear in `details` objects for richer
+            client-side error handling. `autocreate_failed` and
+            `auto_create_input_required` appear in warning/details payloads on
+            submit. See §5.2 of the contract for the full table.
+          example: validation_failed
+        message:
+          type: string
+          description: Human-readable single-line description of the error.
+          example: "Submit rejected because required fields are empty or invalid."
+        details:
+          description: >
+            Optional structured data. Shape varies by endpoint and error code.
+            Validation errors carry a `fields` array; write/read errors carry
+            `engine_error`; `captured_at_out_of_range` errors carry a `code`
+            field echoing the sub-code.
+          example:
+            fields:
+              - field: bean
+                code: required

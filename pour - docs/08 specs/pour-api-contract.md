@@ -322,13 +322,22 @@ Executes a form submit. Reuses the engine's `autocreate::run` + `output::write_c
 | Status | Code | Trigger |
 |--------|------|---------|
 | 400 | `validation_failed` | Required field empty (and visible per `show_when`); invalid number format if engine rejects; unknown field name. |
-| 404 | `not_found` | Unknown module key. |
+| 404 | `not_found` | Unknown module key, OR a known module with `mobile_visible = false` (the server enforces visibility on submit too — clients cannot bypass the `/api/v1/config` filter by guessing module keys). |
 | 409 | `idempotency_replay_in_flight` | Same `Idempotency-Key` is currently being processed (rare; race). Client should retry after a short delay. |
 | 500 | `write_error` | Engine returned an error from `write_create`/`write_append`. `details.engine_error` carries the underlying message. |
 | 502 | `transport_error` | API + filesystem both unreachable. |
 
+**Synthetic 202 (PWA service worker only — round 6 amendment):**
+
+The HTTP status `202 Accepted` is NOT produced by this server endpoint. It is a **client-side construct** emitted exclusively by the PWA service worker to its own page when a submit is queued for offline replay. No server-side handler ever returns 202 from `/api/v1/submit/*`.
+
+Clients written directly against this contract — including a future MCP companion (Phase 4) that bypasses the service worker entirely — will **never** see 202. They receive 201 on success or 4xx/5xx on failure as documented above.
+
+The synthetic 202 body from the service worker is: `{ "queued": true, "queue_id": <idb-id>, "captured_at": "<from-body>" }`. The page treats 202 as a "Queued" summary state (not "Saved"). This status code is documented here for completeness; it is not part of the server contract.
+
 **Engine semantics preserved:**
 - Hidden fields (`show_when` false) are NOT validated for `required` and are NOT written. Server runs `visible_field_indices` server-side as belt-and-suspenders even though the client should already have done so.
+- Hidden modules (`mobile_visible = false`) reject submits with 404 `not_found`. The server is the source of truth on module visibility; the PWA-side filter is not authoritative. This mirrors the `/api/v1/config` filter and prevents clients from bypassing visibility by guessing module keys.
 - Auto-create is best-effort. If it fails, the parent submit still proceeds; `auto_created[]` carries success records only, and a failure is reflected in `details.autocreate_warnings` of a separate `warnings` array (200/201 with warnings is preferred over 207 Multi-Status).
 
 ```json
@@ -343,7 +352,7 @@ Executes a form submit. Reuses the engine's `autocreate::run` + `output::write_c
 }
 ```
 
-### 6.5 `GET /api/v1/history` — LOCKED
+### 6.5 `GET /api/v1/history` — AMENDED 2026-04-26
 
 Recent capture log for the mobile dashboard (heatmap, last-pour, streak).
 
@@ -351,7 +360,8 @@ Recent capture log for the mobile dashboard (heatmap, last-pour, streak).
 
 **Query params:**
 - `since` — ISO 8601, inclusive lower bound. Optional.
-- `until` — ISO 8601, exclusive upper bound. Optional. Used as a cursor for "older than X".
+- `until` — ISO 8601, exclusive upper bound. Optional. Direct timestamp filter ("older than X date"). Do NOT use `until` as a pagination cursor — use `cursor` instead.
+- `cursor` — opaque string (the `next_cursor` from the previous response). When present, returns entries whose id is lexicographically less than the cursor. This is the correct way to paginate; `until` alone is incorrect for pagination because same-millisecond entries share a timestamp and would be silently dropped at the boundary.
 - `limit` — integer, 1–1000. Default 100.
 - `module` — module key. Optional. Filters to one module.
 
@@ -360,7 +370,7 @@ Recent capture log for the mobile dashboard (heatmap, last-pour, streak).
 {
   "entries": [
     {
-      "id": "20260425T183042-coffee",
+      "id": "20260425T183042123-0-coffee",
       "module_key": "coffee",
       "timestamp": "2026-04-25T18:30:42Z",
       "vault_path": "Coffee/2026/20260425 18-30-42.md",
@@ -376,12 +386,14 @@ Recent capture log for the mobile dashboard (heatmap, last-pour, streak).
     "per_module_today": { "coffee": 2, "me": 1 }
   },
   "has_more": false,
-  "next_until": null
+  "next_cursor": null
 }
 ```
 
 - `summary` is included only when neither `since` nor `until` filters are present (i.e. the dashboard call). For windowed queries, it's omitted to keep the response small.
-- `has_more` + `next_until` provide cursor pagination: pass `until=<next_until>` for the next page.
+- `has_more` + `next_cursor` provide cursor pagination. `next_cursor` is the opaque `id` of the last returned entry. Pass `?cursor=<next_cursor>` to retrieve the next page.
+- **Why opaque cursor instead of timestamp**: entry ids have the format `YYYYMMDDTHHmmSSsss-<counter>-<module>` and are lexicographically sortable = chronologically + counter sortable. The PWA's offline-queue replay can submit multiple entries at the exact same millisecond; a timestamp-only cursor would silently drop entries that share the cursor timestamp. The id-based cursor is exact.
+- **Backwards compatibility**: the old `next_until` field is removed. Clients that relied on `next_until` must switch to `next_cursor` + `?cursor=`.
 
 **Note:** the trim feature (`pour trim`) does NOT have a mobile equivalent in Phase 1. Destructive operations stay on the desktop where the confirmation flow lives.
 
@@ -458,6 +470,8 @@ Upsert a single preset. Body is the preset entry (without `name`).
 
 `name` URL-encoded in the path. Names containing `/` are rejected (404 not_found-style mismatch from axum's matcher).
 
+**Reserved names:** the literal name `"order"` (case-insensitive) is reserved and MUST NOT be used as a preset name. The route `/presets/{module}/order` (§6.10) is a fixed path segment registered before `/{name}` in the router; a preset named "order" would be permanently unreachable via single-preset endpoints. Attempting `PUT /presets/{module}/order` with a preset body (wrong DTO for §6.10) returns `400 validation_failed`. Attempting the same via percent-encoding (e.g. `ord%65r`) reaches `put_handler` and is rejected with `400 validation_failed { code: "reserved_name" }`. Clients MUST reject the name "order" (case-insensitive) in name-input validation before sending the request. *(Amendment round 8 — 2026-04-27)*
+
 ### 6.9 `DELETE /api/v1/presets/{module}/{name}` — LOCKED
 
 **Response 204** on success, **404** if not found.
@@ -471,7 +485,7 @@ Reorder presets within a module.
 { "names": ["Morning Onyx", "Aeropress quick", "Decaf evening"] }
 ```
 
-The full list of preset names must be supplied. Missing or extra names → 400 `validation_failed`. The TUI's reorder semantics are preserved.
+The full list of preset names must be supplied. Missing or extra names → 400 `validation_failed` with `details.missing` / `details.extra`. Duplicate names in the request → 400 `validation_failed` with `details.duplicates`. The TUI's reorder semantics are preserved.
 
 **Response 200** with the resulting `{ presets: [...] }`.
 
@@ -561,12 +575,14 @@ The PWA's `visibility.js` mirrors `src/visibility.rs` semantics:
 
 - **Format**: opaque string, 1–256 ASCII printable characters. Recommended: a UUIDv4 generated client-side.
 - **Server behavior**: on receipt, the server records `(key, response)` in an in-memory LRU (capacity ~1024, TTL 5 minutes). If the same key is replayed within the window:
-  - If the prior request returned a final response: replay the same status + body byte-for-byte. The replayed response carries an `Idempotency-Replay: true` header.
+  - If the prior request returned a **cacheable response**: replay the same status + body byte-for-byte. The replayed response carries an `Idempotency-Replay: true` header.
   - If the prior request is still in flight: return `409 idempotency_replay_in_flight`.
-- **Different body, same key**: returned the original cached response (NOT a fresh execution). The client is responsible for rotating keys per submit attempt; reusing a key for a different payload is a client bug.
+- **Cacheable responses**: only **2xx terminal successes** (typically 201) are stored in the cache. **4xx and 5xx responses are NOT cached** — these represent recoverable conditions (validation_failed: fix the field and retry; transport_error / write_error: retry when the underlying issue clears). Caching errors would block the user from recovering within the form session. The client SHOULD reuse the same `Idempotency-Key` for retries after a recoverable error so a duplicate-write race never opens.
+- **Different body, same key (cached 2xx)**: returns the original cached response (NOT a fresh execution). The client is responsible for rotating keys per submit attempt after success; reusing a key for a different payload after a 2xx is a client bug.
+- **Different body, same key (no cached response)**: each retry executes fresh. The server cannot detect "different body, same key" before execution; that's a client-discipline issue.
 - **Storage**: in-memory only. Restarting `pour serve` clears the cache. Acceptable: the offline queue's retry windows are seconds-to-minutes, not hours.
 
-The PWA generates a fresh `Idempotency-Key` per submit attempt. Service-worker retries reuse the same key.
+The PWA persists `Idempotency-Key` across retries within a form session, rotates it after a successful 2xx, and rotates again on form reset. Service-worker retries reuse the same key.
 
 ## 10. `captured_at` Timing Semantics — LOCKED (critical for offline)
 
@@ -662,3 +678,8 @@ All future deviations require an amendment to this contract committed before the
 - **2026-04-25** — initial draft.
 - **2026-04-25** — ratified (round 1). Eight open questions resolved per §16 rows 1–8. Status: locked.
 - **2026-04-25** — agent-surface amendment (round 2). Added `GET /api/v1/captures/{history_id}` as §6.6, OpenAPI 3.1 Phase 1 hand-written + Phase 2 `utoipa` (§15.1), MCP companion roadmap (§15). Three new ratified decisions per §16 rows 9–11.
+- **2026-04-26** — pagination cursor amendment (round 3). §6.5: `next_cursor: string|null` replaces `next_until: timestamp|null` for pagination; `cursor` query param added; `until` remains as a direct timestamp filter but must not be used as a pagination cursor. Rationale: same-millisecond entries (possible during PWA offline-queue replay) share a timestamp and would be silently dropped by a timestamp-only cursor; id-based cursor is exact. §6.10: `details.duplicates` added to reorder 400 response when the request list contains duplicate names.
+- **2026-04-26** — submit-side mobile_visible amendment (round 4). §6.4: `POST /api/v1/submit/{module}` now explicitly returns 404 `not_found` for modules with `mobile_visible = false`, mirroring the `/api/v1/config` filter. Previously the contract only documented config-side filtering, leaving submit behavior implicit. Ratifies what the implementation already does: server is the source of truth on module visibility; clients cannot bypass the filter by guessing module keys.
+- **2026-04-26** — idempotency cacheability amendment (round 5). §9: only **2xx terminal successes** are stored in the idempotency cache. **4xx and 5xx responses are NOT cached.** Earlier wording said "final response" without disambiguating, which led to an implementation that cached every status — meaning a `400 validation_failed` would replay for 5 minutes, blocking users from fixing a field and retrying within the form session. The amendment makes recoverable errors retryable while preserving the duplicate-write protection that idempotency exists to provide.
+- **2026-04-27** — synthetic-202 clarification (round 6). §6.4: added a note that `202 Accepted` is a PWA service-worker–only construct emitted to the page when a submit is queued offline. The server **never** returns 202 from `/api/v1/submit/*`. Clients bypassing the service worker (future MCP companion, direct `curl`) see 201 on success or 4xx/5xx on failure only. No server-side change; documentation only.
+- **2026-04-27** — reserved name "order" (round 8). §6.8: the name `"order"` (case-insensitive) is reserved and must not be used as a preset name. The `/presets/{module}/order` fixed segment (§6.10) is registered before `/{name}` in the router, making a preset literally named "order" permanently unreachable via single-preset endpoints. Server rejects the name in `put_handler` with `400 validation_failed { code: "reserved_name" }` as a belt-and-suspenders guard. Clients must also reject "order" (case-insensitive) in name-input validation before sending any request. Three regression tests added to `tests/server_presets.rs`.

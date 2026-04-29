@@ -3,8 +3,8 @@ tags:
   - reference
   - keybindings
   - tui
-date created: Monday, April 21st 2026, 12:00:00 am
-date modified: Monday, April 21st 2026, 12:00:00 am
+date created: Saturday, April 25th 2026, 4:19:07 pm
+date modified: Wednesday, April 29th 2026, 5:31:51 pm
 ---
 
 # Keyboard Shortcuts
@@ -33,11 +33,11 @@ The main screen reached by running `pour` with no arguments.
 
 ---
 
-## Form (module entry screen)
+## Form (module Entry screen)
 
 Reached by launching a module from the dashboard or via `pour <module>`.
 
-### General navigation
+### General Navigation
 
 | Key | Action |
 |-----|--------|
@@ -47,7 +47,7 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | `Enter` | Confirm field / open overlay / submit (on submit row) |
 | `Esc` | Close active overlay; from submit row exits to dashboard |
 
-### Text fields
+### Text Fields
 
 | Key | Action |
 |-----|--------|
@@ -57,7 +57,7 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | `Home` | Cursor to start of line |
 | `End` | Cursor to end of line |
 
-### Textarea fields (editor overlay)
+### Textarea Fields (editor overlay)
 
 | Key | Action |
 |-----|--------|
@@ -66,7 +66,7 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | `Left` / `Right` | Cycle callout type (when overlay is closed and `callout` is configured) |
 | `t` | Edit callout title inline (when focused on textarea row, overlay closed) |
 
-### Select fields (dropdown overlay)
+### Select Fields (dropdown overlay)
 
 | Key | Action |
 |-----|--------|
@@ -77,7 +77,7 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | Printable characters | Filter options (`dynamic_select` with `allow_create = true`) |
 | `Backspace` | Trim search buffer (`dynamic_select` with `allow_create = true`) |
 
-### Composite array fields (table overlay)
+### Composite Array Fields (table overlay)
 
 | Key | Action |
 |-----|--------|
@@ -91,7 +91,7 @@ Reached by launching a module from the dashboard or via `pour <module>`.
 | `p` | Quick-cycle to the next saved per-field preset |
 | `Esc` | Close table overlay |
 
-### Per-field preset picker (composite overlay)
+### Per-field Preset Picker (composite overlay)
 
 Appears when `l` is pressed inside a composite_array editor with at least one saved preset.
 
@@ -102,7 +102,7 @@ Appears when `l` is pressed inside a composite_array editor with at least one sa
 | `Ctrl+D` | Delete selected preset |
 | `Esc` | Cancel and close picker |
 
-### Preset row
+### Preset Row
 
 | Key | Action |
 |-----|--------|
@@ -113,7 +113,7 @@ Appears when `l` is pressed inside a composite_array editor with at least one sa
 | `Ctrl+S` (any non-editing context) | Save current form values as preset |
 | `d` (on preset row, real preset selected) | Delete selected preset (y/n confirmation) |
 
-### Delete confirmation dialog
+### Delete Confirmation Dialog
 
 | Key | Action |
 |-----|--------|
@@ -122,11 +122,11 @@ Appears when `l` is pressed inside a composite_array editor with at least one sa
 
 ---
 
-## Configure (module and vault settings)
+## Configure (module and Vault settings)
 
 Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 
-### Settings list navigation
+### Settings List Navigation
 
 | Key | Action |
 |-----|--------|
@@ -138,14 +138,14 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 | `?` | Open placeholder help overlay (Path fields only) |
 | `Esc` | Cancel / return to previous screen |
 
-### New Module mode
+### New Module Mode
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+S` | Save the new module definition |
 | `Esc` | Cancel and discard the new module |
 
-### Freetext edit mode (active when editing a field value)
+### Freetext Edit Mode (active when Editing a Field value)
 
 | Key | Action |
 |-----|--------|
@@ -157,7 +157,7 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 | `Esc` | Cancel edit, restore original value |
 | `Ctrl+S` | Save settings while in edit mode |
 
-### Field list (sub-screen within module settings)
+### Field List (sub-screen within Module settings)
 
 | Key | Action |
 |-----|--------|
@@ -169,7 +169,7 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 | `Enter` | Open field editor for selected field |
 | `Esc` | Return to module settings |
 
-### Sub-field list (within a composite_array field editor)
+### Sub-field List (within a composite_array Field editor)
 
 | Key | Action |
 |-----|--------|
@@ -183,7 +183,7 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 
 ---
 
-## Browse (vault directory browser)
+## Browse (vault Directory browser)
 
 Opened from path fields inside the configurator.
 
@@ -196,7 +196,7 @@ Opened from path fields inside the configurator.
 
 ---
 
-## Preset name overlay
+## Preset name Overlay
 
 Appears when saving a preset.
 
@@ -209,7 +209,7 @@ Appears when saving a preset.
 
 ---
 
-## Help overlay
+## Help Overlay
 
 Opened via `?` from the dashboard or path-field configurator.
 

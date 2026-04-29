@@ -4,7 +4,7 @@ tags:
   - adr
   - transport
 date created: Friday, April 3rd 2026, 12:36:05 am
-date modified: Tuesday, April 7th 2026, 3:30:38 am
+date modified: Wednesday, April 29th 2026, 5:31:53 pm
 ---
 
 # ADR 004: API Append via Read-Modify-Write
