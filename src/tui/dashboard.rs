@@ -87,7 +87,7 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     let header = Paragraph::new(Line::from(vec![
         Span::styled(
-            " pour",
+            " ▽ pour",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
