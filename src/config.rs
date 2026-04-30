@@ -1,3 +1,5 @@
+// LINTOK: oversized: pending Slice 3 + Slice 8 decomposition (config types/validation split)
+
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -399,6 +401,22 @@ impl Config {
     /// The config schema version this build of Pour understands.
     pub const CURRENT_CONFIG_VERSION: &'static str = "0.3.0";
 
+    /// Atomically write `content` to `path`.
+    ///
+    /// Writes to a sibling `.toml.tmp` file first, then renames it over `path`.
+    /// If the rename fails the orphan temp file is removed before returning the
+    /// error — the single sanctioned write path for all config files so that
+    /// orphan cleanup is universal rather than per-callsite.
+    fn write_atomic(path: &Path, content: &str) -> Result<(), ConfigError> {
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, content).map_err(ConfigError::WriteError)?;
+        if let Err(e) = crate::util::atomic_replace(&tmp_path, path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ConfigError::WriteError(e));
+        }
+        Ok(())
+    }
+
     /// Load and validate the configuration.
     ///
     /// Resolution order for config file path:
@@ -470,12 +488,9 @@ impl Config {
             vault.remove("api_key");
         }
         let new_content = doc.to_string();
-        let tmp_path = config_path.with_extension("toml.tmp");
-        if std::fs::write(&tmp_path, &new_content).is_ok() {
-            let _ = crate::util::atomic_replace(&tmp_path, config_path);
-        }
-        // Clean up tmp file if atomic_replace failed or write succeeded.
-        let _ = std::fs::remove_file(&tmp_path);
+        // Best-effort: errors are intentionally swallowed — this is a
+        // non-critical background migration.
+        let _ = Self::write_atomic(config_path, &new_content);
     }
 
     /// Parse and validate a config from a TOML string.
@@ -567,11 +582,7 @@ impl Config {
             }
         }
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
-        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
-        let _ = std::fs::remove_file(&tmp_path); // clean up orphan if rename failed
-        result?;
+        Self::write_atomic(&path, &doc.to_string())?;
 
         // Restrict secrets.toml to owner-read/write only (0600) on Unix.
         #[cfg(unix)]
@@ -627,11 +638,7 @@ impl Config {
 
         doc["mobile_token"] = toml_edit::value(token);
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
-        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
-        let _ = std::fs::remove_file(&tmp_path);
-        result?;
+        Self::write_atomic(&path, &doc.to_string())?;
 
         // Restrict secrets.toml to owner-read/write only (0600) on Unix.
         #[cfg(unix)]
@@ -790,9 +797,7 @@ impl Config {
 
         // Atomic write: write to a sibling temp file, then rename over the original.
         // This prevents partial writes from bricking the config on crash.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -991,9 +996,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1065,9 +1068,7 @@ impl Config {
         // Validate before writing.
         Self::from_toml(&new_content)?;
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1140,9 +1141,7 @@ impl Config {
 
         Self::from_toml(&new_content)?;
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1304,9 +1303,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1365,9 +1362,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1431,9 +1426,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1608,9 +1601,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1641,9 +1632,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1773,9 +1762,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1894,9 +1881,7 @@ impl Config {
         Self::from_toml(&new_content)?;
 
         // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
 
         Ok(())
     }
@@ -1990,9 +1975,7 @@ impl Config {
 
         let new_content = doc.to_string();
         Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
         Ok(())
     }
 
@@ -2056,9 +2039,7 @@ impl Config {
 
         let new_content = doc.to_string();
         Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
         Ok(())
     }
 
@@ -2133,9 +2114,7 @@ impl Config {
 
         let new_content = doc.to_string();
         Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
         Ok(())
     }
 
@@ -2219,9 +2198,7 @@ impl Config {
 
         let new_content = doc.to_string();
         Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+        Self::write_atomic(&path, &new_content)?;
         Ok(())
     }
 

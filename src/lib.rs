@@ -1,6 +1,7 @@
 pub mod app;
 pub mod autocreate;
 pub mod config;
+pub mod config_updates;
 pub mod data;
 pub mod init;
 pub mod output;

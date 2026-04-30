@@ -1,6 +1,7 @@
 pub mod configure;
 pub mod dashboard;
 pub mod form;
+pub mod loop_;
 pub mod summary;
 
 use crate::app::{App, Screen};

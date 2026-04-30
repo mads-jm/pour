@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::data::json_store::JsonStore;
+
 /// Outcome of `Presets::api_set` — distinguishes HTTP 201 (Created) vs 200
 /// (Updated) per §6.8.
 #[derive(Debug, PartialEq)]
@@ -76,12 +78,13 @@ impl Presets {
     /// Load presets from a specific file path.
     ///
     /// Returns empty presets if the file is missing or corrupt.
+    ///
+    /// Uses `load_with_migration` so the migration hook is available if
+    /// on-disk schema changes are needed in the future. Currently no
+    /// migration is applied; the closure always returns `None` to fall
+    /// through to the default.
     pub fn load_from(path: PathBuf) -> Self {
-        let data = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|contents| serde_json::from_str::<PresetsData>(&contents).ok())
-            .unwrap_or_default();
-
+        let data = JsonStore::<PresetsData>::new(path.clone()).load_with_migration(|_raw| None);
         Presets { data, path }
     }
 
@@ -90,13 +93,7 @@ impl Presets {
     /// Uses atomic write (temp file + rename) to avoid corruption if the
     /// process is interrupted mid-write.
     pub fn save(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(&self.data)?;
-        let tmp_path = self.path.with_extension("tmp");
-        std::fs::write(&tmp_path, &json)?;
-        crate::util::atomic_replace(&tmp_path, &self.path)?;
+        JsonStore::<PresetsData>::new(self.path.clone()).save(&self.data)?;
         Ok(())
     }
 

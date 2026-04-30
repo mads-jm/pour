@@ -4,6 +4,48 @@ use crate::visibility::visible_field_indices;
 use chrono::{DateTime, Local};
 use std::collections::{HashMap, HashSet};
 
+/// What to do with a `{{key}}` placeholder whose key is not present in the
+/// variable map.
+enum OnUnknown {
+    /// Remove the placeholder entirely (path mode — keeps filenames clean).
+    Strip,
+    /// Leave the placeholder as literal text (append mode — caller can see what
+    /// was unresolved).
+    Leave,
+}
+
+/// Core `{{key}}` substitution kernel shared by both render functions.
+///
+/// Iterates over `vars` and replaces every `{{key}}` occurrence with the
+/// corresponding value.  After all known keys are substituted, remaining
+/// unresolved placeholders are handled according to `on_unknown`:
+/// - `Strip` — each `{{...}}` span is removed.
+/// - `Leave` — unresolved spans are left as-is.
+fn substitute_keys(
+    template: &str,
+    vars: &HashMap<String, String>,
+    on_unknown: OnUnknown,
+) -> String {
+    let mut result = template.to_owned();
+
+    for (key, value) in vars {
+        let placeholder = format!("{{{{{key}}}}}");
+        result = result.replace(&placeholder, value);
+    }
+
+    if let OnUnknown::Strip = on_unknown {
+        while let Some(start) = result.find("{{") {
+            if let Some(end) = result[start..].find("}}") {
+                result.replace_range(start..start + end + 2, "");
+            } else {
+                break;
+            }
+        }
+    }
+
+    result
+}
+
 /// Render a path template by substituting `{{field}}` placeholders and
 /// chrono `strftime` specifiers.
 ///
@@ -31,30 +73,20 @@ pub fn render_path(
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
     let strftime_expanded = now.format(template).to_string();
-    let mut result = strftime_expanded;
 
     // Step 2: Replace special tokens using already-formatted strings.
     // These are resolved after strftime so their output (e.g. "2026-04-01") is
     // treated as literal text and not re-processed.
     let date_fmt = date_format.unwrap_or("%Y%m%d");
-    result = result.replace("{{date}}", &now.format(date_fmt).to_string());
-    result = result.replace("{{time}}", &now.format("%H:%M").to_string());
+    let mut special_vars: HashMap<String, String> = HashMap::new();
+    special_vars.insert("date".to_string(), now.format(date_fmt).to_string());
+    special_vars.insert("time".to_string(), now.format("%H:%M").to_string());
+    // Substitute special tokens first (they don't use Strip — they're known tokens;
+    // we use a merged approach: insert specials, then do one substitution pass).
+    let after_special = substitute_keys(&strftime_expanded, &special_vars, OnUnknown::Leave);
 
-    // Step 3: Substitute field placeholders. Values are already-resolved strings
-    // that will never be seen by chrono.
-    for (key, value) in field_values {
-        let placeholder = format!("{{{{{key}}}}}");
-        result = result.replace(&placeholder, value);
-    }
-
-    // Strip any remaining unresolved placeholders so the path stays clean.
-    while let Some(start) = result.find("{{") {
-        if let Some(end) = result[start..].find("}}") {
-            result.replace_range(start..start + end + 2, "");
-        } else {
-            break;
-        }
-    }
+    // Step 3: Substitute field placeholders with Strip for unknown keys.
+    let result = substitute_keys(&after_special, field_values, OnUnknown::Strip);
 
     // Normalize to forward slashes so the API transport receives a consistent
     // vault-relative path, and PathBuf::join on Windows can handle it cleanly
@@ -103,18 +135,21 @@ pub fn render_append_template(
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
     let strftime_expanded = now.format(template).to_string();
-    let mut result = strftime_expanded;
 
-    // Step 2: Replace special tokens using already-formatted strings.
-    result = result.replace("{{time}}", &now.format("%H:%M").to_string());
-    result = result.replace("{{date}}", &now.format("%Y-%m-%d").to_string());
+    // Step 2: Replace special tokens — date always uses %Y-%m-%d in append mode.
+    let mut special_vars: HashMap<String, String> = HashMap::new();
+    special_vars.insert("time".to_string(), now.format("%H:%M").to_string());
+    special_vars.insert("date".to_string(), now.format("%Y-%m-%d").to_string());
 
+    // Resolve {{callout}} token from module config or runtime overrides.
     let callout_resolved = callout_overrides
         .get("_callout_type")
         .or(module.callout_type.as_ref());
     if let Some(callout) = callout_resolved {
-        result = result.replace("{{callout}}", callout);
+        special_vars.insert("callout".to_string(), callout.clone());
     }
+
+    let mut result = substitute_keys(&strftime_expanded, &special_vars, OnUnknown::Leave);
 
     // Replace composite field placeholders with markdown tables.
     // If the field is not visible, replace its placeholder with empty string.
@@ -144,12 +179,12 @@ pub fn render_append_template(
     // but hidden" from "not declared in this module at all".
     let declared_names: HashSet<&str> = module.fields.iter().map(|f| f.name.as_str()).collect();
 
-    // Step 3: Substitute field placeholders. Values are already-resolved strings
-    // that will never be seen by chrono.
+    // Step 3: Build the resolved variable map for field substitution.
     // Declared fields that are not visible resolve to empty string.
     // Undeclared fields (not in module.fields) are substituted normally.
+    // Wikilink and callout block rendering happen here as value transforms.
+    let mut resolved_vars: HashMap<String, String> = HashMap::new();
     for (key, value) in fields {
-        let placeholder = format!("{{{{{key}}}}}");
         let field_cfg = module.fields.iter().find(|f| f.name == *key);
         let resolved =
             if declared_names.contains(key.as_str()) && !visible_names.contains(key.as_str()) {
@@ -184,10 +219,11 @@ pub fn render_append_template(
             } else {
                 value.clone()
             };
-        result = result.replace(&placeholder, &resolved);
+        resolved_vars.insert(key.clone(), resolved);
     }
 
-    result
+    // Substitute field placeholders; leave unknowns as-is (Leave mode).
+    substitute_keys(&result, &resolved_vars, OnUnknown::Leave)
 }
 
 /// Sanitize the filename portion of a vault-relative path.

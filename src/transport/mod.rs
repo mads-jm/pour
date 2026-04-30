@@ -1,4 +1,5 @@
 pub mod api;
+pub mod atomic;
 pub mod fs;
 
 use crate::config::Config;

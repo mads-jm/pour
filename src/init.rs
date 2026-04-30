@@ -61,6 +61,39 @@ fn load_template(path: &Path) -> Result<(String, Config)> {
     Ok((content, config))
 }
 
+/// Return module keys in display order: `module_order` entries that exist in
+/// `modules` first (preserving config order), then any unlisted modules sorted
+/// alphabetically.
+///
+/// Stale `module_order` entries (names absent from `modules`) are silently
+/// dropped — this is the more-correct behaviour vs. the former init.rs version
+/// which emitted stale names verbatim.
+pub fn module_order(config: &Config) -> Vec<String> {
+    match &config.module_order {
+        Some(order) => {
+            let mut keys: Vec<String> = order
+                .iter()
+                .filter(|k| config.modules.contains_key(k.as_str()))
+                .cloned()
+                .collect();
+            let mut rest: Vec<String> = config
+                .modules
+                .keys()
+                .filter(|k| !order.contains(k))
+                .cloned()
+                .collect();
+            rest.sort();
+            keys.extend(rest);
+            keys
+        }
+        None => {
+            let mut keys: Vec<String> = config.modules.keys().cloned().collect();
+            keys.sort();
+            keys
+        }
+    }
+}
+
 /// Print post-init instructions with module names from the config.
 fn print_next_steps(target: &Path, config: &Config) {
     println!("pour: config written to {}", target.display());
@@ -71,24 +104,7 @@ fn print_next_steps(target: &Path, config: &Config) {
         target.display()
     );
 
-    let module_names: Vec<&String> = match &config.module_order {
-        Some(order) => {
-            let mut names: Vec<&String> = order.iter().collect();
-            let mut remaining: Vec<&String> = config
-                .modules
-                .keys()
-                .filter(|k| !order.contains(k))
-                .collect();
-            remaining.sort();
-            names.extend(remaining);
-            names
-        }
-        None => {
-            let mut names: Vec<&String> = config.modules.keys().collect();
-            names.sort();
-            names
-        }
-    };
+    let module_names = module_order(config);
 
     for (i, name) in module_names.iter().enumerate().take(4) {
         println!("  {}. Run `pour {name}` to try it out", i + 2);

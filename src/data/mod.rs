@@ -1,6 +1,9 @@
 pub mod cache;
 pub mod field_presets;
 pub mod history;
+pub(crate) mod history_legacy;
+pub(crate) mod history_summary;
+pub mod json_store;
 pub mod preset_tree;
 pub mod presets;
 
