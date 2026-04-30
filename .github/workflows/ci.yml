@@ -92,6 +92,18 @@ jobs:
           key: doc
       - run: cargo doc --no-deps --all-features
 
+  # ─── File size budget ──────────────────────────────────────────────────────
+  # Ratchet: any src/**/*.rs file over 800 lines must carry a
+  # `// LINTOK: oversized: <reason>` annotation or this step fails.
+  # Oversized files pending decomposition are annotated with the target slice.
+  file-size:
+    name: file-size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: File size budget
+        run: bash scripts/check-file-size.sh
+
   # ─── Summary gate ──────────────────────────────────────────────────────────
   # Single required check for branch protection. GitHub's PR UI lets you
   # require `ci / all` as the only status check instead of pinning every
@@ -99,7 +111,7 @@ jobs:
   all:
     name: all
     if: always()
-    needs: [fmt, clippy, test, doc]
+    needs: [fmt, clippy, test, doc, file-size]
     runs-on: ubuntu-latest
     steps:
       - name: verify all jobs passed
