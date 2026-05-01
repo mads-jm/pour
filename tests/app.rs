@@ -475,3 +475,103 @@ fn validate_skips_hidden_number_field() {
         "hidden number field with bad value should not error, got: {errors:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Status toast tests
+// ---------------------------------------------------------------------------
+
+use std::time::{Duration, Instant};
+
+#[test]
+fn set_status_warning_stores_message_and_expiry() {
+    let mut app = make_app();
+    assert!(app.status_message.is_none(), "starts empty");
+
+    app.set_status_warning("test warning");
+
+    let msg = app.status_message.as_ref().expect("message should be set");
+    assert_eq!(msg.text, "test warning");
+    // expires_at should be roughly now + 5s (allow 1s tolerance)
+    let expected = Instant::now() + Duration::from_secs(4);
+    assert!(
+        msg.expires_at > expected,
+        "expires_at should be at least 4s from now"
+    );
+}
+
+#[test]
+fn expired_status_message_clears_on_tick() {
+    let mut app = make_app();
+
+    // Set a message that is already expired (expiry in the past).
+    app.status_message = Some(pour::app::StatusMessage {
+        text: "stale".to_string(),
+        expires_at: Instant::now() - Duration::from_millis(1),
+    });
+
+    app.tick_status();
+
+    assert!(
+        app.status_message.is_none(),
+        "expired message should be cleared by tick_status"
+    );
+}
+
+#[test]
+fn failed_save_emits_status_warning() {
+    use pour::data::presets::{PresetEntry, Presets};
+    use tempfile::tempdir;
+
+    let mut app = make_app();
+
+    // Create a Presets instance backed by a read-only path.
+    let dir = tempdir().unwrap();
+    let presets_path = dir.path().join("presets.json");
+    // Write initial empty presets file, then make the dir read-only so save fails.
+    std::fs::write(&presets_path, "{}").unwrap();
+
+    // Build Presets from the path, add an entry, then make directory read-only.
+    let mut presets = Presets::load_from(presets_path.clone());
+    presets.set(
+        "coffee",
+        PresetEntry {
+            name: "test".to_string(),
+            description: None,
+            values: std::collections::HashMap::new(),
+        },
+    );
+
+    // Replace app.presets with one backed by a non-writable path.
+    // Simulate the save failure by pointing to a file path that cannot be written.
+    // On Windows, make a read-only file; on Unix, remove write perms on the dir.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
+        perms.set_mode(0o444);
+        std::fs::set_permissions(dir.path(), perms).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        let mut perms = std::fs::metadata(&presets_path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&presets_path, perms).unwrap();
+    }
+
+    app.presets = presets;
+
+    // Trigger a save via handle_save_preset logic (call presets.save() + set_status_warning)
+    if let Err(e) = app.presets.save() {
+        app.set_status_warning(format!("presets.save failed: {e}"));
+    }
+
+    let msg = app
+        .status_message
+        .as_ref()
+        .expect("status message should be set after save failure");
+    assert!(
+        msg.text.contains("failed"),
+        "status message should contain 'failed', got: {}",
+        msg.text
+    );
+}

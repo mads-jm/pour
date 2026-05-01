@@ -352,9 +352,10 @@ fn compute_cursor_len_for_af(app: &App, module_key: &str, new_af: usize, ctx: &N
         Some(fs) => fs,
         None => return 0,
     };
+    // Return char count (not byte length) to match cursor_position char-index semantics.
     fs.field_values
         .get(&field.name)
-        .map(|v| v.len())
+        .map(|v| v.chars().count())
         .unwrap_or(0)
 }
 

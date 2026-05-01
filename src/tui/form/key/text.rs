@@ -2,7 +2,22 @@ use crate::app::FormState;
 use crate::config::FieldType;
 use crate::tui::form::FormAction;
 
+/// Convert a char-index into a byte offset within `s`.
+///
+/// If `char_idx` is beyond the last char, returns `s.len()` (end of string).
+fn char_idx_to_byte(s: &str, char_idx: usize) -> usize {
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(b, _)| b)
+        .unwrap_or(s.len())
+}
+
 /// Insert a character into a text/textarea/number field.
+///
+/// `cursor_position` is a **char-index** (number of Unicode scalar values before
+/// the cursor). All mutations go through `char_idx_to_byte` before touching the
+/// `String`, so multi-byte characters (emoji, CJK, accented letters, …) are
+/// handled without panicking on non-char boundaries.
 pub(super) fn handle_char(
     form_state: &mut FormState,
     field_name: &str,
@@ -18,9 +33,12 @@ pub(super) fn handle_char(
         .field_values
         .entry(field_name.to_string())
         .or_default();
-    let pos = form_state.cursor_position.min(value.len());
-    value.insert(pos, c);
-    form_state.cursor_position = pos + 1;
+    // Clamp char-index to the number of chars actually present.
+    let char_count = value.chars().count();
+    let char_idx = form_state.cursor_position.min(char_count);
+    let byte_pos = char_idx_to_byte(value, char_idx);
+    value.insert(byte_pos, c);
+    form_state.cursor_position = char_idx + 1;
 
     if is_textarea && form_state.textarea_open {
         sync_scroll(form_state, field_name);
@@ -28,7 +46,10 @@ pub(super) fn handle_char(
     FormAction::None
 }
 
-/// Delete the character before the cursor.
+/// Delete the character before the cursor (one Unicode scalar value).
+///
+/// `cursor_position` is a char-index. Uses `char_idx_to_byte` to locate the
+/// exact byte offset so that multi-byte characters are removed atomically.
 pub(super) fn handle_backspace(
     form_state: &mut FormState,
     field_name: &str,
@@ -39,9 +60,13 @@ pub(super) fn handle_backspace(
         .entry(field_name.to_string())
         .or_default();
     if form_state.cursor_position > 0 && !value.is_empty() {
-        let pos = form_state.cursor_position.min(value.len());
-        value.remove(pos - 1);
-        form_state.cursor_position = pos - 1;
+        // Clamp char-index, then step back one char.
+        let char_count = value.chars().count();
+        let char_idx = form_state.cursor_position.min(char_count);
+        // The char to delete is at char_idx - 1.
+        let byte_pos = char_idx_to_byte(value, char_idx - 1);
+        value.remove(byte_pos);
+        form_state.cursor_position = char_idx - 1;
     }
 
     if is_textarea && form_state.textarea_open {
@@ -50,7 +75,7 @@ pub(super) fn handle_backspace(
     FormAction::None
 }
 
-/// Move cursor left by one byte.
+/// Move cursor left by one char (Unicode scalar value).
 pub(super) fn handle_left(
     form_state: &mut FormState,
     field_name: &str,
@@ -65,18 +90,18 @@ pub(super) fn handle_left(
     FormAction::None
 }
 
-/// Move cursor right by one byte.
+/// Move cursor right by one char (Unicode scalar value).
 pub(super) fn handle_right(
     form_state: &mut FormState,
     field_name: &str,
     is_textarea: bool,
 ) -> FormAction {
-    let len = form_state
+    let char_count = form_state
         .field_values
         .get(field_name)
-        .map(|v| v.len())
+        .map(|v| v.chars().count())
         .unwrap_or(0);
-    if form_state.cursor_position < len {
+    if form_state.cursor_position < char_count {
         form_state.cursor_position += 1;
     }
     if is_textarea && form_state.textarea_open {

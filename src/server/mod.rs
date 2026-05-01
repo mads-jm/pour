@@ -1,9 +1,9 @@
-pub mod dto;
+pub(crate) mod dto; // request/response types — not part of external Rust API
 pub mod handlers;
 pub mod idempotency;
-pub mod routing;
+pub(crate) mod routing; // build_app/serve_on_listener re-exported below
 pub mod startup;
-pub mod static_assets;
+pub(crate) mod static_assets; // individual handlers re-exported below
 
 // Re-export the public surface tests and callers depend on.
 pub use routing::{build_app, serve_on_listener};

@@ -134,23 +134,28 @@ fn round_trip_content_survives() {
 }
 
 // ---------------------------------------------------------------------------
-// Case 7 — Windows non-atomicity documentation
+// Case 7 — Windows atomicity regression test
 //
-// On Windows, atomic_replace calls remove_file(dst) then rename(src, dst).
-// A process crash between those two calls leaves src (.tmp) on disk and
-// dst (config.toml) absent — the user is left without a config.
+// atomic_replace now delegates entirely to std::fs::rename, which on Windows
+// calls MoveFileExW(src, dst, MOVEFILE_REPLACE_EXISTING). That is a single
+// atomic OS operation — there is no window between remove and rename.
 //
-// This test documents the window by verifying that remove_file succeeds
-// independently of rename, i.e. there truly are two observable OS calls.
-// Un-ignore once Slice 1 replaces this with a truly atomic implementation
-// (MoveFileExW with MOVEFILE_REPLACE_EXISTING on Windows).
+// This test verifies that dst remains continuously present throughout the
+// operation when replacing an existing file. We do this by calling
+// atomic_replace on the main thread while a background thread polls for
+// dst's existence. The background thread must never observe dst absent.
+//
+// Previously ignored because the old implementation had an explicit
+// remove_file/rename split that made the gap real and observable. Now that
+// the gap is gone, this serves as a regression guard.
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 #[test]
-#[ignore = "documents non-atomicity bug on Windows; un-ignore after Slice 1 fix"]
-fn windows_non_atomicity_window_exists() {
-    use std::sync::{Arc, Barrier};
+fn windows_atomic_replace_no_gap() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
+    use std::time::Duration;
 
     let dir = tempdir().unwrap();
     let src = dir.path().join("source.tmp");
@@ -159,30 +164,32 @@ fn windows_non_atomicity_window_exists() {
     fs::write(&src, b"new").unwrap();
     fs::write(&dst, b"old").unwrap();
 
-    // Simulate what atomic_replace does on Windows manually, inserting an
-    // observation point between remove_file and rename to confirm the gap.
-    let barrier = Arc::new(Barrier::new(2));
-    let barrier_clone = Arc::clone(&barrier);
-
     let dst_path = dst.clone();
-    let observer = thread::spawn(move || {
-        // Wait until remove_file has been called.
-        barrier_clone.wait();
-        // At this exact moment, dst should not exist on disk.
-        !dst_path.exists()
+    let gap_observed = Arc::new(AtomicBool::new(false));
+    let gap_observed_clone = Arc::clone(&gap_observed);
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = Arc::clone(&stop);
+
+    // Poller: spin-checks dst existence until told to stop.
+    let poller = thread::spawn(move || {
+        while !stop_clone.load(Ordering::Relaxed) {
+            if !dst_path.exists() {
+                gap_observed_clone.store(true, Ordering::Relaxed);
+            }
+            thread::sleep(Duration::from_micros(10));
+        }
     });
 
-    // Step 1: remove dst
-    fs::remove_file(&dst).unwrap();
-    // Signal observer thread — dst is now absent.
-    barrier.wait();
+    // Give the poller time to start before we call atomic_replace.
+    thread::sleep(Duration::from_millis(5));
 
-    // Step 2: rename src -> dst
-    fs::rename(&src, &dst).unwrap();
+    atomic_replace(&src, &dst).unwrap();
 
-    let gap_was_observed = observer.join().unwrap();
+    stop.store(true, Ordering::Relaxed);
+    poller.join().unwrap();
+
     assert!(
-        gap_was_observed,
-        "expected dst to be absent between remove_file and rename (atomicity window)"
+        !gap_observed.load(Ordering::Relaxed),
+        "dst was absent during atomic_replace — atomicity gap detected"
     );
 }

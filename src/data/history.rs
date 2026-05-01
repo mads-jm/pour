@@ -76,6 +76,8 @@ impl History {
             && let Some(migrated) = migrate_legacy(&legacy_path, &path)
         {
             let summary = compute_summary(&migrated);
+            // SAFETY: summary is a redundant stats cache; a write failure here
+            // does not compromise the migrated history data already on disk.
             let _ = write_summary(&summary_path(&path), &summary);
             return History {
                 entries: migrated,
@@ -135,6 +137,8 @@ impl History {
 
         // Recompute and persist summary
         self.summary = compute_summary(&self.entries);
+        // SAFETY: summary is a redundant stats cache; failing to persist it
+        // does not invalidate the successfully-appended JSONL entry above.
         let _ = write_summary(&summary_path(&self.path), &self.summary);
 
         Ok(id)
@@ -153,6 +157,8 @@ impl History {
         file.flush()?;
 
         // Also update summary
+        // SAFETY: summary is a redundant stats cache; failing to persist it
+        // does not affect the full JSONL rewrite completed above.
         let _ = write_summary(&summary_path(&self.path), &self.summary);
         Ok(())
     }

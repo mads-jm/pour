@@ -169,7 +169,7 @@ async fn main() {
         app.screen = pour::app::Screen::Form;
 
         // Fetch dynamic select options for this module
-        pour::tui::loop_::fetch_dynamic_options(&mut app, module_name, &mut cache).await;
+        pour::tui::fetch_dynamic_options(&mut app, module_name, &mut cache).await;
     }
 
     // Install panic hook that restores terminal before printing panic.
@@ -187,7 +187,7 @@ async fn main() {
     let mut terminal = ratatui::init();
 
     // Main event loop
-    let result = pour::tui::loop_::run_loop(&mut terminal, &mut app, &mut cache).await;
+    let result = pour::tui::run_loop(&mut terminal, &mut app, &mut cache).await;
 
     // Restore terminal
     ratatui::restore();

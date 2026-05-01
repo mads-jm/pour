@@ -222,8 +222,9 @@ pub(in crate::tui::form) fn handle_composite_key(
                 if sub.field_type == SubFieldType::StaticSelect {
                     cycle_composite_select_in(form_state, &field_name, sub, 1);
                 } else {
-                    let len = composite_cell_len(form_state, &field_name);
-                    if form_state.cursor_position < len {
+                    // composite_cell_len already returns chars().count()
+                    let char_count = composite_cell_len(form_state, &field_name);
+                    if form_state.cursor_position < char_count {
                         form_state.cursor_position += 1;
                     }
                 }
@@ -253,9 +254,16 @@ pub(in crate::tui::form) fn handle_composite_key(
                 && form_state.cursor_position > 0
                 && !cell.is_empty()
             {
-                let pos = form_state.cursor_position.min(cell.len());
-                cell.remove(pos - 1);
-                form_state.cursor_position = pos - 1;
+                let char_count = cell.chars().count();
+                let char_idx = form_state.cursor_position.min(char_count);
+                // Delete the char at char_idx - 1.
+                let byte_pos = cell
+                    .char_indices()
+                    .nth(char_idx - 1)
+                    .map(|(b, _)| b)
+                    .unwrap_or(cell.len());
+                cell.remove(byte_pos);
+                form_state.cursor_position = char_idx - 1;
             }
         }
 
@@ -332,7 +340,7 @@ pub(super) fn composite_cell_len(form_state: &FormState, field_name: &str) -> us
         .get(field_name)
         .and_then(|rows| rows.get(form_state.composite_row))
         .and_then(|row| row.get(form_state.composite_col))
-        .map(|v| v.len())
+        .map(|v| v.chars().count())
         .unwrap_or(0)
 }
 
@@ -357,9 +365,15 @@ pub(super) fn insert_composite_char_in(
         && let Some(row) = rows.get_mut(r)
         && let Some(cell) = row.get_mut(col)
     {
-        let pos = form_state.cursor_position.min(cell.len());
-        cell.insert(pos, c);
-        form_state.cursor_position = pos + 1;
+        let char_count = cell.chars().count();
+        let char_idx = form_state.cursor_position.min(char_count);
+        let byte_pos = cell
+            .char_indices()
+            .nth(char_idx)
+            .map(|(b, _)| b)
+            .unwrap_or(cell.len());
+        cell.insert(byte_pos, c);
+        form_state.cursor_position = char_idx + 1;
     }
 }
 

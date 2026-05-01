@@ -19,6 +19,8 @@ pub struct SubmitRequest {
     #[serde(default)]
     pub auto_create_inputs: HashMap<String, HashMap<String, String>>,
     pub captured_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[allow(dead_code)]
+    // contract field — accepted from clients, not currently processed server-side
     pub client_id: Option<String>,
 }
 

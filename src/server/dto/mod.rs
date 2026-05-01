@@ -17,11 +17,13 @@ pub mod response;
 // continue to compile without modification.
 pub use mapping::build_config_response;
 pub use requests::{PresetReorderRequest, PresetUpsertRequest, SubmitRequest};
+// Only re-export items accessed via `dto::Foo` by other server modules.
+// `ConfigResponse`, `FieldDto`, etc. are only used within dto/mapping.rs itself
+// and don't need to be re-exported here.
 pub use response::{
-    AutoCreatedDto, CaptureResponse, ConfigResponse, FieldDto, HistoryEntryDto, HistoryResponse,
-    HistorySummaryDto, ModuleDto, PostCreateCommandDto, PresetDto, PresetUpsertResponse,
-    PresetsListResponse, ShowWhenDto, SubFieldDto, SubmitResponse, SubmitWarningDto, TemplateDto,
-    TemplateFieldDto, VaultDto,
+    AutoCreatedDto, CaptureResponse, HistoryEntryDto, HistoryResponse, HistorySummaryDto,
+    PostCreateCommandDto, PresetDto, PresetUpsertResponse, PresetsListResponse, SubmitResponse,
+    SubmitWarningDto,
 };
 
 // ---------------------------------------------------------------------------

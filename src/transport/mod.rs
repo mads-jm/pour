@@ -1,5 +1,5 @@
 pub mod api;
-pub mod atomic;
+pub(crate) mod atomic; // implementation detail; re-exported via pour::util::atomic_replace
 pub mod fs;
 
 use crate::config::Config;
@@ -76,11 +76,10 @@ impl Transport {
     /// present in the config AND `check_connection()` succeeds.
     pub async fn connect(config: &Config) -> Self {
         if let (Some(port), Some(api_key)) = (config.vault.api_port, config.vault.api_key.as_ref())
+            && let Ok(client) = ApiClient::new(port, api_key.clone())
+            && client.check_connection().await
         {
-            let client = ApiClient::new(port, api_key.clone());
-            if client.check_connection().await {
-                return Transport::Api(client);
-            }
+            return Transport::Api(client);
         }
 
         let base_path = std::path::PathBuf::from(&config.vault.base_path);

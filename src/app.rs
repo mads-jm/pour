@@ -8,6 +8,17 @@ use crate::data::presets::Presets;
 use crate::transport::{Transport, TransportMode, VaultEntry};
 use crate::visibility::visible_field_indices;
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+/// Default duration for status-bar toast messages.
+pub const STATUS_TOAST_DURATION: Duration = Duration::from_secs(5);
+
+/// An ephemeral warning displayed at the bottom of all TUI screens.
+#[derive(Debug)]
+pub struct StatusMessage {
+    pub text: String,
+    pub expires_at: Instant,
+}
 
 /// Which screen the TUI is currently displaying.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +120,9 @@ pub struct FormState {
     /// Warning messages produced by `validate_axes` at form open.
     /// Non-empty → preset_axes are invalid; legacy cycler is active, picker is disabled.
     pub axis_warnings: Vec<String>,
-    /// Cursor position within the active text/number input.
+    /// Cursor position within the active text/number input, measured as a
+    /// **char-index** (number of Unicode scalar values before the cursor).
+    /// Always snaps to a character boundary; never a raw byte offset.
     pub cursor_position: usize,
     /// Whether the dropdown for the current select field is open.
     pub dropdown_open: bool,
@@ -424,6 +437,9 @@ pub struct App {
     /// printed while TUI raw mode is active. Drained and written to stderr by
     /// main after `ratatui::restore()`.
     pub deferred_stderr: Vec<String>,
+    /// Ephemeral warning toast displayed at the bottom of every TUI screen.
+    /// Cleared automatically when `expires_at` has passed.
+    pub status_message: Option<StatusMessage>,
 }
 
 impl App {
@@ -456,6 +472,24 @@ impl App {
             presets,
             field_presets,
             deferred_stderr: Vec::new(),
+            status_message: None,
+        }
+    }
+
+    /// Set an ephemeral warning toast that auto-expires after [`STATUS_TOAST_DURATION`].
+    pub fn set_status_warning(&mut self, msg: impl Into<String>) {
+        self.status_message = Some(StatusMessage {
+            text: msg.into(),
+            expires_at: Instant::now() + STATUS_TOAST_DURATION,
+        });
+    }
+
+    /// Clear `status_message` if it has expired. Called each event-loop tick.
+    pub fn tick_status(&mut self) {
+        if let Some(ref msg) = self.status_message
+            && Instant::now() >= msg.expires_at
+        {
+            self.status_message = None;
         }
     }
 
@@ -807,20 +841,20 @@ impl App {
 
     /// Save a per-field preset (composite_array rows) for the active module.
     ///
-    /// Upserts by name into `field_presets`, persists to disk, and updates
-    /// `last_applied_field_preset` so the preset name appears as the
-    /// composite-overlay subtitle. Save errors are silently swallowed because
-    /// the TUI is in raw mode.
+    /// Upserts by name into `field_presets` (in-memory update always happens),
+    /// then attempts to persist to disk. Returns the disk error if it fails so
+    /// the caller can surface it via the status toast; in-memory state is
+    /// already updated regardless of the disk result.
     pub fn save_field_preset(
         &mut self,
         field_name: &str,
         name: &str,
         description: Option<String>,
         rows: Vec<Vec<String>>,
-    ) {
+    ) -> anyhow::Result<()> {
         let module_key = match self.module_keys.get(self.selected_module) {
             Some(k) => k.clone(),
-            None => return,
+            None => return Ok(()),
         };
         let key = crate::data::field_presets::preset_key(&module_key, field_name);
 
@@ -829,14 +863,18 @@ impl App {
             description,
             rows,
         };
+        // In-memory update always succeeds.
         self.field_presets.set(&key, entry);
-        let _ = self.field_presets.save();
 
+        // Update form state subtitle unconditionally.
         if let Some(ref mut fs) = self.form_state {
             fs.last_applied_field_preset
                 .insert(field_name.to_string(), name.to_string());
             fs.composite_status = Some(format!("saved preset \u{201c}{name}\u{201d}"));
         }
+
+        // Disk persist — errors returned to caller for toast display.
+        self.field_presets.save()
     }
 
     /// Apply a saved per-field preset to the named composite_array field.
@@ -890,15 +928,21 @@ impl App {
 
     /// Delete a saved per-field preset by name. If the picker is open it is
     /// re-populated; if the deleted preset was the last-applied one, that
-    /// marker is cleared so the subtitle stops referencing it.
-    pub fn delete_field_preset(&mut self, field_name: &str, preset_name: &str) {
+    /// marker is cleared so the subtitle stops referencing it. In-memory state
+    /// is always updated; returns a disk error if persistence fails so the
+    /// caller can surface it via the status toast.
+    pub fn delete_field_preset(
+        &mut self,
+        field_name: &str,
+        preset_name: &str,
+    ) -> anyhow::Result<()> {
         let module_key = match self.module_keys.get(self.selected_module) {
             Some(k) => k.clone(),
-            None => return,
+            None => return Ok(()),
         };
         let key = crate::data::field_presets::preset_key(&module_key, field_name);
+        // In-memory update always happens.
         self.field_presets.delete(&key, preset_name);
-        let _ = self.field_presets.save();
 
         let entries = self.field_presets.get(&key);
         if let Some(ref mut fs) = self.form_state {
@@ -921,6 +965,9 @@ impl App {
                 }
             }
         }
+
+        // Disk persist — errors returned to caller for toast display.
+        self.field_presets.save()
     }
 
     /// Validate form state against the module's field requirements.

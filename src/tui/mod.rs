@@ -1,15 +1,20 @@
 pub mod configure;
 pub mod dashboard;
 pub mod form;
-pub mod loop_;
+pub(crate) mod loop_; // main TUI event loop — re-export the two binary entry points below
 pub mod summary;
+
+// Binary entry points from loop_ — exposed so main.rs can call them without
+// importing the whole loop_ module into the public API.
+pub use loop_::{fetch_dynamic_options, run_loop};
 
 use crate::app::{App, Screen};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
-use ratatui::text::Span;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use std::time::Instant;
 
 /// Render overflow arrow hints on top of a list area.
 ///
@@ -20,7 +25,7 @@ use ratatui::widgets::Paragraph;
 /// - `total_rows`: the total number of visual rows in the list (items count,
 ///   including any extra preview rows).
 /// - `scroll_offset`: the first visible row index (0 if not scrollable).
-pub fn render_overflow_hints(
+pub(crate) fn render_overflow_hints(
     frame: &mut Frame,
     area: Rect,
     total_rows: usize,
@@ -135,13 +140,62 @@ pub enum Action {
     Serve,
 }
 
+/// Render an ephemeral status-bar toast at the bottom of the terminal when
+/// `app.status_message` is set and not yet expired.
+///
+/// This is called by the top-level `render` function so every screen gets it
+/// for free without any per-screen changes.
+fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
+    let Some(ref msg) = app.status_message else {
+        return;
+    };
+    if Instant::now() >= msg.expires_at {
+        return;
+    }
+    let style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let line = Line::from(vec![
+        Span::styled("⚠ ", style),
+        Span::styled(msg.text.clone(), style),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
+}
+
 /// Dispatch rendering to the correct view based on the current screen.
-pub fn render(app: &App, frame: &mut Frame) {
+///
+/// When `app.status_message` is active and unexpired, the toast is painted on
+/// top of the bottom row of whatever the screen just rendered. Each existing
+/// screen render uses `frame.area()` as its layout root, so the screen fills
+/// the full terminal; the toast then overwrites the last one row — which every
+/// screen uses as its footer anyway.
+pub(crate) fn render(app: &App, frame: &mut Frame) {
+    // Render the active screen into the full terminal area.
     match app.screen {
         Screen::Dashboard => dashboard::render(app, frame),
         Screen::Form => form::render(app, frame),
         Screen::Summary => summary::render(app, frame),
         Screen::Configure => configure::render(app, frame),
+    }
+
+    // Overlay the toast on top of the bottom row when active.
+    let has_toast = app
+        .status_message
+        .as_ref()
+        .map(|m| Instant::now() < m.expires_at)
+        .unwrap_or(false);
+
+    if has_toast {
+        let full_area = frame.area();
+        if full_area.height > 0 {
+            let toast_area = Rect {
+                x: full_area.x,
+                y: full_area.y + full_area.height - 1,
+                width: full_area.width,
+                height: 1,
+            };
+            render_status_bar(app, frame, toast_area);
+        }
     }
 }
 

@@ -19,6 +19,11 @@ impl FsWriter {
     }
 
     /// Return a reference to the vault base path.
+    ///
+    /// Test-only accessor — no production caller. Kept `pub` (rather than
+    /// gated behind a `test-utils` feature) for v1.0.0 to avoid a Cargo
+    /// surface change. Revisit at v1.1 if the surface curation pass tightens
+    /// further.
     pub fn base_path(&self) -> &PathBuf {
         &self.base_path
     }
@@ -36,12 +41,53 @@ impl FsWriter {
         self.base_path.join(normalized)
     }
 
+    /// Resolve a vault-relative path with traversal-escape validation.
+    ///
+    /// Rejects any path that could escape the vault root:
+    /// - Any path component equal to `..`
+    /// - Paths that start with `/` or `\` (Unix/Windows absolute)
+    /// - Paths that start with a Windows drive letter (`C:`, `D:`, …)
+    /// - Paths that start with `~` (home-dir expansion)
+    ///
+    /// Returns the resolved `PathBuf` on success, or an `anyhow::Error`
+    /// describing why the path was rejected.
+    fn resolve_path_validated(&self, relative_path: &str) -> anyhow::Result<PathBuf> {
+        // Reject home-dir shortcuts.
+        if relative_path.starts_with('~') {
+            anyhow::bail!("FS: path must not start with '~': {relative_path:?}");
+        }
+
+        // Reject Unix/Windows absolute paths.
+        if relative_path.starts_with('/') || relative_path.starts_with('\\') {
+            anyhow::bail!("FS: path must be relative, not absolute: {relative_path:?}");
+        }
+
+        // Reject Windows drive-letter paths (e.g. `C:`, `C:\`, `C:/`).
+        // A drive letter is a single ASCII letter followed by `:`.
+        if relative_path.len() >= 2
+            && relative_path.as_bytes()[0].is_ascii_alphabetic()
+            && relative_path.as_bytes()[1] == b':'
+        {
+            anyhow::bail!("FS: path must be relative, not absolute: {relative_path:?}");
+        }
+
+        // Normalise separators then check each component for `..`.
+        let normalized = relative_path.replace('\\', "/");
+        for component in normalized.split('/') {
+            if component == ".." {
+                anyhow::bail!("FS: path must not contain '..': {relative_path:?}");
+            }
+        }
+
+        Ok(self.base_path.join(normalized))
+    }
+
     /// Create a new file at `relative_path` with the given content.
     ///
     /// Parent directories are created automatically.
     /// Returns an error if the file already exists.
     pub fn create_file(&self, relative_path: &str, content: &str) -> Result<()> {
-        let full_path = self.resolve_path(relative_path);
+        let full_path = self.resolve_path_validated(relative_path)?;
 
         if full_path.exists() {
             anyhow::bail!("FS: file already exists: {}", full_path.display());
@@ -65,7 +111,7 @@ impl FsWriter {
     pub fn append_to_file(&self, relative_path: &str, content: &str) -> Result<()> {
         use std::io::Write;
 
-        let full_path = self.resolve_path(relative_path);
+        let full_path = self.resolve_path_validated(relative_path)?;
 
         if !full_path.exists() {
             anyhow::bail!("FS: file not found: {}", full_path.display());
@@ -109,7 +155,7 @@ impl FsWriter {
         content: &str,
         shallow: bool,
     ) -> Result<()> {
-        let full_path = self.resolve_path(relative_path);
+        let full_path = self.resolve_path_validated(relative_path)?;
 
         if !full_path.exists() {
             anyhow::bail!("FS: file not found: {}", full_path.display());
@@ -333,7 +379,9 @@ impl FsWriter {
         &self,
         relative_path: &str,
     ) -> std::result::Result<String, TransportReadError> {
-        let full_path = self.resolve_path(relative_path);
+        let full_path = self
+            .resolve_path_validated(relative_path)
+            .map_err(|e| TransportReadError::Other(e.to_string()))?;
         std::fs::read_to_string(&full_path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 TransportReadError::NotFound

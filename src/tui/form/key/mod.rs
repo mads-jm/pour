@@ -63,6 +63,9 @@ pub(super) fn cycle_select_filtered(
 }
 
 /// Sync textarea horizontal scroll so the cursor stays visible.
+///
+/// `cursor_position` is a char-index. Line lengths are measured in chars to
+/// stay consistent.
 pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u16) {
     if avail_width == 0 {
         return;
@@ -70,14 +73,16 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
     let avail = avail_width as usize;
     const MARGIN: usize = 2;
 
+    // Walk lines in chars to find the cursor column on its line.
     let mut remaining = form_state.cursor_position;
     let mut cursor_col: usize = 0;
     for line in value.split('\n') {
-        if remaining <= line.len() {
+        let line_char_len = line.chars().count();
+        if remaining <= line_char_len {
             cursor_col = remaining;
             break;
         }
-        remaining -= line.len() + 1;
+        remaining -= line_char_len + 1;
     }
 
     let scroll = form_state.textarea_scroll_offset;
@@ -95,33 +100,47 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
     }
 }
 
-/// Move a flat cursor position up or down by one line within multiline text.
+/// Move a flat char-index cursor up or down by one line within multiline text.
+///
+/// `cursor` is a **char-index** (number of Unicode scalar values from the start
+/// of the string). All line-length arithmetic uses `chars().count()` so that
+/// multi-byte characters never cause a mismatch between the cursor and line
+/// boundaries. Returns the new char-index after the move.
 pub(super) fn move_cursor_vertically(text: &str, cursor: usize, delta: i32) -> usize {
-    let mut line_start = 0;
+    // Walk lines counting chars to find which line the cursor is on and its
+    // column within that line.
+    let mut line_start_chars: usize = 0;
     let mut current_line = 0;
     let mut col = cursor;
     for (i, line) in text.split('\n').enumerate() {
-        if cursor <= line_start + line.len() {
+        let line_char_len = line.chars().count();
+        if cursor <= line_start_chars + line_char_len {
             current_line = i;
-            col = cursor - line_start;
+            col = cursor - line_start_chars;
             break;
         }
-        line_start += line.len() + 1;
+        // +1 for the '\n' which counts as one char.
+        line_start_chars += line_char_len + 1;
     }
 
     let target_line = (current_line as i32 + delta).max(0) as usize;
 
-    let mut pos = 0;
+    let mut pos: usize = 0;
     for (i, line) in text.split('\n').enumerate() {
+        let line_char_len = line.chars().count();
         if i == target_line {
-            return pos + col.min(line.len());
+            return pos + col.min(line_char_len);
         }
-        pos += line.len() + 1;
+        pos += line_char_len + 1;
     }
-    text.len()
+    // Cursor past all lines → end of text (in chars).
+    text.chars().count()
 }
 
-/// Get the length of the current field value for cursor positioning.
+/// Get the char count of the current field value for cursor positioning.
+///
+/// Returns the number of Unicode scalar values (chars) in the current field's
+/// value. This matches `cursor_position` semantics (char-index).
 ///
 /// Takes `form_state` and `module_fields` as separate borrows, avoiding
 /// the need to hold a borrow on all of `app`.
@@ -131,7 +150,7 @@ pub(super) fn current_value_len(
 ) -> usize {
     super::active_field_config_fields(form_state, module_fields)
         .and_then(|f| form_state.field_values.get(&f.name))
-        .map(|v| v.len())
+        .map(|v| v.chars().count())
         .unwrap_or(0)
 }
 

@@ -4,6 +4,66 @@ use crate::visibility::visible_field_indices;
 use chrono::{DateTime, Local};
 use std::collections::{HashMap, HashSet};
 
+/// Escape `%` characters in a template that are NOT the start of a valid
+/// chrono strftime specifier by doubling them (`%` → `%%`).
+///
+/// This allows templates like `"100% Coffee/{{name}}.md"` to pass through
+/// `now.format()` without chrono misinterpreting `% ` as a format token,
+/// while intentional specifiers like `%Y`, `%m`, `%d` continue to expand.
+///
+/// Chrono interprets `%%` as a literal `%`, so after `now.format()` runs, the
+/// doubled `%%` becomes `%` in the output — preserving the user's intent.
+///
+/// The set of recognised single-character specifiers is drawn from the chrono
+/// `strftime` reference.  Multi-character specifiers that begin with `%:`,
+/// `%::`, `%:::`, `%#`, `%.`, `%3`, `%6`, `%9` are also handled.
+fn escape_nonspecifier_percent(template: &str) -> String {
+    // Single characters that follow `%` and form a valid chrono specifier.
+    const VALID_SPEC_CHARS: &[char] = &[
+        'Y', 'C', 'y', 'm', 'b', 'B', 'h', 'd', 'e', 'a', 'A', 'w', 'u', 'U', 'W', 'G', 'g', 'V',
+        'D', 'x', 'F', 'v', 'H', 'k', 'I', 'l', 'P', 'p', 'M', 'S', 'f', 'R', 'T', 'X', 'r', 'Z',
+        'z', 'c', '+', 's', 't', 'n', '%', // %% → literal %
+    ];
+
+    let chars: Vec<char> = template.chars().collect();
+    let mut out = String::with_capacity(template.len() + 4);
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] != '%' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+
+        // We have a `%`. Look ahead to decide if it starts a valid specifier.
+        let next = chars.get(i + 1).copied();
+
+        let is_valid = match next {
+            None => false, // trailing `%` — not a specifier
+            Some(':') => {
+                // %:z, %::z, %:::z — all valid
+                true
+            }
+            Some('#') => true,                         // %#z
+            Some('.') => true,                         // %.f, %.3f, %.6f, %.9f
+            Some('3') | Some('6') | Some('9') => true, // %3f, %6f, %9f
+            Some(c) => VALID_SPEC_CHARS.contains(&c),
+        };
+
+        if is_valid {
+            out.push('%');
+        } else {
+            // Not a valid specifier — escape by doubling.
+            out.push('%');
+            out.push('%');
+        }
+        i += 1;
+    }
+
+    out
+}
+
 /// What to do with a `{{key}}` placeholder whose key is not present in the
 /// variable map.
 enum OnUnknown {
@@ -72,7 +132,10 @@ pub fn render_path(
 ) -> String {
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
-    let strftime_expanded = now.format(template).to_string();
+    // Escape `%` that is NOT part of a valid specifier (e.g. "100% Coffee") so
+    // those literal percent signs survive the chrono pass unchanged.
+    let escaped_template = escape_nonspecifier_percent(template);
+    let strftime_expanded = now.format(&escaped_template).to_string();
 
     // Step 2: Replace special tokens using already-formatted strings.
     // These are resolved after strftime so their output (e.g. "2026-04-01") is
@@ -134,7 +197,10 @@ pub fn render_append_template(
 
     // Step 1: Expand strftime specifiers on the raw template FIRST so that
     // user-supplied field values containing `%` are never passed through chrono.
-    let strftime_expanded = now.format(template).to_string();
+    // Escape `%` that is NOT part of a valid specifier (e.g. "100% Coffee") so
+    // those literal percent signs survive the chrono pass unchanged.
+    let escaped_template = escape_nonspecifier_percent(template);
+    let strftime_expanded = now.format(&escaped_template).to_string();
 
     // Step 2: Replace special tokens — date always uses %Y-%m-%d in append mode.
     let mut special_vars: HashMap<String, String> = HashMap::new();

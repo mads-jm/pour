@@ -39,22 +39,29 @@ pub(super) fn handle_enter_textarea(
         .unwrap_or(false);
 
     if textarea_open {
-        // Insert newline at cursor
+        // Insert newline at cursor.
         let form_state = app.form_state.as_mut().unwrap();
         let value = form_state
             .field_values
             .entry(field_name.to_string())
             .or_default();
-        let pos = form_state.cursor_position.min(value.len());
-        value.insert(pos, '\n');
-        form_state.cursor_position = pos + 1;
+        // Clamp char-index then convert to byte offset for insertion.
+        let char_count = value.chars().count();
+        let char_idx = form_state.cursor_position.min(char_count);
+        let byte_pos = value
+            .char_indices()
+            .nth(char_idx)
+            .map(|(b, _)| b)
+            .unwrap_or(value.len());
+        value.insert(byte_pos, '\n');
+        form_state.cursor_position = char_idx + 1;
         form_state.textarea_scroll_offset = 0;
     } else {
-        // Open the editor and set cursor to end
+        // Open the editor and set cursor to end (in chars).
         let val_len = app
             .form_state
             .as_ref()
-            .and_then(|fs| fs.field_values.get(field_name).map(|v| v.len()))
+            .and_then(|fs| fs.field_values.get(field_name).map(|v| v.chars().count()))
             .unwrap_or(0);
         let form_state = app.form_state.as_mut().unwrap();
         form_state.textarea_open = true;

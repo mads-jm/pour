@@ -25,6 +25,9 @@ pub async fn run_loop(
     cache: &mut Cache,
 ) -> io::Result<()> {
     'main: loop {
+        // Expire any stale status toast before drawing.
+        app.tick_status();
+
         // Draw
         terminal.draw(|frame| tui::render(app, frame))?;
 
@@ -354,7 +357,9 @@ pub async fn run_loop(
                     description,
                     rows,
                 } => {
-                    app.save_field_preset(&field_name, &name, description, rows);
+                    if let Err(e) = app.save_field_preset(&field_name, &name, description, rows) {
+                        app.set_status_warning(format!("field_presets.save failed: {e}"));
+                    }
                 }
 
                 tui::Action::ApplyFieldPreset {
@@ -368,7 +373,9 @@ pub async fn run_loop(
                     field_name,
                     preset_name,
                 } => {
-                    app.delete_field_preset(&field_name, &preset_name);
+                    if let Err(e) = app.delete_field_preset(&field_name, &preset_name) {
+                        app.set_status_warning(format!("field_presets.save failed: {e}"));
+                    }
                 }
 
                 tui::Action::None => {}
@@ -398,8 +405,7 @@ fn handle_save_preset(
     };
     app.presets.set(&module_key, entry);
     if let Err(e) = app.presets.save() {
-        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
-        let _ = e;
+        app.set_status_warning(format!("presets.save failed: {e}"));
     }
 
     // Refresh preset_names + descriptions and select the newly saved preset
@@ -425,8 +431,7 @@ fn handle_delete_preset(app: &mut App, name: &str) {
 
     app.presets.delete(&module_key, name);
     if let Err(e) = app.presets.save() {
-        // Silently swallow — we're in raw terminal mode, eprintln would corrupt display.
-        let _ = e;
+        app.set_status_warning(format!("presets.save failed: {e}"));
     }
 
     let saved = app.presets.get(&module_key);
@@ -448,7 +453,7 @@ fn handle_reorder_preset(app: &mut App, name: &str, direction: i32) {
 
     app.presets.reorder(&module_key, name, direction);
     if let Err(e) = app.presets.save() {
-        let _ = e;
+        app.set_status_warning(format!("presets.save failed: {e}"));
     }
 
     // Refresh preset_names + descriptions and find the moved preset's new position
@@ -643,7 +648,9 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     app.screen = Screen::Summary;
 
     // Persist cache after write (best-effort)
-    let _ = cache.save();
+    if let Err(e) = cache.save() {
+        app.set_status_warning(format!("cache.save failed: {e}"));
+    }
 }
 
 /// Handle a CreateFromTemplate action: create a templated note from the sub-form,
@@ -790,7 +797,9 @@ async fn handle_create_from_template(
             }
 
             // Persist cache (best-effort)
-            let _ = cache.save();
+            if let Err(e) = cache.save() {
+                app.set_status_warning(format!("cache.save failed: {e}"));
+            }
         }
         Err(e) => {
             // Sub-form stays open so the user can retry or cancel

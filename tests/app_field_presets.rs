@@ -148,7 +148,7 @@ fn save_field_preset_persists_rows_and_sets_subtitle() {
     let rows = rows_3(&[("Bloom", "60", "30"), ("First Pour", "120", "30")]);
     open_composite_with_rows(&mut app, rows.clone());
 
-    app.save_field_preset("recipe", "Hoffmann 4:6", None, rows.clone());
+    let _ = app.save_field_preset("recipe", "Hoffmann 4:6", None, rows.clone());
 
     // Stored under the "coffee.recipe" key.
     let entries = app.field_presets.get("coffee.recipe");
@@ -537,7 +537,7 @@ fn delete_field_preset_clears_subtitle_when_active_preset_removed() {
         .last_applied_field_preset
         .insert("recipe".to_string(), "ToDelete".to_string());
 
-    app.delete_field_preset("recipe", "ToDelete");
+    let _ = app.delete_field_preset("recipe", "ToDelete");
 
     let fs = app.form_state.as_ref().unwrap();
     assert!(
@@ -562,7 +562,7 @@ fn delete_field_preset_repopulates_open_picker() {
     open_composite_with_rows(&mut app, Vec::new());
     handle_key(&mut app, key(KeyCode::Char('l')));
 
-    app.delete_field_preset("recipe", "A");
+    let _ = app.delete_field_preset("recipe", "A");
 
     let fs = app.form_state.as_ref().unwrap();
     let picker = fs.field_preset_picker.as_ref().expect("picker still open");
@@ -584,7 +584,7 @@ fn delete_last_field_preset_closes_picker() {
     open_composite_with_rows(&mut app, Vec::new());
     handle_key(&mut app, key(KeyCode::Char('l')));
 
-    app.delete_field_preset("recipe", "OnlyOne");
+    let _ = app.delete_field_preset("recipe", "OnlyOne");
 
     let fs = app.form_state.as_ref().unwrap();
     assert!(fs.field_preset_picker.is_none());

@@ -81,7 +81,7 @@ pub(super) fn auto_save_field_settings(app: &mut App, field_idx: usize) {
 /// Build `FieldUpdates` from the current configure settings.
 ///
 /// Thin wrapper kept for backward compatibility; delegates to the canonical
-/// implementation in [`crate::config_updates`].
+/// implementation in `crate::config_updates`.
 pub fn build_field_updates_from_settings(
     settings: &[crate::app::ConfigSetting],
 ) -> crate::config::FieldUpdates {

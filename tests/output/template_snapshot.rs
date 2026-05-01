@@ -555,3 +555,64 @@ show_when = { field = "drink_type", equals = "coffee" }
     // notes is hidden because drink_type != "coffee", so its placeholder becomes "".
     assert_eq!(result, "tea | ");
 }
+
+// ── Literal `%` hardening tests ──────────────────────────────────────────────
+
+/// 11a. render_path: literal `%` in a directory component is preserved.
+///
+/// Before the fix, "100% Coffee" would be passed raw to chrono, which
+/// interprets "% " (percent-space) as an unknown specifier and may mangle it.
+/// After the fix, the lone `%` is escaped to `%%` before chrono sees it, so
+/// chrono emits a literal `%` in the output.
+#[test]
+fn render_path_preserves_literal_percent() {
+    let mut fields = HashMap::new();
+    fields.insert("name".to_string(), "Ethiopia".to_string());
+    let result = render_path("100% Coffee/{{name}}.md", &fields, None, fixed_now());
+    assert_eq!(result, "100% Coffee/Ethiopia.md");
+}
+
+/// 11b. render_append: literal `%` in the template is preserved.
+#[test]
+fn render_append_preserves_literal_percent() {
+    let mut fields = HashMap::new();
+    fields.insert("body".to_string(), "Done".to_string());
+    let m = dummy_module();
+    let result = render_append_template(
+        "Progress: 100% — {{body}}",
+        &fields,
+        &m,
+        &no_composites(),
+        &no_overrides(),
+        &no_overrides(),
+        fixed_now(),
+    );
+    assert_eq!(result, "Progress: 100% — Done");
+}
+
+/// 11c. render_path: `%%Y` in a template uses chrono's own escape semantics —
+/// `%%` is the chrono escape for a literal `%`, so `%%Y` → `%Y` (not the
+/// year). Our escaper passes `%%Y` through unchanged because `%` followed by
+/// `%` is a valid chrono sequence.
+#[test]
+fn render_path_preserves_double_percent_chrono_escape() {
+    let result = render_path("Notes/%%Y-file.md", &no_fields(), None, fixed_now());
+    // chrono: %% → %, then Y is a literal character → "%Y"
+    assert_eq!(result, "Notes/%Y-file.md");
+}
+
+/// 11d. render_path: literal `%` at end of template (trailing, no specifier
+/// char after it) is preserved.
+#[test]
+fn render_path_preserves_trailing_percent() {
+    let result = render_path("Notes/score%.md", &no_fields(), None, fixed_now());
+    assert_eq!(result, "Notes/score%.md");
+}
+
+/// 11e. render_path: mix of valid strftime token and literal `%` in the same
+/// template. `%Y` expands to the year; `100%` has the `%` preserved.
+#[test]
+fn render_path_mixed_strftime_and_literal_percent() {
+    let result = render_path("Log/%Y/100% complete.md", &no_fields(), None, fixed_now());
+    assert_eq!(result, "Log/2025/100% complete.md");
+}
