@@ -233,7 +233,7 @@
               },
               "pinned": true,
               "icon": "terminal",
-              "title": "Terminal: C:\\Windows\\System32\\conhost.exe"
+              "title": "Terminal: cmd"
             }
           }
         ]
@@ -258,8 +258,15 @@
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "6c2879caa85fe5ed",
+  "active": "9ecf195dd71bc4ea",
   "lastOpenFiles": [
+    "04 architecture/System-Architecture-Overview.md",
+    "02 references/field-types.md",
+    "08 specs/pour-design-spec.md",
+    "08 specs/pour-project-standards.md",
+    "00 index/BACKLOG.kanban.md",
+    "08 specs/pour-rust-learning-refactor-audit.md",
+    "index.md",
     "00 index/ADR.base",
     "00 index/PRS.base",
     "00 index/CONCEPTS.base",
@@ -282,19 +289,12 @@
     "08 specs/pour-fit-module-brief.md",
     "01 concepts/The-3-Tier-Data-Fallback.md",
     "07 stories/STORIES.md",
-    "07 stories/history_heatmap_dashboard.md",
-    "README.md",
-    "05 notes/clippy-ci-parity.md",
-    "02 references/keyboard-shortcuts.md",
-    "03 guides/Guide-Config-to-Vault.md",
-    "06 reports/v1.0.0-pre-release-assessment.md",
     "00 index/REFERENCES.base",
     "00 index/SPECS.base",
     "00 index/NOTES.base",
     "00 index/GUIDES.base",
     "03 guides/GUIDES.md.tmp.34792.1777483083022",
     "09 milestones/v0.2.0-Foundation.md.tmp.34792.1777483064960",
-    "09 milestones/v1.0.0-Release.md.tmp.34792.1777483049628",
-    "09 milestones/v1.0.0-Release.md.tmp.34792.1777483041238"
+    "09 milestones/v1.0.0-Release.md.tmp.34792.1777483049628"
   ]
 }

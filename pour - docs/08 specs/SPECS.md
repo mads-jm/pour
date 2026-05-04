@@ -19,6 +19,7 @@ Feature and component specifications.
 - [[pour-pwa-contract-typing]] — TypeScript contract types for the PWA companion
 - [[pour-pwa-roadmap]] — PWA companion roadmap and phase plan
 - [[pour-fit-module-brief]]
+- [[pour-project-standards]] — Project standards: error discipline, pub visibility, file-size budget, write paths, test conventions, workflow, release strategy
 
 ## Index
 

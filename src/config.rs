@@ -399,7 +399,7 @@ fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
 
 impl Config {
     /// The config schema version this build of Pour understands.
-    pub const CURRENT_CONFIG_VERSION: &'static str = "0.3.0";
+    pub const CURRENT_CONFIG_VERSION: &'static str = "1.0.0";
 
     /// Atomically write `content` to `path`.
     ///
