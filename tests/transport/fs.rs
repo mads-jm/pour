@@ -266,3 +266,96 @@ fn list_directory_returns_empty_vec_for_empty_dir() {
 
     assert!(names.is_empty());
 }
+
+// ── path traversal rejection ─────────────────────────────────────────────────
+
+#[test]
+fn create_file_rejects_dotdot() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let result = writer.create_file("../escape.md", "evil");
+    assert!(result.is_err(), "create_file should reject '..'");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains(".."), "error should mention '..', got: {msg}");
+}
+
+#[test]
+fn append_to_file_rejects_absolute_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    // Use platform-appropriate absolute path.
+    #[cfg(windows)]
+    let abs = "C:\\Windows\\system32\\evil.md";
+    #[cfg(not(windows))]
+    let abs = "/etc/passwd";
+
+    let result = writer.append_to_file(abs, "evil");
+    assert!(
+        result.is_err(),
+        "append_to_file should reject absolute paths"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("absolute") || msg.contains("..") || msg.contains("relative"),
+        "error should describe the rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn append_under_heading_rejects_dotdot_in_middle() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let result = writer.append_under_heading("notes/../../escape.md", "## Log", "evil", false);
+    assert!(
+        result.is_err(),
+        "append_under_heading should reject '..' in middle of path"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains(".."), "error should mention '..', got: {msg}");
+}
+
+#[test]
+fn read_file_rejects_dotdot() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let result = writer.read_file("../secret.md");
+    assert!(result.is_err(), "read_file should reject '..'");
+    // read_file returns TransportReadError — check the Display output.
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("..") || msg.contains("read error"),
+        "error should indicate traversal rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn create_file_rejects_tilde_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let result = writer.create_file("~/.ssh/authorized_keys", "evil");
+    assert!(result.is_err(), "create_file should reject '~' paths");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains('~') || msg.contains("relative"),
+        "error should describe '~' rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn create_file_accepts_safe_relative_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let result = writer.create_file("notes/coffee.md", "# Coffee\n");
+    assert!(
+        result.is_ok(),
+        "create_file should accept safe relative paths, got: {:?}",
+        result.unwrap_err()
+    );
+    assert!(dir.path().join("notes/coffee.md").exists());
+}

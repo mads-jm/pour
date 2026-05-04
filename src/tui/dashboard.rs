@@ -112,12 +112,14 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
     frame.render_widget(clock_widget, clock_area);
 
-    // Transport mode — right-aligned on the header row
-    let mode_text = format!("[{mode}] ");
-    let mode_widget = Paragraph::new(Line::from(Span::styled(
-        mode_text,
-        Style::default().fg(mode_color),
-    )))
+    // Version + transport mode — right-aligned on the header row
+    let mode_widget = Paragraph::new(Line::from(vec![
+        Span::styled(
+            format!("v{}  ", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(format!("[{mode}] "), Style::default().fg(mode_color)),
+    ]))
     .alignment(Alignment::Right);
     let mode_area = Rect {
         x: chunks[0].x,

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::data::json_store::JsonStore;
+
 /// A single cached entry for a dynamic select source.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
@@ -38,11 +40,7 @@ impl Cache {
     ///
     /// Returns an empty cache if the file is missing or corrupt.
     pub fn load_from(path: PathBuf) -> Self {
-        let data = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|contents| serde_json::from_str::<CacheData>(&contents).ok())
-            .unwrap_or_default();
-
+        let data = JsonStore::<CacheData>::new(path.clone()).load();
         Cache { data, path }
     }
 
@@ -69,13 +67,7 @@ impl Cache {
     /// Uses atomic write (temp file + rename) to avoid corruption if the
     /// process is interrupted mid-write.
     pub fn save(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(&self.data)?;
-        let tmp_path = self.path.with_extension("tmp");
-        std::fs::write(&tmp_path, json)?;
-        crate::util::atomic_replace(&tmp_path, &self.path)?;
+        JsonStore::<CacheData>::new(self.path.clone()).save(&self.data)?;
         Ok(())
     }
 }

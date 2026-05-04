@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Wednesday, April 29th 2026, 5:31:41 pm
+date modified: Monday, May 4th 2026, 11:17:48 pm
 ---
 
 # Field Types Reference
@@ -399,9 +399,9 @@ __Apply behaviour__: Always replaces all existing rows silently — no confirmat
 
 __Schema drift__: If `sub_fields` changed since the preset was saved (column added or removed), each saved row is right-padded with empty strings or truncated to match the current sub-field count on apply. The status line reads "preset shape adjusted to current schema" so the change is visible; the on-disk preset is not rewritten — re-save with `s` to clean it up.
 
-### PWA Overlay Rendering (Phase 2)
+### PWA Overlay Rendering
 
-The Phase 2 PWA sub-form overlay renders template fields using the same field-type contract defined in this document. __Overlay rendering does not change any field-type semantics__: `text` and `number` fields render as standard inputs; `static_select` fields render as inline-cycling controls (◂ ▸ chevrons) instead of a `<select>` element (PWA-only, no `<select>` in overlays per UX convention). The `dynamic_select` and `composite_array` types are not permitted as template fields (§7.4 already restricts templates to `text | number | static_select`). Output targets, required semantics, and default-value behavior are identical to the TUI sub-form overlay.
+The PWA sub-form overlay (shipped in Phase 2, closed 2026-04-27) renders template fields using the same field-type contract defined in this document. __Overlay rendering does not change any field-type semantics__: `text` and `number` fields render as standard inputs; `static_select` fields render as inline-cycling controls (◂ ▸ chevrons) instead of a `<select>` element (PWA-only, no `<select>` in overlays per UX convention). The `dynamic_select` and `composite_array` types are not permitted as template fields (§7.4 already restricts templates to `text | number | static_select`). Output targets, required semantics, and default-value behavior are identical to the TUI sub-form overlay.
 
 ### Template Fields and `allow_create`
 
@@ -441,7 +441,7 @@ These keys are set on the module itself, not on individual fields:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"0.3.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. Current version: `"0.3.0"`. |
+| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"1.0.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. Current version: `"1.0.0"`. Existing `0.x.y` configs continue to load unchanged. |
 | `[vault].base_path` | string | Absolute path to the Obsidian vault root |
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |

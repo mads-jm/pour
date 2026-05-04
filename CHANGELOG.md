@@ -8,6 +8,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-04-29 — The Freeze
+
+### Fixed — v1 hardening (closes the v1.0.0 pre-release assessment Open Bugs list)
+
+- **fs path traversal on the write path** — `src/transport/fs.rs::resolve_path_validated` now rejects `..` components, absolute paths, and `~`-prefixes on every public method (`create_file`, `append_to_file`, `append_under_heading`, `read_file`). Carry-over from v0.2.0; assessment Critical.
+- **Windows atomicity for `atomic_replace`** — `src/transport/atomic.rs` now uses a single `std::fs::rename` call (which on Windows resolves to `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` — atomic at the OS level). The previously-`#[ignore]`d demo test in `tests/util_atomic.rs` is now an active regression guard.
+- **char-indexed cursor** in form text/textarea/composite editors — emoji, CJK, and any non-ASCII character no longer panic on backspace or arrow-key movement. 13 sites converted across `src/tui/form/key/`.
+- **strftime injection** in `src/output/template.rs` — literal `%` characters in user templates are no longer reinterpreted by chrono. Date/time access stays available via `{{date}}`, `{{time}}` placeholders.
+- **`expect()` discipline** — three "module already verified above" sites in `src/config.rs` and one `reqwest client build` site in `src/transport/api.rs` now propagate as `Result`. `ApiClient::new` signature changed to `Result<Self, _>`.
+- **Surfaced silent persistence failures** — 7 previously-swallowed `let _ = ...save()` patterns in `src/tui/loop_.rs` and `src/app.rs` now route through a new ephemeral status-bar toast. Failures appear as a one-line warning at the bottom of any TUI screen for 5 seconds.
+
+### Added
+
+- **`Config::edit()` transactional API** (`src/config_edit.rs`) — single load → mutate → validate → persist atomic operation. The 15 public `*_on_disk` mutator methods (e.g., `update_module_on_disk`, `add_field_on_disk`) are now thin facades that route through `edit()`; behavior preserved.
+- **Generic `JsonStore<T>`** (`src/data/json_store.rs`) with optional migration hook — backs `Cache`, `Presets`, `FieldPresets` via a single sanctioned write path.
+- **`transport::atomic::atomic_replace`** — the single sanctioned atomic-write primitive for the codebase. `util.rs` keeps a `pub use` for backwards compatibility.
+- **`config_updates`** module — canonical home for `build_module_updates`, `build_vault_updates`, `build_field_updates`, `build_sub_field_updates` (formerly duplicated between `main.rs` and `tui/configure.rs`).
+- **File-size budget CI ratchet** — `scripts/check-file-size.sh` fails CI on any `src/**/*.rs` over 800 LOC without a `// LINTOK: oversized: <reason>` annotation. Runs in `.github/workflows/ci.yml`.
+- **102 new tests** pinning previously-untested behavior:
+  - `tests/tui_configure.rs` — 52 cases (render dispatch, key routing per mode, auto-save, scroll sync, build_*_updates round-trips, browser nav, confirm dialog). Closes the assessment's "single biggest test hole heading into v1.0.0".
+  - `tests/output/template_snapshot.rs` — 30 cases pinning `render_path` and `render_append_template`, including 8 documented intentional divergences.
+  - `tests/util_atomic.rs` — 7 cases for the atomic-write primitive (1 originally `#[ignore]`d Windows demo; un-ignored after the v1 hardening fix).
+  - `tests/data_json_store.rs` — 8 cases for the generic store + migration hook.
+  - `tests/config_edit.rs` — 5 cases for the transactional `Config::edit()` (round-trip, rollback-on-error, draft.parsed access, validation rollback, no-op).
+
+### Changed — decomposition (Phases 0–5)
+
+The v0.3 → v1.0 window was the last cheap moment to split the god-modules before the public-surface freeze. Every entry below preserves observable behavior; tests (783 → 876 — none regressed) anchor the move.
+
+- **`src/main.rs` 1945 LOC → 205 LOC** — bootstrap-only. Event loop and 21 action handlers moved to `src/tui/loop_.rs`. (Slice 13)
+- **`src/tui/form.rs` 3852 LOC** split into `tui/form/` directory: `mod.rs` 523, `render/{mod,fields,composite}.rs`, `key/{mod,text,select,composite,navigation,submit}.rs`, `overlays/{mod,preset_picker,sub_form,small}.rs`. The 930-line `handle_key` is now mode-conditional across 6 small files. (Slices 11a/b/c)
+- **`src/tui/configure.rs` 2478 LOC** split into `tui/configure/` directory: `mod.rs` 91, `render.rs`, `autosave.rs`, `init.rs`, `key/{mod,fields,sub_fields,vault,modules,presets}.rs`. (Slice 12)
+- **`src/server/mod.rs` 528 LOC → 302 LOC** — static-asset serving moved to `server/static_assets.rs`; router construction moved to `server/routing.rs`. (Slice 7)
+- **`src/server/dto.rs` 627 LOC** split into `server/dto/{mod,response,requests,mapping}.rs`. `mapping.rs` isolates the deep `Config → DTO` walk so `response.rs` is Config-free. (Slice 10)
+- **`src/server/handlers/submit.rs` 607 LOC** split into `submit/{mod,validate,idempotency_lookup,autocreate_step,write_step,history_step}.rs` with a `SubmitContext` struct. (Slice 9)
+- **`src/data/history.rs` 673 LOC → 474 LOC** — statistical computation moved to `history_summary.rs`; legacy-format reader moved to `history_legacy.rs`. (Slice 15)
+- **`src/app.rs` 1308 LOC → 1011 LOC** — configure init helpers (`build_field_settings`, `build_sub_field_settings`, `init_vault_configure`, `init_new_module_configure`) moved to `tui/configure/init.rs`. Thin wrappers stay on `App` for test compat. (Slice 14)
+
+### Changed — DRY collapses
+
+- **18 atomic-write blocks → 1** in `src/config.rs` via `Config::write_atomic` (Slice 3) and the new transactional `Config::edit()` (Slice 8). Universal orphan `.tmp` cleanup on rename failure (was missing at 17 of 18 sites).
+- **3 JSON-store implementations → 1** generic `JsonStore<T>` (Slice 2). Consolidates `Cache`, `Presets`, `FieldPresets` save/load.
+- **`build_*_updates` duplication → 1 module** at `src/config_updates.rs` (Slice 5). `main.rs` -197 LOC, `tui/configure.rs` -190 LOC.
+- **2 `{{key}}` substitution loops → 1 kernel** in `output/template.rs` (Slice 4). The 8 intentional divergences between `render_path` and `render_append_template` are now explicit configuration of the shared kernel.
+- **Module-ordering helper** consolidated to `init::module_order()` (Slice 6).
+
+### Changed — surface
+
+- **`lib.rs` public surface curated** (Slice 17): `config_updates`, `transport::atomic`, `server::{dto,routing,static_assets}`, `tui::{loop_,render}` demoted to `pub(crate)`. Two `tui::loop_` entry points (`run_loop`, `fetch_dynamic_options`) re-exported. `cargo doc --no-deps` builds clean with zero warnings.
+- **Inline `#[cfg(test)] mod tests`** in `src/autocreate.rs` removed; tests moved to `tests/autocreate.rs` per project convention. Last remaining inline test module is gone. (Slice 16)
+
 ## [0.3.0] — 2026-04-29 — Mobile / PWA Capture Surface
 
 ### Added — `pour serve` + PWA companion

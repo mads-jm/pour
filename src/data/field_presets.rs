@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::data::json_store::JsonStore;
+
 /// A single saved preset for a `composite_array` field.
 ///
 /// Stores the full row-set (each row is a `Vec<String>` whose length matches
@@ -59,23 +61,13 @@ impl FieldPresets {
     ///
     /// Returns empty presets if the file is missing or corrupt.
     pub fn load_from(path: PathBuf) -> Self {
-        let data = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|contents| serde_json::from_str::<FieldPresetsData>(&contents).ok())
-            .unwrap_or_default();
-
+        let data = JsonStore::<FieldPresetsData>::new(path.clone()).load();
         FieldPresets { data, path }
     }
 
     /// Persist field presets to disk, creating parent directories if needed.
     pub fn save(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(&self.data)?;
-        let tmp_path = self.path.with_extension("tmp");
-        std::fs::write(&tmp_path, &json)?;
-        crate::util::atomic_replace(&tmp_path, &self.path)?;
+        JsonStore::<FieldPresetsData>::new(self.path.clone()).save(&self.data)?;
         Ok(())
     }
 
