@@ -1200,3 +1200,142 @@ fn no_cycling_when_textarea_editor_open() {
         "callout unchanged when editor open"
     );
 }
+
+// ── Multi-byte / Unicode cursor correctness ──────────────────────────────────
+//
+// These tests guard against the historical panic caused by treating
+// `cursor_position` as a byte offset rather than a char-index.  Any attempt to
+// call `String::remove` or `String::insert` on a non-char-boundary would panic;
+// the tests below verify that emoji, CJK characters, and accented letters are
+// all handled without panicking and that the cursor tracks chars, not bytes.
+
+/// Insert an accented character ("é", 2 UTF-8 bytes) into a text field then
+/// backspace it.  Cursor must return to 0 with an empty value.
+#[test]
+fn multibyte_insert_and_backspace_accent() {
+    let mut app = make_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.active_field = 1; // "title" text field
+        fs.cursor_position = 0;
+    }
+    // Insert 'é' (U+00E9, 2 bytes in UTF-8)
+    handle_key(&mut app, key(KeyCode::Char('é')));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(fs.field_values["title"], "é");
+        assert_eq!(fs.cursor_position, 1, "cursor should advance by 1 char");
+    }
+    // Backspace must remove the whole 2-byte sequence without panicking.
+    handle_key(&mut app, key(KeyCode::Backspace));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(fs.field_values["title"], "");
+        assert_eq!(fs.cursor_position, 0);
+    }
+}
+
+/// Insert the "🎉" emoji (4 UTF-8 bytes) at position 0; cursor advances to 1;
+/// backspace removes the whole emoji atomically.
+#[test]
+fn emoji_insert_and_backspace() {
+    let mut app = make_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.active_field = 1; // "title" text field
+        fs.cursor_position = 0;
+    }
+    // Insert the 4-byte emoji '🎉'
+    handle_key(&mut app, key(KeyCode::Char('🎉')));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(fs.field_values["title"], "🎉");
+        // char-index advances by exactly 1
+        assert_eq!(fs.cursor_position, 1);
+    }
+    // Backspace must not panic and must leave an empty string.
+    handle_key(&mut app, key(KeyCode::Backspace));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(fs.field_values["title"], "");
+        assert_eq!(fs.cursor_position, 0);
+    }
+}
+
+/// Insert two CJK characters ("中文") then press Left.  The cursor must move
+/// back by one char (to position 1), not by one byte.
+#[test]
+fn cjk_arrow_left_moves_one_char() {
+    let mut app = make_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.active_field = 1; // "title" text field
+        fs.cursor_position = 0;
+    }
+    handle_key(&mut app, key(KeyCode::Char('中')));
+    handle_key(&mut app, key(KeyCode::Char('文')));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(fs.cursor_position, 2, "two chars inserted → cursor at 2");
+    }
+    handle_key(&mut app, key(KeyCode::Left));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        assert_eq!(
+            fs.cursor_position, 1,
+            "Left should move one char back, not one byte"
+        );
+    }
+}
+
+/// Multiline textarea: line 1 contains a multi-byte char, cursor is at the
+/// start of line 2.  Up arrow must land at a valid char-index on line 1.
+#[test]
+fn textarea_vertical_move_over_multibyte_line() {
+    let mut app = make_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.active_field = 4; // "notes" textarea
+        fs.textarea_open = true;
+        // "🎉\nhi" — line 0 is 1 char (4 bytes), line 1 is 2 chars
+        fs.field_values
+            .insert("notes".to_string(), "🎉\nhi".to_string());
+        // Place cursor at start of "hi" (char-index 2: 1 char + 1 newline)
+        fs.cursor_position = 2;
+    }
+    handle_key(&mut app, key(KeyCode::Up));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        // Moving up from col 0 of line 1 should land at col 0 of line 0 → char-index 0.
+        // The col is min(0, line0_char_len=1) = 0, so cursor = 0.
+        assert_eq!(
+            fs.cursor_position, 0,
+            "Up from line 1 col 0 should reach char-index 0 on the emoji line"
+        );
+        // Verify no panic occurred by checking the value is still intact.
+        assert_eq!(fs.field_values["notes"], "🎉\nhi");
+    }
+}
+
+/// Mixed ASCII + emoji string: cursor at position 3 (after "hi🎉"), inserting
+/// an ASCII char must place it correctly at the char boundary.
+#[test]
+fn insert_ascii_after_emoji_in_mixed_string() {
+    let mut app = make_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.active_field = 1; // "title" text field
+        // Pre-populate "hi🎉" (3 chars: 'h', 'i', '🎉' — 6 bytes total)
+        fs.field_values
+            .insert("title".to_string(), "hi🎉".to_string());
+        // Place cursor after the emoji (char-index 3)
+        fs.cursor_position = 3;
+    }
+    handle_key(&mut app, key(KeyCode::Char('!')));
+    {
+        let fs = app.form_state.as_ref().unwrap();
+        // '!' should be appended after the emoji, not inserted mid-byte.
+        assert_eq!(fs.field_values["title"], "hi🎉!");
+        assert_eq!(fs.cursor_position, 4);
+    }
+}

@@ -1,3 +1,4 @@
+// LINTOK: oversized: state container + factory at v1.0.0; further App split deferred to v1.1
 use crate::config::{
     Config, FieldType, ModuleConfig, SubFieldType, TemplateConfig, TemplateFieldType, WriteMode,
 };
@@ -7,6 +8,17 @@ use crate::data::presets::Presets;
 use crate::transport::{Transport, TransportMode, VaultEntry};
 use crate::visibility::visible_field_indices;
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+/// Default duration for status-bar toast messages.
+pub const STATUS_TOAST_DURATION: Duration = Duration::from_secs(5);
+
+/// An ephemeral warning displayed at the bottom of all TUI screens.
+#[derive(Debug)]
+pub struct StatusMessage {
+    pub text: String,
+    pub expires_at: Instant,
+}
 
 /// Which screen the TUI is currently displaying.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,7 +120,9 @@ pub struct FormState {
     /// Warning messages produced by `validate_axes` at form open.
     /// Non-empty → preset_axes are invalid; legacy cycler is active, picker is disabled.
     pub axis_warnings: Vec<String>,
-    /// Cursor position within the active text/number input.
+    /// Cursor position within the active text/number input, measured as a
+    /// **char-index** (number of Unicode scalar values before the cursor).
+    /// Always snaps to a character boundary; never a raw byte offset.
     pub cursor_position: usize,
     /// Whether the dropdown for the current select field is open.
     pub dropdown_open: bool,
@@ -423,6 +437,9 @@ pub struct App {
     /// printed while TUI raw mode is active. Drained and written to stderr by
     /// main after `ratatui::restore()`.
     pub deferred_stderr: Vec<String>,
+    /// Ephemeral warning toast displayed at the bottom of every TUI screen.
+    /// Cleared automatically when `expires_at` has passed.
+    pub status_message: Option<StatusMessage>,
 }
 
 impl App {
@@ -438,29 +455,7 @@ impl App {
         presets: Presets,
         field_presets: FieldPresets,
     ) -> Self {
-        let module_keys = match &config.module_order {
-            Some(order) => {
-                let mut keys: Vec<String> = order
-                    .iter()
-                    .filter(|k| config.modules.contains_key(k.as_str()))
-                    .cloned()
-                    .collect();
-                let mut rest: Vec<String> = config
-                    .modules
-                    .keys()
-                    .filter(|k| !order.contains(k))
-                    .cloned()
-                    .collect();
-                rest.sort();
-                keys.extend(rest);
-                keys
-            }
-            None => {
-                let mut keys: Vec<String> = config.modules.keys().cloned().collect();
-                keys.sort();
-                keys
-            }
-        };
+        let module_keys = crate::init::module_order(&config);
 
         App {
             config,
@@ -477,6 +472,24 @@ impl App {
             presets,
             field_presets,
             deferred_stderr: Vec::new(),
+            status_message: None,
+        }
+    }
+
+    /// Set an ephemeral warning toast that auto-expires after [`STATUS_TOAST_DURATION`].
+    pub fn set_status_warning(&mut self, msg: impl Into<String>) {
+        self.status_message = Some(StatusMessage {
+            text: msg.into(),
+            expires_at: Instant::now() + STATUS_TOAST_DURATION,
+        });
+    }
+
+    /// Clear `status_message` if it has expired. Called each event-loop tick.
+    pub fn tick_status(&mut self) {
+        if let Some(ref msg) = self.status_message
+            && Instant::now() >= msg.expires_at
+        {
+            self.status_message = None;
         }
     }
 
@@ -732,329 +745,33 @@ impl App {
 
     /// Build settings list for editing a specific field's properties.
     ///
-    /// Replaces the current `settings` in `ConfigureState` with settings
-    /// derived from the field at `field_index`. Type-conditional settings
-    /// (options, source) are included based on the field's current type.
+    /// Thin wrapper — delegates to `crate::tui::configure::init::build_field_settings`.
+    /// Kept on `App` for backward-compat with test callsites.
     pub fn build_field_settings(field: &crate::config::FieldConfig) -> Vec<ConfigSetting> {
-        let type_str = match field.field_type {
-            FieldType::Text => "text",
-            FieldType::Textarea => "textarea",
-            FieldType::Number => "number",
-            FieldType::StaticSelect => "static_select",
-            FieldType::DynamicSelect => "dynamic_select",
-            FieldType::CompositeArray => "composite_array",
-        };
-
-        let target_str = match &field.target {
-            Some(crate::config::FieldTarget::Frontmatter) => "frontmatter",
-            Some(crate::config::FieldTarget::Body) => "body",
-            None => "",
-        };
-
-        let mut settings = vec![
-            ConfigSetting {
-                label: "Name".to_string(),
-                key: "name".to_string(),
-                value: field.name.clone(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Prompt".to_string(),
-                key: "prompt".to_string(),
-                value: field.prompt.clone(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Type".to_string(),
-                key: "field_type".to_string(),
-                value: type_str.to_string(),
-                kind: SettingKind::Toggle(vec![
-                    "text".to_string(),
-                    "textarea".to_string(),
-                    "number".to_string(),
-                    "static_select".to_string(),
-                    "dynamic_select".to_string(),
-                    "composite_array".to_string(),
-                ]),
-            },
-            ConfigSetting {
-                label: "Required".to_string(),
-                key: "required".to_string(),
-                value: if field.required.unwrap_or(false) {
-                    "true".to_string()
-                } else {
-                    "false".to_string()
-                },
-                kind: SettingKind::Toggle(vec!["false".to_string(), "true".to_string()]),
-            },
-            ConfigSetting {
-                label: "Default".to_string(),
-                key: "default".to_string(),
-                value: field.default.clone().unwrap_or_default(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Target".to_string(),
-                key: "target".to_string(),
-                value: target_str.to_string(),
-                kind: SettingKind::Toggle(vec![
-                    String::new(),
-                    "frontmatter".to_string(),
-                    "body".to_string(),
-                ]),
-            },
-        ];
-
-        // Type-conditional settings
-        if field.field_type == FieldType::StaticSelect {
-            let opts_display = field
-                .options
-                .as_ref()
-                .map(|o| o.join("\n"))
-                .unwrap_or_default();
-            settings.push(ConfigSetting {
-                label: "Options".to_string(),
-                key: "options".to_string(),
-                value: opts_display,
-                kind: SettingKind::ListEditor,
-            });
-        }
-
-        if field.field_type == FieldType::DynamicSelect {
-            settings.push(ConfigSetting {
-                label: "Source".to_string(),
-                key: "source".to_string(),
-                value: field.source.clone().unwrap_or_default(),
-                kind: SettingKind::Path,
-            });
-        }
-
-        if field.field_type == FieldType::CompositeArray {
-            let sub_count = field.sub_fields.as_ref().map(|s| s.len()).unwrap_or(0);
-            settings.push(ConfigSetting {
-                label: "Sub-fields".to_string(),
-                key: "sub_fields".to_string(),
-                value: format!(
-                    "{sub_count} column{}",
-                    if sub_count == 1 { "" } else { "s" }
-                ),
-                kind: SettingKind::NavLink,
-            });
-        }
-
-        // Callout wrapping — only for textarea fields targeting body
-        if field.field_type == FieldType::Textarea {
-            settings.push(ConfigSetting {
-                label: "Callout".to_string(),
-                key: "callout".to_string(),
-                value: field.callout.clone().unwrap_or_default(),
-                kind: SettingKind::QuickSelect(callout_quick_select()),
-            });
-        }
-
-        settings.push(ConfigSetting {
-            label: "Icon".to_string(),
-            key: "icon".to_string(),
-            value: field.icon.clone().unwrap_or_default(),
-            kind: SettingKind::Text,
-        });
-
-        settings.push(ConfigSetting {
-            label: "Preset Exclude".to_string(),
-            key: "preset_exclude".to_string(),
-            value: if field.preset_exclude.unwrap_or(false) {
-                "true".to_string()
-            } else {
-                "false".to_string()
-            },
-            kind: SettingKind::Toggle(vec!["false".to_string(), "true".to_string()]),
-        });
-
-        settings
+        crate::tui::configure::init::build_field_settings(field)
     }
 
     /// Build settings list for editing a specific sub-field's properties.
+    ///
+    /// Thin wrapper — delegates to `crate::tui::configure::init::build_sub_field_settings`.
     pub fn build_sub_field_settings(
         sub_field: &crate::config::SubFieldConfig,
     ) -> Vec<ConfigSetting> {
-        use crate::config::SubFieldType;
-
-        let type_str = match sub_field.field_type {
-            SubFieldType::Text => "text",
-            SubFieldType::Number => "number",
-            SubFieldType::StaticSelect => "static_select",
-        };
-
-        let mut settings = vec![
-            ConfigSetting {
-                label: "Name".to_string(),
-                key: "name".to_string(),
-                value: sub_field.name.clone(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Prompt".to_string(),
-                key: "prompt".to_string(),
-                value: sub_field.prompt.clone(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Type".to_string(),
-                key: "field_type".to_string(),
-                value: type_str.to_string(),
-                kind: SettingKind::Toggle(vec![
-                    "text".to_string(),
-                    "number".to_string(),
-                    "static_select".to_string(),
-                ]),
-            },
-        ];
-
-        if sub_field.field_type == SubFieldType::StaticSelect {
-            let opts_display = sub_field
-                .options
-                .as_ref()
-                .map(|o| o.join("\n"))
-                .unwrap_or_default();
-            settings.push(ConfigSetting {
-                label: "Options".to_string(),
-                key: "options".to_string(),
-                value: opts_display,
-                kind: SettingKind::ListEditor,
-            });
-        }
-
-        settings
+        crate::tui::configure::init::build_sub_field_settings(sub_field)
     }
 
-    /// Build settings list for editing vault-level configuration.
+    /// Build `ConfigureState` for vault-level configuration.
     ///
-    /// Returns a `ConfigureState` ready to be used with `ConfigureLevel::VaultSettings`.
-    /// The `module_key` is set to `"__vault__"` (not a real module).
+    /// Thin wrapper — delegates to `crate::tui::configure::init::init_vault_configure`.
     pub fn init_vault_configure(&self) -> ConfigureState {
-        let vault = &self.config.vault;
-
-        // Always show the persisted value, never the env-var override.
-        // secrets.toml is authoritative; config.toml is the legacy fallback.
-        let api_key_from_file = Config::read_secret_api_key()
-            .or_else(|| {
-                std::fs::read_to_string(Config::default_config_path())
-                    .ok()
-                    .and_then(|content| {
-                        let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-                        doc.get("vault")?.get("api_key")?.as_str().map(String::from)
-                    })
-            })
-            .unwrap_or_default();
-
-        let settings = vec![
-            ConfigSetting {
-                label: "Base Path".to_string(),
-                key: "base_path".to_string(),
-                value: vault.base_path.clone(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "API Port".to_string(),
-                key: "api_port".to_string(),
-                value: vault.api_port.map(|p| p.to_string()).unwrap_or_default(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "API Key".to_string(),
-                key: "api_key".to_string(),
-                value: api_key_from_file,
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Date Format".to_string(),
-                key: "date_format".to_string(),
-                value: vault
-                    .date_format
-                    .clone()
-                    .unwrap_or_else(|| "%Y%m%d".to_string()),
-                kind: SettingKind::Text,
-            },
-        ];
-
-        ConfigureState {
-            module_key: "__vault__".to_string(),
-            level: ConfigureLevel::VaultSettings,
-            active_field: 0,
-            editing: false,
-            edit_buffer: String::new(),
-            edit_original: String::new(),
-            cursor_position: 0,
-            browser_open: false,
-            browser_state: None,
-            scroll_offset: 0,
-            list_editor_open: false,
-            list_editor_buffer: String::new(),
-            list_editor_cursor_line: 0,
-            list_editor_cursor_col: 0,
-            confirm: None,
-            dirty: false,
-            settings,
-            status_message: None,
-            help_overlay_open: false,
-            quick_select_open: false,
-        }
+        crate::tui::configure::init::init_vault_configure(&self.config)
     }
 
     /// Initialize configure state for creating a new module.
     ///
-    /// The returned `ConfigureState` has an empty `module_key` — it will be set
-    /// by the user via the "Module Key" setting.
+    /// Thin wrapper — delegates to `crate::tui::configure::init::init_new_module_configure`.
     pub fn init_new_module_configure(&self) -> ConfigureState {
-        let settings = vec![
-            ConfigSetting {
-                label: "Module Key".to_string(),
-                key: "module_key".to_string(),
-                value: String::new(),
-                kind: SettingKind::Identifier,
-            },
-            ConfigSetting {
-                label: "Display Name".to_string(),
-                key: "display_name".to_string(),
-                value: String::new(),
-                kind: SettingKind::Text,
-            },
-            ConfigSetting {
-                label: "Mode".to_string(),
-                key: "mode".to_string(),
-                value: "create".to_string(),
-                kind: SettingKind::Toggle(vec!["append".to_string(), "create".to_string()]),
-            },
-            ConfigSetting {
-                label: "Path".to_string(),
-                key: "path".to_string(),
-                value: String::new(),
-                kind: SettingKind::Path,
-            },
-        ];
-
-        ConfigureState {
-            module_key: String::new(),
-            level: ConfigureLevel::NewModule,
-            active_field: 0,
-            editing: false,
-            edit_buffer: String::new(),
-            edit_original: String::new(),
-            cursor_position: 0,
-            browser_open: false,
-            browser_state: None,
-            scroll_offset: 0,
-            list_editor_open: false,
-            list_editor_buffer: String::new(),
-            list_editor_cursor_line: 0,
-            list_editor_cursor_col: 0,
-            confirm: None,
-            dirty: false,
-            settings,
-            status_message: None,
-            help_overlay_open: false,
-            quick_select_open: false,
-        }
+        crate::tui::configure::init::init_new_module_configure(&self.config)
     }
 
     /// Apply a preset (or `None` for `<none>`) to the given form state.
@@ -1124,20 +841,20 @@ impl App {
 
     /// Save a per-field preset (composite_array rows) for the active module.
     ///
-    /// Upserts by name into `field_presets`, persists to disk, and updates
-    /// `last_applied_field_preset` so the preset name appears as the
-    /// composite-overlay subtitle. Save errors are silently swallowed because
-    /// the TUI is in raw mode.
+    /// Upserts by name into `field_presets` (in-memory update always happens),
+    /// then attempts to persist to disk. Returns the disk error if it fails so
+    /// the caller can surface it via the status toast; in-memory state is
+    /// already updated regardless of the disk result.
     pub fn save_field_preset(
         &mut self,
         field_name: &str,
         name: &str,
         description: Option<String>,
         rows: Vec<Vec<String>>,
-    ) {
+    ) -> anyhow::Result<()> {
         let module_key = match self.module_keys.get(self.selected_module) {
             Some(k) => k.clone(),
-            None => return,
+            None => return Ok(()),
         };
         let key = crate::data::field_presets::preset_key(&module_key, field_name);
 
@@ -1146,14 +863,18 @@ impl App {
             description,
             rows,
         };
+        // In-memory update always succeeds.
         self.field_presets.set(&key, entry);
-        let _ = self.field_presets.save();
 
+        // Update form state subtitle unconditionally.
         if let Some(ref mut fs) = self.form_state {
             fs.last_applied_field_preset
                 .insert(field_name.to_string(), name.to_string());
             fs.composite_status = Some(format!("saved preset \u{201c}{name}\u{201d}"));
         }
+
+        // Disk persist — errors returned to caller for toast display.
+        self.field_presets.save()
     }
 
     /// Apply a saved per-field preset to the named composite_array field.
@@ -1207,15 +928,21 @@ impl App {
 
     /// Delete a saved per-field preset by name. If the picker is open it is
     /// re-populated; if the deleted preset was the last-applied one, that
-    /// marker is cleared so the subtitle stops referencing it.
-    pub fn delete_field_preset(&mut self, field_name: &str, preset_name: &str) {
+    /// marker is cleared so the subtitle stops referencing it. In-memory state
+    /// is always updated; returns a disk error if persistence fails so the
+    /// caller can surface it via the status toast.
+    pub fn delete_field_preset(
+        &mut self,
+        field_name: &str,
+        preset_name: &str,
+    ) -> anyhow::Result<()> {
         let module_key = match self.module_keys.get(self.selected_module) {
             Some(k) => k.clone(),
-            None => return,
+            None => return Ok(()),
         };
         let key = crate::data::field_presets::preset_key(&module_key, field_name);
+        // In-memory update always happens.
         self.field_presets.delete(&key, preset_name);
-        let _ = self.field_presets.save();
 
         let entries = self.field_presets.get(&key);
         if let Some(ref mut fs) = self.form_state {
@@ -1238,6 +965,9 @@ impl App {
                 }
             }
         }
+
+        // Disk persist — errors returned to caller for toast display.
+        self.field_presets.save()
     }
 
     /// Validate form state against the module's field requirements.

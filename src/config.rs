@@ -1,3 +1,5 @@
+// LINTOK: oversized: pending Slice 3 + Slice 8 decomposition (config types/validation split)
+
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -397,7 +399,23 @@ fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
 
 impl Config {
     /// The config schema version this build of Pour understands.
-    pub const CURRENT_CONFIG_VERSION: &'static str = "0.3.0";
+    pub const CURRENT_CONFIG_VERSION: &'static str = "1.0.0";
+
+    /// Atomically write `content` to `path`.
+    ///
+    /// Writes to a sibling `.toml.tmp` file first, then renames it over `path`.
+    /// If the rename fails the orphan temp file is removed before returning the
+    /// error — the single sanctioned write path for all config files so that
+    /// orphan cleanup is universal rather than per-callsite.
+    pub(crate) fn write_atomic(path: &Path, content: &str) -> Result<(), ConfigError> {
+        let tmp_path = path.with_extension("toml.tmp");
+        std::fs::write(&tmp_path, content).map_err(ConfigError::WriteError)?;
+        if let Err(e) = crate::util::atomic_replace(&tmp_path, path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ConfigError::WriteError(e));
+        }
+        Ok(())
+    }
 
     /// Load and validate the configuration.
     ///
@@ -470,12 +488,9 @@ impl Config {
             vault.remove("api_key");
         }
         let new_content = doc.to_string();
-        let tmp_path = config_path.with_extension("toml.tmp");
-        if std::fs::write(&tmp_path, &new_content).is_ok() {
-            let _ = crate::util::atomic_replace(&tmp_path, config_path);
-        }
-        // Clean up tmp file if atomic_replace failed or write succeeded.
-        let _ = std::fs::remove_file(&tmp_path);
+        // Best-effort: errors are intentionally swallowed — this is a
+        // non-critical background migration.
+        let _ = Self::write_atomic(config_path, &new_content);
     }
 
     /// Parse and validate a config from a TOML string.
@@ -567,11 +582,7 @@ impl Config {
             }
         }
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
-        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
-        let _ = std::fs::remove_file(&tmp_path); // clean up orphan if rename failed
-        result?;
+        Self::write_atomic(&path, &doc.to_string())?;
 
         // Restrict secrets.toml to owner-read/write only (0600) on Unix.
         #[cfg(unix)]
@@ -627,11 +638,7 @@ impl Config {
 
         doc["mobile_token"] = toml_edit::value(token);
 
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, doc.to_string()).map_err(ConfigError::WriteError)?;
-        let result = crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError);
-        let _ = std::fs::remove_file(&tmp_path);
-        result?;
+        Self::write_atomic(&path, &doc.to_string())?;
 
         // Restrict secrets.toml to owner-read/write only (0600) on Unix.
         #[cfg(unix)]
@@ -679,122 +686,111 @@ impl Config {
         updates: &ModuleUpdates,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Navigate to doc["modules"][module_key] — error if absent.
+            let module = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+            if let Some(ref path_val) = updates.path {
+                module["path"] = toml_edit::value(path_val.as_str());
+            }
 
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Navigate to doc["modules"][module_key] — error if absent.
-        let module = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
-
-        if let Some(ref path_val) = updates.path {
-            module["path"] = toml_edit::value(path_val.as_str());
-        }
-
-        if let Some(ref display_name_update) = updates.display_name {
-            match display_name_update {
-                Some(v) => {
-                    module["display_name"] = toml_edit::value(v.as_str());
-                }
-                None => {
-                    module.remove("display_name");
+            if let Some(ref display_name_update) = updates.display_name {
+                match display_name_update {
+                    Some(v) => {
+                        module["display_name"] = toml_edit::value(v.as_str());
+                    }
+                    None => {
+                        module.remove("display_name");
+                    }
                 }
             }
-        }
 
-        if let Some(ref mode_update) = updates.mode {
-            let mode_str = match mode_update {
-                WriteMode::Append => "append",
-                WriteMode::Create => "create",
-            };
-            module["mode"] = toml_edit::value(mode_str);
-        }
+            if let Some(ref mode_update) = updates.mode {
+                let mode_str = match mode_update {
+                    WriteMode::Append => "append",
+                    WriteMode::Create => "create",
+                };
+                module["mode"] = toml_edit::value(mode_str);
+            }
 
-        if let Some(ref header_update) = updates.append_under_header {
-            match header_update {
-                Some(v) => {
-                    module["append_under_header"] = toml_edit::value(v.as_str());
-                }
-                None => {
-                    module.remove("append_under_header");
+            if let Some(ref header_update) = updates.append_under_header {
+                match header_update {
+                    Some(v) => {
+                        module["append_under_header"] = toml_edit::value(v.as_str());
+                    }
+                    None => {
+                        module.remove("append_under_header");
+                    }
                 }
             }
-        }
 
-        if let Some(ref callout_update) = updates.callout_type {
-            match callout_update {
-                Some(v) => {
-                    module["callout_type"] = toml_edit::value(v.as_str());
-                }
-                None => {
-                    module.remove("callout_type");
+            if let Some(ref callout_update) = updates.callout_type {
+                match callout_update {
+                    Some(v) => {
+                        module["callout_type"] = toml_edit::value(v.as_str());
+                    }
+                    None => {
+                        module.remove("callout_type");
+                    }
                 }
             }
-        }
 
-        if let Some(ref icon_update) = updates.icon {
-            match icon_update {
-                Some(v) => {
-                    module["icon"] = toml_edit::value(v.as_str());
-                }
-                None => {
-                    module.remove("icon");
-                }
-            }
-        }
-
-        if let Some(ref daily_link_update) = updates.daily_link {
-            match daily_link_update {
-                Some(v) => {
-                    module["daily_link"] = toml_edit::value(*v);
-                }
-                None => {
-                    module.remove("daily_link");
+            if let Some(ref icon_update) = updates.icon {
+                match icon_update {
+                    Some(v) => {
+                        module["icon"] = toml_edit::value(v.as_str());
+                    }
+                    None => {
+                        module.remove("icon");
+                    }
                 }
             }
-        }
 
-        if let Some(ref shallow_update) = updates.append_shallow {
-            match shallow_update {
-                Some(v) => {
-                    module["append_shallow"] = toml_edit::value(*v);
-                }
-                None => {
-                    module.remove("append_shallow");
-                }
-            }
-        }
-
-        if let Some(ref mobile_visible_update) = updates.mobile_visible {
-            match mobile_visible_update {
-                Some(v) => {
-                    module["mobile_visible"] = toml_edit::value(*v);
-                }
-                None => {
-                    module.remove("mobile_visible");
+            if let Some(ref daily_link_update) = updates.daily_link {
+                match daily_link_update {
+                    Some(v) => {
+                        module["daily_link"] = toml_edit::value(*v);
+                    }
+                    None => {
+                        module.remove("daily_link");
+                    }
                 }
             }
-        }
 
-        let new_content = doc.to_string();
+            if let Some(ref shallow_update) = updates.append_shallow {
+                match shallow_update {
+                    Some(v) => {
+                        module["append_shallow"] = toml_edit::value(*v);
+                    }
+                    None => {
+                        module.remove("append_shallow");
+                    }
+                }
+            }
 
-        // Validate before writing — never touch the file if the result is invalid.
-        Self::from_toml(&new_content)?;
+            if let Some(ref mobile_visible_update) = updates.mobile_visible {
+                match mobile_visible_update {
+                    Some(v) => {
+                        module["mobile_visible"] = toml_edit::value(*v);
+                    }
+                    None => {
+                        module.remove("mobile_visible");
+                    }
+                }
+            }
 
-        // Atomic write: write to a sibling temp file, then rename over the original.
-        // This prevents partial writes from bricking the config on crash.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+            // Validate before writing — never touch the file if the result is invalid.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Apply partial updates to a single field in a module's config file.
@@ -808,194 +804,184 @@ impl Config {
         updates: &FieldUpdates,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Navigate to the fields array-of-tables for this module.
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Navigate to the fields array-of-tables for this module.
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for module '{module_key}'"
-                )])
-            })?;
-
-        // Apply each update.
-        if let Some(ref name) = updates.name {
-            field["name"] = toml_edit::value(name.as_str());
-        }
-
-        if let Some(ref ft) = updates.field_type {
-            let type_str = match ft {
-                FieldType::Text => "text",
-                FieldType::Textarea => "textarea",
-                FieldType::Number => "number",
-                FieldType::StaticSelect => "static_select",
-                FieldType::DynamicSelect => "dynamic_select",
-                FieldType::CompositeArray => "composite_array",
-            };
-            field["field_type"] = toml_edit::value(type_str);
-        }
-
-        if let Some(ref prompt) = updates.prompt {
-            field["prompt"] = toml_edit::value(prompt.as_str());
-        }
-
-        if let Some(ref required_update) = updates.required {
-            match required_update {
-                Some(v) => field["required"] = toml_edit::value(*v),
-                None => {
-                    field.remove("required");
-                }
+            // Apply each update.
+            if let Some(ref name) = updates.name {
+                field["name"] = toml_edit::value(name.as_str());
             }
-        }
 
-        if let Some(ref default_update) = updates.default {
-            match default_update {
-                Some(v) => field["default"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("default");
-                }
+            if let Some(ref ft) = updates.field_type {
+                let type_str = match ft {
+                    FieldType::Text => "text",
+                    FieldType::Textarea => "textarea",
+                    FieldType::Number => "number",
+                    FieldType::StaticSelect => "static_select",
+                    FieldType::DynamicSelect => "dynamic_select",
+                    FieldType::CompositeArray => "composite_array",
+                };
+                field["field_type"] = toml_edit::value(type_str);
             }
-        }
 
-        if let Some(ref options_update) = updates.options {
-            match options_update {
-                Some(opts) => {
-                    let mut arr = toml_edit::Array::new();
-                    for opt in opts {
-                        arr.push(opt.as_str());
+            if let Some(ref prompt) = updates.prompt {
+                field["prompt"] = toml_edit::value(prompt.as_str());
+            }
+
+            if let Some(ref required_update) = updates.required {
+                match required_update {
+                    Some(v) => field["required"] = toml_edit::value(*v),
+                    None => {
+                        field.remove("required");
                     }
-                    field["options"] = toml_edit::value(arr);
-                }
-                None => {
-                    field.remove("options");
                 }
             }
-        }
 
-        if let Some(ref source_update) = updates.source {
-            match source_update {
-                Some(v) => field["source"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("source");
+            if let Some(ref default_update) = updates.default {
+                match default_update {
+                    Some(v) => field["default"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("default");
+                    }
                 }
             }
-        }
 
-        if let Some(ref target_update) = updates.target {
-            match target_update {
-                Some(t) => {
-                    let target_str = match t {
-                        FieldTarget::Frontmatter => "frontmatter",
-                        FieldTarget::Body => "body",
-                    };
-                    field["target"] = toml_edit::value(target_str);
-                }
-                None => {
-                    field.remove("target");
-                }
-            }
-        }
-
-        if let Some(ref callout_update) = updates.callout {
-            match callout_update {
-                Some(v) => field["callout"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("callout");
+            if let Some(ref options_update) = updates.options {
+                match options_update {
+                    Some(opts) => {
+                        let mut arr = toml_edit::Array::new();
+                        for opt in opts {
+                            arr.push(opt.as_str());
+                        }
+                        field["options"] = toml_edit::value(arr);
+                    }
+                    None => {
+                        field.remove("options");
+                    }
                 }
             }
-        }
 
-        if let Some(ref show_when_update) = updates.show_when {
-            match show_when_update {
-                Some(sw) => {
-                    field["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
-                        build_show_when_inline_table(sw),
-                    ));
-                }
-                None => {
-                    field.remove("show_when");
+            if let Some(ref source_update) = updates.source {
+                match source_update {
+                    Some(v) => field["source"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("source");
+                    }
                 }
             }
-        }
 
-        if let Some(ref wikilink_update) = updates.wikilink {
-            match wikilink_update {
-                Some(v) => field["wikilink"] = toml_edit::value(*v),
-                None => {
-                    field.remove("wikilink");
+            if let Some(ref target_update) = updates.target {
+                match target_update {
+                    Some(t) => {
+                        let target_str = match t {
+                            FieldTarget::Frontmatter => "frontmatter",
+                            FieldTarget::Body => "body",
+                        };
+                        field["target"] = toml_edit::value(target_str);
+                    }
+                    None => {
+                        field.remove("target");
+                    }
                 }
             }
-        }
 
-        if let Some(ref allow_create_update) = updates.allow_create {
-            match allow_create_update {
-                Some(v) => field["allow_create"] = toml_edit::value(*v),
-                None => {
-                    field.remove("allow_create");
+            if let Some(ref callout_update) = updates.callout {
+                match callout_update {
+                    Some(v) => field["callout"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("callout");
+                    }
                 }
             }
-        }
 
-        if let Some(ref create_template_update) = updates.create_template {
-            match create_template_update {
-                Some(v) => field["create_template"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("create_template");
+            if let Some(ref show_when_update) = updates.show_when {
+                match show_when_update {
+                    Some(sw) => {
+                        field["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
+                            build_show_when_inline_table(sw),
+                        ));
+                    }
+                    None => {
+                        field.remove("show_when");
+                    }
                 }
             }
-        }
 
-        if let Some(ref post_create_command_update) = updates.post_create_command {
-            match post_create_command_update {
-                Some(v) => field["post_create_command"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("post_create_command");
+            if let Some(ref wikilink_update) = updates.wikilink {
+                match wikilink_update {
+                    Some(v) => field["wikilink"] = toml_edit::value(*v),
+                    None => {
+                        field.remove("wikilink");
+                    }
                 }
             }
-        }
 
-        if let Some(ref icon_update) = updates.icon {
-            match icon_update {
-                Some(v) => field["icon"] = toml_edit::value(v.as_str()),
-                None => {
-                    field.remove("icon");
+            if let Some(ref allow_create_update) = updates.allow_create {
+                match allow_create_update {
+                    Some(v) => field["allow_create"] = toml_edit::value(*v),
+                    None => {
+                        field.remove("allow_create");
+                    }
                 }
             }
-        }
 
-        if let Some(ref preset_exclude_update) = updates.preset_exclude {
-            match preset_exclude_update {
-                Some(v) => field["preset_exclude"] = toml_edit::value(*v),
-                None => {
-                    field.remove("preset_exclude");
+            if let Some(ref create_template_update) = updates.create_template {
+                match create_template_update {
+                    Some(v) => field["create_template"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("create_template");
+                    }
                 }
             }
-        }
 
-        let new_content = doc.to_string();
+            if let Some(ref post_create_command_update) = updates.post_create_command {
+                match post_create_command_update {
+                    Some(v) => field["post_create_command"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("post_create_command");
+                    }
+                }
+            }
 
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
+            if let Some(ref icon_update) = updates.icon {
+                match icon_update {
+                    Some(v) => field["icon"] = toml_edit::value(v.as_str()),
+                    None => {
+                        field.remove("icon");
+                    }
+                }
+            }
 
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+            if let Some(ref preset_exclude_update) = updates.preset_exclude {
+                match preset_exclude_update {
+                    Some(v) => field["preset_exclude"] = toml_edit::value(*v),
+                    None => {
+                        field.remove("preset_exclude");
+                    }
+                }
+            }
 
-        Ok(())
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        }) // end Self::edit
     }
 
     /// Append a new option string to a static_select module field's `options`
@@ -1012,64 +998,55 @@ impl Config {
         new_option: &str,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+            // Read existing options (if any), skip if already present, then append.
+            let already_present = field
+                .get("options")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| item.as_str())
+                        .any(|existing| existing == new_option)
+                })
+                .unwrap_or(false);
 
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for module '{module_key}'"
-                )])
-            })?;
-
-        // Read existing options (if any), skip if already present, then append.
-        let already_present = field
-            .get("options")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str())
-                    .any(|existing| existing == new_option)
-            })
-            .unwrap_or(false);
-
-        if already_present {
-            return Ok(());
-        }
-
-        match field.get_mut("options").and_then(|v| v.as_array_mut()) {
-            Some(arr) => {
-                arr.push(new_option);
+            if already_present {
+                return Ok(());
             }
-            None => {
-                let mut arr = toml_edit::Array::new();
-                arr.push(new_option);
-                field["options"] = toml_edit::value(arr);
+
+            match field.get_mut("options").and_then(|v| v.as_array_mut()) {
+                Some(arr) => {
+                    arr.push(new_option);
+                }
+                None => {
+                    let mut arr = toml_edit::Array::new();
+                    arr.push(new_option);
+                    field["options"] = toml_edit::value(arr);
+                }
             }
-        }
 
-        let new_content = doc.to_string();
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
 
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
-
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Append a new option string to a template static_select field's
@@ -1087,64 +1064,57 @@ impl Config {
         new_option: &str,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            let field = draft
+                .doc
+                .get_mut("templates")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(template_name))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "template '{template_name}' not found"
+                    )])
+                })?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for template '{template_name}'"
+                    )])
+                })?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+            let already_present = field
+                .get("options")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| item.as_str())
+                        .any(|existing| existing == new_option)
+                })
+                .unwrap_or(false);
 
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        let field = doc
-            .get_mut("templates")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(template_name))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!("template '{template_name}' not found")])
-            })?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for template '{template_name}'"
-                )])
-            })?;
-
-        let already_present = field
-            .get("options")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str())
-                    .any(|existing| existing == new_option)
-            })
-            .unwrap_or(false);
-
-        if already_present {
-            return Ok(());
-        }
-
-        match field.get_mut("options").and_then(|v| v.as_array_mut()) {
-            Some(arr) => {
-                arr.push(new_option);
+            if already_present {
+                return Ok(());
             }
-            None => {
-                let mut arr = toml_edit::Array::new();
-                arr.push(new_option);
-                field["options"] = toml_edit::value(arr);
+
+            match field.get_mut("options").and_then(|v| v.as_array_mut()) {
+                Some(arr) => {
+                    arr.push(new_option);
+                }
+                None => {
+                    let mut arr = toml_edit::Array::new();
+                    arr.push(new_option);
+                    field["options"] = toml_edit::value(arr);
+                }
             }
-        }
 
-        let new_content = doc.to_string();
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
 
-        Self::from_toml(&new_content)?;
-
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Append a new field to a module's fields array on disk.
@@ -1159,360 +1129,18 @@ impl Config {
     /// (e.g. `static_select` without `options`).
     pub fn add_field_on_disk(module_key: &str, field: &FieldConfig) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
-
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Verify the module exists before touching anything.
-        doc.get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
-
-        // Build the new table entry.
-        let mut new_table = toml_edit::Table::new();
-
-        let type_str = match field.field_type {
-            FieldType::Text => "text",
-            FieldType::Textarea => "textarea",
-            FieldType::Number => "number",
-            FieldType::StaticSelect => "static_select",
-            FieldType::DynamicSelect => "dynamic_select",
-            FieldType::CompositeArray => "composite_array",
-        };
-
-        new_table["name"] = toml_edit::value(field.name.as_str());
-        new_table["field_type"] = toml_edit::value(type_str);
-        new_table["prompt"] = toml_edit::value(field.prompt.as_str());
-
-        if let Some(required) = field.required {
-            new_table["required"] = toml_edit::value(required);
-        }
-
-        if let Some(ref default) = field.default {
-            new_table["default"] = toml_edit::value(default.as_str());
-        }
-
-        if let Some(ref opts) = field.options {
-            let mut arr = toml_edit::Array::new();
-            for opt in opts {
-                arr.push(opt.as_str());
-            }
-            new_table["options"] = toml_edit::value(arr);
-        }
-
-        if let Some(ref source) = field.source {
-            new_table["source"] = toml_edit::value(source.as_str());
-        }
-
-        if let Some(ref target) = field.target {
-            let target_str = match target {
-                FieldTarget::Frontmatter => "frontmatter",
-                FieldTarget::Body => "body",
-            };
-            new_table["target"] = toml_edit::value(target_str);
-        }
-
-        if let Some(ref subs) = field.sub_fields {
-            let mut arr = toml_edit::ArrayOfTables::new();
-            for sf in subs {
-                let mut t = toml_edit::Table::new();
-                let sf_type_str = match sf.field_type {
-                    SubFieldType::Text => "text",
-                    SubFieldType::Number => "number",
-                    SubFieldType::StaticSelect => "static_select",
-                };
-                t["name"] = toml_edit::value(sf.name.as_str());
-                t["field_type"] = toml_edit::value(sf_type_str);
-                t["prompt"] = toml_edit::value(sf.prompt.as_str());
-                if let Some(ref opts) = sf.options {
-                    let mut a = toml_edit::Array::new();
-                    for opt in opts {
-                        a.push(opt.as_str());
-                    }
-                    t["options"] = toml_edit::value(a);
-                }
-                arr.push(t);
-            }
-            new_table["sub_fields"] = toml_edit::Item::ArrayOfTables(arr);
-        }
-
-        if let Some(ref callout) = field.callout {
-            new_table["callout"] = toml_edit::value(callout.as_str());
-        }
-
-        if let Some(wikilink) = field.wikilink {
-            new_table["wikilink"] = toml_edit::value(wikilink);
-        }
-
-        if let Some(allow_create) = field.allow_create {
-            new_table["allow_create"] = toml_edit::value(allow_create);
-        }
-
-        if let Some(ref create_template) = field.create_template {
-            new_table["create_template"] = toml_edit::value(create_template.as_str());
-        }
-
-        if let Some(ref post_create_command) = field.post_create_command {
-            new_table["post_create_command"] = toml_edit::value(post_create_command.as_str());
-        }
-
-        if let Some(ref sw) = field.show_when {
-            new_table["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
-                build_show_when_inline_table(sw),
-            ));
-        }
-
-        if let Some(ref icon) = field.icon {
-            new_table["icon"] = toml_edit::value(icon.as_str());
-        }
-
-        if let Some(preset_exclude) = field.preset_exclude {
-            new_table["preset_exclude"] = toml_edit::value(preset_exclude);
-        }
-
-        // Navigate to the fields array-of-tables and push the new entry.
-        // If the key doesn't exist yet, create it.
-        let module = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .expect("module existence already verified above");
-
-        if !module.contains_array_of_tables("fields") {
-            module["fields"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
-        }
-
-        module["fields"]
-            .as_array_of_tables_mut()
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![
-                    "fields key is not an array of tables — this is a bug in the config editor"
-                        .to_string(),
-                ])
-            })?
-            .push(new_table);
-
-        let new_content = doc.to_string();
-
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
-
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
-    }
-
-    /// Remove a field at `field_index` from a module's fields array on disk.
-    ///
-    /// Validates the result before writing — this catches the "module must have
-    /// at least one field" rule when removing the last field. Uses atomic write.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
-    /// Returns `ConfigError::ValidationError` if `field_index` is out of range
-    /// or if removing the field would leave the module with zero fields.
-    pub fn remove_field_on_disk(module_key: &str, field_index: usize) -> Result<(), ConfigError> {
-        let path = Self::resolve_config_path()?;
-
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Navigate to the fields array-of-tables.
-        let fields = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "module '{module_key}': no fields array found"
-                )])
-            })?;
-
-        if field_index >= fields.len() {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "field index {field_index} out of range for module '{module_key}'"
-            )]));
-        }
-
-        if fields.len() == 1 {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "module '{module_key}': must have at least one field"
-            )]));
-        }
-
-        fields.remove(field_index);
-
-        let new_content = doc.to_string();
-
-        // Validate — catches the zero-fields case.
-        Self::from_toml(&new_content)?;
-
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
-    }
-
-    /// Update vault-level settings in-place on disk, preserving comments and formatting.
-    ///
-    /// Uses `toml_edit` to navigate to `doc["vault"]`. Validates the result before
-    /// writing. Uses atomic write (temp file + rename).
-    pub fn update_vault_on_disk(updates: &VaultUpdates) -> Result<(), ConfigError> {
-        let path = Self::resolve_config_path()?;
-
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        let vault = doc
-            .get_mut("vault")
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| {
-                ConfigError::EditParseError("missing [vault] table in config".to_string())
-            })?;
-
-        if let Some(ref base_path) = updates.base_path {
-            vault["base_path"] = toml_edit::value(base_path.as_str());
-        }
-
-        if let Some(ref port_update) = updates.api_port {
-            match port_update {
-                Some(port) => {
-                    vault["api_port"] = toml_edit::value(*port as i64);
-                }
-                None => {
-                    vault.remove("api_port");
-                }
-            }
-        }
-
-        if let Some(ref key_update) = updates.api_key {
-            // Write api_key to secrets.toml instead of config.toml.
-            Self::write_secret_api_key(key_update.as_deref())?;
-            // Also remove any legacy api_key from config.toml on save.
-            vault.remove("api_key");
-        }
-
-        if let Some(ref fmt_update) = updates.date_format {
-            match fmt_update {
-                Some(fmt) => {
-                    vault["date_format"] = toml_edit::value(fmt.as_str());
-                }
-                None => {
-                    vault.remove("date_format");
-                }
-            }
-        }
-
-        let new_content = doc.to_string();
-
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
-
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
-    }
-
-    /// Add a new module to the config file on disk.
-    ///
-    /// Uses `toml_edit` to preserve comments and formatting. Validates the result
-    /// before writing. Uses atomic write (temp file + rename).
-    ///
-    /// If `doc` contains a top-level `module_order` array, `module_key` is appended
-    /// to it automatically.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigError::DuplicateModule` if `module_key` already exists.
-    /// Returns `ConfigError::ValidationError` if the resulting config is invalid.
-    pub fn add_module_on_disk(module_key: &str, module: &ModuleConfig) -> Result<(), ConfigError> {
-        let path = Self::resolve_config_path()?;
-
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Reject duplicate module key.
-        let already_exists = doc
-            .get("modules")
-            .and_then(|m| m.as_table())
-            .map(|t| t.contains_key(module_key))
-            .unwrap_or(false);
-
-        if already_exists {
-            return Err(ConfigError::DuplicateModule(module_key.to_string()));
-        }
-
-        // Build the module table.
-        let mut module_table = toml_edit::Table::new();
-
-        let mode_str = match module.mode {
-            WriteMode::Append => "append",
-            WriteMode::Create => "create",
-        };
-        module_table["mode"] = toml_edit::value(mode_str);
-        module_table["path"] = toml_edit::value(module.path.as_str());
-
-        if let Some(ref display_name) = module.display_name {
-            module_table["display_name"] = toml_edit::value(display_name.as_str());
-        }
-
-        if let Some(ref header) = module.append_under_header {
-            module_table["append_under_header"] = toml_edit::value(header.as_str());
-        }
-
-        if let Some(ref tmpl) = module.append_template {
-            module_table["append_template"] = toml_edit::value(tmpl.as_str());
-        }
-
-        if let Some(ref callout) = module.callout_type {
-            module_table["callout_type"] = toml_edit::value(callout.as_str());
-        }
-
-        if let Some(ref icon) = module.icon {
-            module_table["icon"] = toml_edit::value(icon.as_str());
-        }
-
-        if module.daily_link == Some(true) {
-            module_table["daily_link"] = toml_edit::value(true);
-        }
-
-        if module.append_shallow == Some(true) {
-            module_table["append_shallow"] = toml_edit::value(true);
-        }
-
-        // Build fields as an ArrayOfTables.
-        let mut fields_aot = toml_edit::ArrayOfTables::new();
-
-        for field in &module.fields {
-            let mut ft = toml_edit::Table::new();
+        Self::edit(&path, |draft| {
+            // Verify the module exists before touching anything.
+            draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
+
+            // Build the new table entry.
+            let mut new_table = toml_edit::Table::new();
 
             let type_str = match field.field_type {
                 FieldType::Text => "text",
@@ -1523,16 +1151,16 @@ impl Config {
                 FieldType::CompositeArray => "composite_array",
             };
 
-            ft["name"] = toml_edit::value(field.name.as_str());
-            ft["field_type"] = toml_edit::value(type_str);
-            ft["prompt"] = toml_edit::value(field.prompt.as_str());
+            new_table["name"] = toml_edit::value(field.name.as_str());
+            new_table["field_type"] = toml_edit::value(type_str);
+            new_table["prompt"] = toml_edit::value(field.prompt.as_str());
 
             if let Some(required) = field.required {
-                ft["required"] = toml_edit::value(required);
+                new_table["required"] = toml_edit::value(required);
             }
 
             if let Some(ref default) = field.default {
-                ft["default"] = toml_edit::value(default.as_str());
+                new_table["default"] = toml_edit::value(default.as_str());
             }
 
             if let Some(ref opts) = field.options {
@@ -1540,11 +1168,11 @@ impl Config {
                 for opt in opts {
                     arr.push(opt.as_str());
                 }
-                ft["options"] = toml_edit::value(arr);
+                new_table["options"] = toml_edit::value(arr);
             }
 
             if let Some(ref source) = field.source {
-                ft["source"] = toml_edit::value(source.as_str());
+                new_table["source"] = toml_edit::value(source.as_str());
             }
 
             if let Some(ref target) = field.target {
@@ -1552,19 +1180,11 @@ impl Config {
                     FieldTarget::Frontmatter => "frontmatter",
                     FieldTarget::Body => "body",
                 };
-                ft["target"] = toml_edit::value(target_str);
-            }
-
-            if let Some(ref callout) = field.callout {
-                ft["callout"] = toml_edit::value(callout.as_str());
-            }
-
-            if let Some(ref icon) = field.icon {
-                ft["icon"] = toml_edit::value(icon.as_str());
+                new_table["target"] = toml_edit::value(target_str);
             }
 
             if let Some(ref subs) = field.sub_fields {
-                let mut sub_arr = toml_edit::ArrayOfTables::new();
+                let mut arr = toml_edit::ArrayOfTables::new();
                 for sf in subs {
                     let mut t = toml_edit::Table::new();
                     let sf_type_str = match sf.field_type {
@@ -1582,37 +1202,349 @@ impl Config {
                         }
                         t["options"] = toml_edit::value(a);
                     }
-                    sub_arr.push(t);
+                    arr.push(t);
                 }
-                ft["sub_fields"] = toml_edit::Item::ArrayOfTables(sub_arr);
+                new_table["sub_fields"] = toml_edit::Item::ArrayOfTables(arr);
             }
 
-            fields_aot.push(ft);
-        }
+            if let Some(ref callout) = field.callout {
+                new_table["callout"] = toml_edit::value(callout.as_str());
+            }
 
-        module_table["fields"] = toml_edit::Item::ArrayOfTables(fields_aot);
+            if let Some(wikilink) = field.wikilink {
+                new_table["wikilink"] = toml_edit::value(wikilink);
+            }
 
-        // Insert into doc["modules"][module_key].
-        doc["modules"][module_key] = toml_edit::Item::Table(module_table);
+            if let Some(allow_create) = field.allow_create {
+                new_table["allow_create"] = toml_edit::value(allow_create);
+            }
 
-        // If a top-level module_order array exists, append the new key to it.
-        if let Some(order_item) = doc.get_mut("module_order")
-            && let Some(arr) = order_item.as_array_mut()
-        {
-            arr.push(module_key);
-        }
+            if let Some(ref create_template) = field.create_template {
+                new_table["create_template"] = toml_edit::value(create_template.as_str());
+            }
 
-        let new_content = doc.to_string();
+            if let Some(ref post_create_command) = field.post_create_command {
+                new_table["post_create_command"] = toml_edit::value(post_create_command.as_str());
+            }
 
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
+            if let Some(ref sw) = field.show_when {
+                new_table["show_when"] = toml_edit::Item::Value(toml_edit::Value::InlineTable(
+                    build_show_when_inline_table(sw),
+                ));
+            }
 
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+            if let Some(ref icon) = field.icon {
+                new_table["icon"] = toml_edit::value(icon.as_str());
+            }
 
-        Ok(())
+            if let Some(preset_exclude) = field.preset_exclude {
+                new_table["preset_exclude"] = toml_edit::value(preset_exclude);
+            }
+
+            // Navigate to the fields array-of-tables and push the new entry.
+            // If the key doesn't exist yet, create it.
+            let module = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
+
+            if !module.contains_array_of_tables("fields") {
+                module["fields"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+            }
+
+            module["fields"]
+                .as_array_of_tables_mut()
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![
+                        "fields key is not an array of tables — this is a bug in the config editor"
+                            .to_string(),
+                    ])
+                })?
+                .push(new_table);
+
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        }) // end Self::edit
+    }
+
+    /// Remove a field at `field_index` from a module's fields array on disk.
+    ///
+    /// Validates the result before writing — this catches the "module must have
+    /// at least one field" rule when removing the last field. Uses atomic write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ModuleNotFound` if `module_key` does not exist.
+    /// Returns `ConfigError::ValidationError` if `field_index` is out of range
+    /// or if removing the field would leave the module with zero fields.
+    pub fn remove_field_on_disk(module_key: &str, field_index: usize) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Navigate to the fields array-of-tables.
+            let fields = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "module '{module_key}': no fields array found"
+                    )])
+                })?;
+
+            if field_index >= fields.len() {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "field index {field_index} out of range for module '{module_key}'"
+                )]));
+            }
+
+            if fields.len() == 1 {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "module '{module_key}': must have at least one field"
+                )]));
+            }
+
+            fields.remove(field_index);
+
+            // Validate — catches the zero-fields case.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        })
+    }
+
+    /// Update vault-level settings in-place on disk, preserving comments and formatting.
+    ///
+    /// Uses `toml_edit` to navigate to `doc["vault"]`. Validates the result before
+    /// writing. Uses atomic write (temp file + rename).
+    pub fn update_vault_on_disk(updates: &VaultUpdates) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            let vault = draft
+                .doc
+                .get_mut("vault")
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| {
+                    ConfigError::EditParseError("missing [vault] table in config".to_string())
+                })?;
+
+            if let Some(ref base_path) = updates.base_path {
+                vault["base_path"] = toml_edit::value(base_path.as_str());
+            }
+
+            if let Some(ref port_update) = updates.api_port {
+                match port_update {
+                    Some(port) => {
+                        vault["api_port"] = toml_edit::value(*port as i64);
+                    }
+                    None => {
+                        vault.remove("api_port");
+                    }
+                }
+            }
+
+            if let Some(ref key_update) = updates.api_key {
+                // Write api_key to secrets.toml instead of config.toml.
+                Self::write_secret_api_key(key_update.as_deref())?;
+                // Also remove any legacy api_key from config.toml on save.
+                vault.remove("api_key");
+            }
+
+            if let Some(ref fmt_update) = updates.date_format {
+                match fmt_update {
+                    Some(fmt) => {
+                        vault["date_format"] = toml_edit::value(fmt.as_str());
+                    }
+                    None => {
+                        vault.remove("date_format");
+                    }
+                }
+            }
+
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        })
+    }
+
+    /// Add a new module to the config file on disk.
+    ///
+    /// Uses `toml_edit` to preserve comments and formatting. Validates the result
+    /// before writing. Uses atomic write (temp file + rename).
+    ///
+    /// If `doc` contains a top-level `module_order` array, `module_key` is appended
+    /// to it automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::DuplicateModule` if `module_key` already exists.
+    /// Returns `ConfigError::ValidationError` if the resulting config is invalid.
+    pub fn add_module_on_disk(module_key: &str, module: &ModuleConfig) -> Result<(), ConfigError> {
+        let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Reject duplicate module key.
+            let already_exists = draft
+                .doc
+                .get("modules")
+                .and_then(|m| m.as_table())
+                .map(|t| t.contains_key(module_key))
+                .unwrap_or(false);
+
+            if already_exists {
+                return Err(ConfigError::DuplicateModule(module_key.to_string()));
+            }
+
+            // Build the module table.
+            let mut module_table = toml_edit::Table::new();
+
+            let mode_str = match module.mode {
+                WriteMode::Append => "append",
+                WriteMode::Create => "create",
+            };
+            module_table["mode"] = toml_edit::value(mode_str);
+            module_table["path"] = toml_edit::value(module.path.as_str());
+
+            if let Some(ref display_name) = module.display_name {
+                module_table["display_name"] = toml_edit::value(display_name.as_str());
+            }
+
+            if let Some(ref header) = module.append_under_header {
+                module_table["append_under_header"] = toml_edit::value(header.as_str());
+            }
+
+            if let Some(ref tmpl) = module.append_template {
+                module_table["append_template"] = toml_edit::value(tmpl.as_str());
+            }
+
+            if let Some(ref callout) = module.callout_type {
+                module_table["callout_type"] = toml_edit::value(callout.as_str());
+            }
+
+            if let Some(ref icon) = module.icon {
+                module_table["icon"] = toml_edit::value(icon.as_str());
+            }
+
+            if module.daily_link == Some(true) {
+                module_table["daily_link"] = toml_edit::value(true);
+            }
+
+            if module.append_shallow == Some(true) {
+                module_table["append_shallow"] = toml_edit::value(true);
+            }
+
+            // Build fields as an ArrayOfTables.
+            let mut fields_aot = toml_edit::ArrayOfTables::new();
+
+            for field in &module.fields {
+                let mut ft = toml_edit::Table::new();
+
+                let type_str = match field.field_type {
+                    FieldType::Text => "text",
+                    FieldType::Textarea => "textarea",
+                    FieldType::Number => "number",
+                    FieldType::StaticSelect => "static_select",
+                    FieldType::DynamicSelect => "dynamic_select",
+                    FieldType::CompositeArray => "composite_array",
+                };
+
+                ft["name"] = toml_edit::value(field.name.as_str());
+                ft["field_type"] = toml_edit::value(type_str);
+                ft["prompt"] = toml_edit::value(field.prompt.as_str());
+
+                if let Some(required) = field.required {
+                    ft["required"] = toml_edit::value(required);
+                }
+
+                if let Some(ref default) = field.default {
+                    ft["default"] = toml_edit::value(default.as_str());
+                }
+
+                if let Some(ref opts) = field.options {
+                    let mut arr = toml_edit::Array::new();
+                    for opt in opts {
+                        arr.push(opt.as_str());
+                    }
+                    ft["options"] = toml_edit::value(arr);
+                }
+
+                if let Some(ref source) = field.source {
+                    ft["source"] = toml_edit::value(source.as_str());
+                }
+
+                if let Some(ref target) = field.target {
+                    let target_str = match target {
+                        FieldTarget::Frontmatter => "frontmatter",
+                        FieldTarget::Body => "body",
+                    };
+                    ft["target"] = toml_edit::value(target_str);
+                }
+
+                if let Some(ref callout) = field.callout {
+                    ft["callout"] = toml_edit::value(callout.as_str());
+                }
+
+                if let Some(ref icon) = field.icon {
+                    ft["icon"] = toml_edit::value(icon.as_str());
+                }
+
+                if let Some(ref subs) = field.sub_fields {
+                    let mut sub_arr = toml_edit::ArrayOfTables::new();
+                    for sf in subs {
+                        let mut t = toml_edit::Table::new();
+                        let sf_type_str = match sf.field_type {
+                            SubFieldType::Text => "text",
+                            SubFieldType::Number => "number",
+                            SubFieldType::StaticSelect => "static_select",
+                        };
+                        t["name"] = toml_edit::value(sf.name.as_str());
+                        t["field_type"] = toml_edit::value(sf_type_str);
+                        t["prompt"] = toml_edit::value(sf.prompt.as_str());
+                        if let Some(ref opts) = sf.options {
+                            let mut a = toml_edit::Array::new();
+                            for opt in opts {
+                                a.push(opt.as_str());
+                            }
+                            t["options"] = toml_edit::value(a);
+                        }
+                        sub_arr.push(t);
+                    }
+                    ft["sub_fields"] = toml_edit::Item::ArrayOfTables(sub_arr);
+                }
+
+                fields_aot.push(ft);
+            }
+
+            module_table["fields"] = toml_edit::Item::ArrayOfTables(fields_aot);
+
+            // Insert into doc["modules"][module_key].
+            draft.doc["modules"][module_key] = toml_edit::Item::Table(module_table);
+
+            // If a top-level module_order array exists, append the new key to it.
+            if let Some(order_item) = draft.doc.get_mut("module_order")
+                && let Some(arr) = order_item.as_array_mut()
+            {
+                arr.push(module_key);
+            }
+
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        })
     }
 
     /// Overwrite the top-level `module_order` array on disk.
@@ -1621,31 +1553,20 @@ impl Config {
     /// Validates the result before writing. Uses atomic write (temp file + rename).
     pub fn update_module_order_on_disk(order: &[String]) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            let mut arr = toml_edit::Array::new();
+            for key in order {
+                arr.push(key.as_str());
+            }
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+            draft.doc["module_order"] = toml_edit::value(arr);
 
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
 
-        let mut arr = toml_edit::Array::new();
-        for key in order {
-            arr.push(key.as_str());
-        }
-
-        doc["module_order"] = toml_edit::value(arr);
-
-        let new_content = doc.to_string();
-
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
-
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Non-blocking path validation against the actual filesystem.
@@ -1727,57 +1648,47 @@ impl Config {
     /// Returns `ConfigError::ValidationError` if this is the last module.
     pub fn delete_module_on_disk(module_key: &str) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Navigate to the modules table and verify the key exists.
+            let modules = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .ok_or_else(|| {
+                    ConfigError::EditParseError("missing [modules] table in config".to_string())
+                })?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
-
-        // Navigate to the modules table and verify the key exists.
-        let modules = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .ok_or_else(|| {
-                ConfigError::EditParseError("missing [modules] table in config".to_string())
-            })?;
-
-        if !modules.contains_key(module_key) {
-            return Err(ConfigError::ModuleNotFound(module_key.to_string()));
-        }
-
-        // Guard: cannot delete the last module.
-        let module_count = modules.iter().count();
-        if module_count <= 1 {
-            return Err(ConfigError::ValidationError(vec![
-                "cannot delete last module".to_string(),
-            ]));
-        }
-
-        modules.remove(module_key);
-
-        // Remove from module_order if present.
-        if let Some(order_item) = doc.get_mut("module_order")
-            && let Some(arr) = order_item.as_array_mut()
-        {
-            // Find and remove the matching entry by value.
-            let pos = arr.iter().position(|v| v.as_str() == Some(module_key));
-            if let Some(idx) = pos {
-                arr.remove(idx);
+            if !modules.contains_key(module_key) {
+                return Err(ConfigError::ModuleNotFound(module_key.to_string()));
             }
-        }
 
-        let new_content = doc.to_string();
+            // Guard: cannot delete the last module.
+            let module_count = modules.iter().count();
+            if module_count <= 1 {
+                return Err(ConfigError::ValidationError(vec![
+                    "cannot delete last module".to_string(),
+                ]));
+            }
 
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
+            modules.remove(module_key);
 
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
+            // Remove from module_order if present.
+            if let Some(order_item) = draft.doc.get_mut("module_order")
+                && let Some(arr) = order_item.as_array_mut()
+            {
+                // Find and remove the matching entry by value.
+                let pos = arr.iter().position(|v| v.as_str() == Some(module_key));
+                if let Some(idx) = pos {
+                    arr.remove(idx);
+                }
+            }
 
-        Ok(())
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+
+            Ok(())
+        })
     }
 
     /// Reorder the fields of a module on disk using a permutation index slice.
@@ -1799,106 +1710,96 @@ impl Config {
         new_order: &[usize],
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
+        Self::edit(&path, |draft| {
+            // Navigate to the module table.
+            let module = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
 
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
+            let fields_aot = module
+                .get_mut("fields")
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "module '{module_key}': no fields array found"
+                    )])
+                })?
+                .as_array_of_tables_mut()
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "module '{module_key}': fields is not an array of tables"
+                    )])
+                })?;
 
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+            let field_count = fields_aot.len();
 
-        // Navigate to the module table.
-        let module = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?;
-
-        let fields_aot = module
-            .get_mut("fields")
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "module '{module_key}': no fields array found"
-                )])
-            })?
-            .as_array_of_tables_mut()
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "module '{module_key}': fields is not an array of tables"
-                )])
-            })?;
-
-        let field_count = fields_aot.len();
-
-        // Validate permutation: correct length.
-        if new_order.len() != field_count {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "module '{module_key}': new_order length {} does not match field count {}",
-                new_order.len(),
-                field_count
-            )]));
-        }
-
-        // Validate permutation: each index in range and no duplicates.
-        let mut seen = vec![false; field_count];
-        for &idx in new_order {
-            if idx >= field_count {
+            // Validate permutation: correct length.
+            if new_order.len() != field_count {
                 return Err(ConfigError::ValidationError(vec![format!(
-                    "module '{module_key}': index {idx} out of range (field count {field_count})"
+                    "module '{module_key}': new_order length {} does not match field count {}",
+                    new_order.len(),
+                    field_count
                 )]));
             }
-            if seen[idx] {
-                return Err(ConfigError::ValidationError(vec![format!(
-                    "module '{module_key}': duplicate index {idx} in new_order"
-                )]));
+
+            // Validate permutation: each index in range and no duplicates.
+            let mut seen = vec![false; field_count];
+            for &idx in new_order {
+                if idx >= field_count {
+                    return Err(ConfigError::ValidationError(vec![format!(
+                        "module '{module_key}': index {idx} out of range (field count {field_count})"
+                    )]));
+                }
+                if seen[idx] {
+                    return Err(ConfigError::ValidationError(vec![format!(
+                        "module '{module_key}': duplicate index {idx} in new_order"
+                    )]));
+                }
+                seen[idx] = true;
             }
-            seen[idx] = true;
-        }
 
-        // toml_edit serializes tables in position order. Swapping positions causes
-        // the formatter to emit them in the new order while preserving all content.
-        //
-        // Collect the original doc positions for each field table. Position `i` in
-        // new_order means "the table that was at old index new_order[i] should now
-        // appear at slot i". So old table new_order[i] gets positions[i].
-        let original_positions: Vec<Option<usize>> =
-            fields_aot.iter().map(|t| t.position()).collect();
+            // toml_edit serializes tables in position order. Swapping positions causes
+            // the formatter to emit them in the new order while preserving all content.
+            //
+            // Collect the original doc positions for each field table. Position `i` in
+            // new_order means "the table that was at old index new_order[i] should now
+            // appear at slot i". So old table new_order[i] gets positions[i].
+            let original_positions: Vec<Option<usize>> =
+                fields_aot.iter().map(|t| t.position()).collect();
 
-        // Build assignments: (old_index -> new_position).
-        // new_order[i] = old_idx  =>  old_idx gets original_positions[i].
-        let mut assignments: Vec<(usize, Option<usize>)> = new_order
-            .iter()
-            .enumerate()
-            .map(|(slot, &old_idx)| (old_idx, original_positions[slot]))
-            .collect();
-        // Sort by old_index so we can look up by index directly.
-        assignments.sort_by_key(|&(old_i, _)| old_i);
+            // Build assignments: (old_index -> new_position).
+            // new_order[i] = old_idx  =>  old_idx gets original_positions[i].
+            let mut assignments: Vec<(usize, Option<usize>)> = new_order
+                .iter()
+                .enumerate()
+                .map(|(slot, &old_idx)| (old_idx, original_positions[slot]))
+                .collect();
+            // Sort by old_index so we can look up by index directly.
+            assignments.sort_by_key(|&(old_i, _)| old_i);
 
-        for (old_idx, new_pos) in assignments {
-            let t = fields_aot.get_mut(old_idx).ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {old_idx} out of range during reorder"
-                )])
-            })?;
-            let pos = new_pos.ok_or_else(|| {
-                ConfigError::EditParseError(
-                    "field table has no document position; cannot reorder".to_string(),
-                )
-            })?;
-            t.set_position(pos);
-        }
+            for (old_idx, new_pos) in assignments {
+                let t = fields_aot.get_mut(old_idx).ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {old_idx} out of range during reorder"
+                    )])
+                })?;
+                let pos = new_pos.ok_or_else(|| {
+                    ConfigError::EditParseError(
+                        "field table has no document position; cannot reorder".to_string(),
+                    )
+                })?;
+                t.set_position(pos);
+            }
 
-        let new_content = doc.to_string();
+            // Validate before writing.
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
 
-        // Validate before writing.
-        Self::from_toml(&new_content)?;
-
-        // Atomic write.
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Add a new sub-field to a composite_array field on disk.
@@ -1917,83 +1818,80 @@ impl Config {
         sub_field: &SubFieldConfig,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+        Self::edit(&path, |draft| {
+            // Verify field index is in range before building the new table.
+            let field_count = draft
+                .doc
+                .get("modules")
+                .and_then(|m| m.as_table())
+                .and_then(|t| t.get(module_key))
+                .and_then(|v| v.as_table())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get("fields")
+                .and_then(|f| f.as_array_of_tables())
+                .map(|arr| arr.len())
+                .unwrap_or(0);
 
-        // Verify field index is in range before building the new table.
-        let field_count = doc
-            .get("modules")
-            .and_then(|m| m.as_table())
-            .and_then(|t| t.get(module_key))
-            .and_then(|v| v.as_table())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get("fields")
-            .and_then(|f| f.as_array_of_tables())
-            .map(|arr| arr.len())
-            .unwrap_or(0);
-
-        if field_index >= field_count {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "field index {field_index} out of range for module '{module_key}'"
-            )]));
-        }
-
-        let sf_type_str = match sub_field.field_type {
-            SubFieldType::Text => "text",
-            SubFieldType::Number => "number",
-            SubFieldType::StaticSelect => "static_select",
-        };
-
-        let mut new_t = toml_edit::Table::new();
-        new_t["name"] = toml_edit::value(sub_field.name.as_str());
-        new_t["field_type"] = toml_edit::value(sf_type_str);
-        new_t["prompt"] = toml_edit::value(sub_field.prompt.as_str());
-        if let Some(ref opts) = sub_field.options {
-            let mut a = toml_edit::Array::new();
-            for opt in opts {
-                a.push(opt.as_str());
-            }
-            new_t["options"] = toml_edit::value(a);
-        }
-
-        // Navigate to the field and push the sub-field.
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .expect("module existence already verified above")
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
+            if field_index >= field_count {
+                return Err(ConfigError::ValidationError(vec![format!(
                     "field index {field_index} out of range for module '{module_key}'"
-                )])
-            })?;
+                )]));
+            }
 
-        if !field.contains_array_of_tables("sub_fields") {
-            field["sub_fields"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
-        }
+            let sf_type_str = match sub_field.field_type {
+                SubFieldType::Text => "text",
+                SubFieldType::Number => "number",
+                SubFieldType::StaticSelect => "static_select",
+            };
 
-        field["sub_fields"]
-            .as_array_of_tables_mut()
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![
-                    "sub_fields key is not an array of tables — this is a bug in the config editor"
-                        .to_string(),
-                ])
-            })?
-            .push(new_t);
+            let mut new_t = toml_edit::Table::new();
+            new_t["name"] = toml_edit::value(sub_field.name.as_str());
+            new_t["field_type"] = toml_edit::value(sf_type_str);
+            new_t["prompt"] = toml_edit::value(sub_field.prompt.as_str());
+            if let Some(ref opts) = sub_field.options {
+                let mut a = toml_edit::Array::new();
+                for opt in opts {
+                    a.push(opt.as_str());
+                }
+                new_t["options"] = toml_edit::value(a);
+            }
 
-        let new_content = doc.to_string();
-        Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-        Ok(())
+            // Navigate to the field and push the sub-field.
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
+
+            if !field.contains_array_of_tables("sub_fields") {
+                field["sub_fields"] =
+                    toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+            }
+
+            field["sub_fields"]
+                .as_array_of_tables_mut()
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![
+                        "sub_fields key is not an array of tables — this is a bug in the config editor"
+                            .to_string(),
+                    ])
+                })?
+                .push(new_t);
+
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+            Ok(())
+        })
     }
 
     /// Remove a sub-field at `sub_field_index` from a composite_array field on disk.
@@ -2011,55 +1909,50 @@ impl Config {
         sub_field_index: usize,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+        Self::edit(&path, |draft| {
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
 
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for module '{module_key}'"
-                )])
-            })?;
+            let subs = field
+                .get_mut("sub_fields")
+                .and_then(|sf| sf.as_array_of_tables_mut())
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field {field_index} in module '{module_key}': no sub_fields array found"
+                    )])
+                })?;
 
-        let subs = field
-            .get_mut("sub_fields")
-            .and_then(|sf| sf.as_array_of_tables_mut())
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field {field_index} in module '{module_key}': no sub_fields array found"
-                )])
-            })?;
+            if sub_field_index >= subs.len() {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "sub_field index {sub_field_index} out of range"
+                )]));
+            }
 
-        if sub_field_index >= subs.len() {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "sub_field index {sub_field_index} out of range"
-            )]));
-        }
+            if subs.len() == 1 {
+                return Err(ConfigError::ValidationError(vec![
+                    "composite_array field must have at least one sub-field".to_string(),
+                ]));
+            }
 
-        if subs.len() == 1 {
-            return Err(ConfigError::ValidationError(vec![
-                "composite_array field must have at least one sub-field".to_string(),
-            ]));
-        }
+            subs.remove(sub_field_index);
 
-        subs.remove(sub_field_index);
-
-        let new_content = doc.to_string();
-        Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-        Ok(())
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+            Ok(())
+        })
     }
 
     /// Swap two sub-fields within a composite_array field on disk.
@@ -2077,66 +1970,63 @@ impl Config {
         b: usize,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+        Self::edit(&path, |draft| {
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
 
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for module '{module_key}'"
-                )])
+            let subs = field
+                .get_mut("sub_fields")
+                .and_then(|sf| sf.as_array_of_tables_mut())
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field {field_index} in module '{module_key}': no sub_fields array found"
+                    )])
+                })?;
+
+            let sub_count = subs.len();
+
+            if a >= sub_count || b >= sub_count {
+                return Err(ConfigError::ValidationError(vec![format!(
+                    "sub_field indices {a} or {b} out of range (count {sub_count})"
+                )]));
+            }
+
+            // Swap positions using the same technique as reorder_fields_on_disk.
+            let pos_a = subs.get(a).and_then(|t| t.position()).ok_or_else(|| {
+                ConfigError::EditParseError("sub_field has no position".to_string())
+            })?;
+            let pos_b = subs.get(b).and_then(|t| t.position()).ok_or_else(|| {
+                ConfigError::EditParseError("sub_field has no position".to_string())
             })?;
 
-        let subs = field
-            .get_mut("sub_fields")
-            .and_then(|sf| sf.as_array_of_tables_mut())
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field {field_index} in module '{module_key}': no sub_fields array found"
-                )])
-            })?;
+            subs.get_mut(a)
+                .ok_or_else(|| {
+                    ConfigError::EditParseError("sub_field index a invalid".to_string())
+                })?
+                .set_position(pos_b);
+            subs.get_mut(b)
+                .ok_or_else(|| {
+                    ConfigError::EditParseError("sub_field index b invalid".to_string())
+                })?
+                .set_position(pos_a);
 
-        let sub_count = subs.len();
-
-        if a >= sub_count || b >= sub_count {
-            return Err(ConfigError::ValidationError(vec![format!(
-                "sub_field indices {a} or {b} out of range (count {sub_count})"
-            )]));
-        }
-
-        // Swap positions using the same technique as reorder_fields_on_disk.
-        let pos_a = subs
-            .get(a)
-            .and_then(|t| t.position())
-            .ok_or_else(|| ConfigError::EditParseError("sub_field has no position".to_string()))?;
-        let pos_b = subs
-            .get(b)
-            .and_then(|t| t.position())
-            .ok_or_else(|| ConfigError::EditParseError("sub_field has no position".to_string()))?;
-
-        subs.get_mut(a)
-            .ok_or_else(|| ConfigError::EditParseError("sub_field index a invalid".to_string()))?
-            .set_position(pos_b);
-        subs.get_mut(b)
-            .ok_or_else(|| ConfigError::EditParseError("sub_field index b invalid".to_string()))?
-            .set_position(pos_a);
-
-        let new_content = doc.to_string();
-        Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-        Ok(())
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+            Ok(())
+        })
     }
 
     /// Apply partial updates to a single sub-field within a composite_array field.
@@ -2155,74 +2045,69 @@ impl Config {
         updates: &SubFieldUpdates,
     ) -> Result<(), ConfigError> {
         let path = Self::resolve_config_path()?;
-        let original = std::fs::read_to_string(&path).map_err(ConfigError::ReadError)?;
-        let mut doc: DocumentMut = original
-            .parse()
-            .map_err(|e: toml_edit::TomlError| ConfigError::EditParseError(e.to_string()))?;
+        Self::edit(&path, |draft| {
+            let field = draft
+                .doc
+                .get_mut("modules")
+                .and_then(|m| m.as_table_mut())
+                .and_then(|t| t.get_mut(module_key))
+                .and_then(|v| v.as_table_mut())
+                .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
+                .get_mut("fields")
+                .and_then(|f| f.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "field index {field_index} out of range for module '{module_key}'"
+                    )])
+                })?;
 
-        let field = doc
-            .get_mut("modules")
-            .and_then(|m| m.as_table_mut())
-            .and_then(|t| t.get_mut(module_key))
-            .and_then(|v| v.as_table_mut())
-            .ok_or_else(|| ConfigError::ModuleNotFound(module_key.to_string()))?
-            .get_mut("fields")
-            .and_then(|f| f.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "field index {field_index} out of range for module '{module_key}'"
-                )])
-            })?;
+            let sub = field
+                .get_mut("sub_fields")
+                .and_then(|sf| sf.as_array_of_tables_mut())
+                .and_then(|arr| arr.get_mut(sub_field_index))
+                .ok_or_else(|| {
+                    ConfigError::ValidationError(vec![format!(
+                        "sub_field index {sub_field_index} out of range"
+                    )])
+                })?;
 
-        let sub = field
-            .get_mut("sub_fields")
-            .and_then(|sf| sf.as_array_of_tables_mut())
-            .and_then(|arr| arr.get_mut(sub_field_index))
-            .ok_or_else(|| {
-                ConfigError::ValidationError(vec![format!(
-                    "sub_field index {sub_field_index} out of range"
-                )])
-            })?;
+            if let Some(ref name) = updates.name {
+                sub["name"] = toml_edit::value(name.as_str());
+            }
 
-        if let Some(ref name) = updates.name {
-            sub["name"] = toml_edit::value(name.as_str());
-        }
+            if let Some(ref ft) = updates.field_type {
+                let type_str = match ft {
+                    SubFieldType::Text => "text",
+                    SubFieldType::Number => "number",
+                    SubFieldType::StaticSelect => "static_select",
+                };
+                sub["field_type"] = toml_edit::value(type_str);
+            }
 
-        if let Some(ref ft) = updates.field_type {
-            let type_str = match ft {
-                SubFieldType::Text => "text",
-                SubFieldType::Number => "number",
-                SubFieldType::StaticSelect => "static_select",
-            };
-            sub["field_type"] = toml_edit::value(type_str);
-        }
+            if let Some(ref prompt) = updates.prompt {
+                sub["prompt"] = toml_edit::value(prompt.as_str());
+            }
 
-        if let Some(ref prompt) = updates.prompt {
-            sub["prompt"] = toml_edit::value(prompt.as_str());
-        }
-
-        if let Some(ref opts_update) = updates.options {
-            match opts_update {
-                Some(opts) => {
-                    let mut a = toml_edit::Array::new();
-                    for opt in opts {
-                        a.push(opt.as_str());
+            if let Some(ref opts_update) = updates.options {
+                match opts_update {
+                    Some(opts) => {
+                        let mut a = toml_edit::Array::new();
+                        for opt in opts {
+                            a.push(opt.as_str());
+                        }
+                        sub["options"] = toml_edit::value(a);
                     }
-                    sub["options"] = toml_edit::value(a);
-                }
-                None => {
-                    sub.remove("options");
+                    None => {
+                        sub.remove("options");
+                    }
                 }
             }
-        }
 
-        let new_content = doc.to_string();
-        Self::from_toml(&new_content)?;
-        let tmp_path = path.with_extension("toml.tmp");
-        std::fs::write(&tmp_path, &new_content).map_err(ConfigError::WriteError)?;
-        crate::util::atomic_replace(&tmp_path, &path).map_err(ConfigError::WriteError)?;
-        Ok(())
+            let new_content = draft.doc.to_string();
+            Self::from_toml(&new_content)?;
+            Ok(())
+        })
     }
 
     /// Validate cross-field `show_when` references within a single module.
@@ -2320,6 +2205,11 @@ impl Config {
                     // Found a cycle — extract the cycle portion
                     // `current` was just found in `in_path`, which is kept in
                     // sync with `path`, so it is always present.
+                    // SAFETY: `in_path.contains(current)` is true at this branch
+                    // entry, and `path` and `in_path` are kept in strict sync
+                    // (every `path.push(x)` is immediately followed by
+                    // `in_path.insert(x)`), so `current` is guaranteed to be
+                    // present in `path`.
                     let cycle_start = path
                         .iter()
                         .position(|&n| n == current)

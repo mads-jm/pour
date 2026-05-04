@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Wednesday, April 29th 2026, 5:31:42 pm
+date modified: Monday, May 4th 2026, 11:17:47 pm
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -139,17 +139,23 @@ When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, 
 
 Full TOML schema, field type reference, and validation rules — see config schema section.
 
+> __FieldType set is frozen at v1.0.0__ — the `FieldType` enum (text, textarea, number, static_select, dynamic_select, composite_array, plus the template-driven variants) is the canonical, closed set for this major version. Adding a new variant requires shotgun surgery across config validation, app state, configure render, form render, form key handling, and output partitioning. The Pragmatic-Programmer-correct fix (a `FieldType` trait with per-variant `render`/`key`/`validate`/`to_yaml`) is deliberately deferred to v2.0.0. Until then, the enum is closed; new field shapes go through `composite_array` columns or `create_template` sub-forms. *[Deviation: original spec assumed extensibility was free.]*
+
 ### __4.1 `config_version`__
 
 An optional top-level string field in `config.toml` that declares the schema version the file was written against.
 
 ```toml
-config_version = "0.3.0"
+config_version = "1.0.0"
 ```
 
-- __Format:__ Semver string (e.g. `"0.3.0"`). Non-semver values are rejected at config load.
+- __Format:__ Semver string (e.g. `"1.0.0"`). Non-semver values are rejected at config load.
 - __Default:__ When absent, Pour treats the file as `"0.1.0"` — all existing configs without this field continue to work unchanged.
-- __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` are currently accepted (e.g., `0.1.0`, `0.2.0`, `0.3.0`). The current version is `0.3.0`.
+- __Validation:__ Unsupported major versions are rejected with a clear error. All versions with major version `0` or `1` are currently accepted (e.g., `0.1.0`, `0.2.0`, `0.3.0`, `1.0.0`). Existing `0.x.y` configs continue to load on v1.0.0 unchanged. The current version is `1.0.0`.
+- __Versioning policy (decoupled from app version):__ `config_version` tracks the __schema__ independently of the app version in `Cargo.toml`. They start aligned at `1.0.0` but drift on purpose:
+   - __Patch digit drifts freely.__ A minor schema tweak (e.g. adding an optional default-valued field) bumps `config_version` patch (`1.0.0` → `1.0.1`) without requiring an app version bump, and an app patch release (`1.0.1`) does not imply a schema change.
+   - __Minor digit bumps with additive schema changes.__ New top-level keys, new module-level keys, new field types — additive only — bump the schema's minor digit. An app minor release that introduces them moves both numbers; an app patch release that only adds a schema-additive optional field bumps the schema minor without the app minor.
+   - __Major digit bumps with breaking schema changes.__ Removing or renaming a key, changing semantics of an existing field, or breaking the parse contract bumps the schema major digit. Such a change should also bump the app major. After v1.0.0 the bar for this is "I am intentionally breaking my own vault." Migrations land in the same release.
 - __Purpose:__ Enables forward migration paths as the config schema evolves — Pour can detect the file's declared version and apply any necessary transformations before parsing. *[Deviation: no migration/transformation logic exists yet — version is validated but not used for schema migration.]*
 
 #### Version History
@@ -159,6 +165,20 @@ config_version = "0.3.0"
 | `0.1.0` | Initial schema. |
 | `0.2.0` | Added `mobile_token` to `secrets.toml`, `pour serve` command, `/api/health` endpoint (Step A). |
 | `0.3.0` | Added `mobile_visible` module-level key. Bumped alongside `/api/v1/config` (Step B). |
+| `1.0.0` | Major-version freeze marker. No on-disk schema additions or removals; existing `0.x.y` configs load unchanged. Foundation work shipped under this version: 18 atomic-write blocks collapsed via `Config::edit`, generic `JsonStore<T>` introduced, three god-modules decomposed, and the Open Bugs list from `[[v1.0.0-pre-release-assessment]]` closed (path traversal, Windows atomicity, char-indexed cursor, strftime injection, expect discipline, surfaced silent persistence failures). See `[[pour-v1-decomposition]]` and `[[ADR-006-V1-Lock-In-Patterns]]`. |
+
+### __4.2 File-Size Budget (CI-enforced)__
+
+Active project policy as of v1.0.0. Enforced by `scripts/check-file-size.sh` in the `file-size` CI job.
+
+| Tier              | Budget (LOC) | Enforced |
+|-------------------|--------------|----------|
+| Default cap       | 400          | Advisory |
+| Render/UI files   | 600          | Advisory |
+| Schema/DTO        | 500          | Advisory |
+| Hard ceiling      | 800          | __Yes — CI fails__ unless the file carries a `// LINTOK: oversized: <reason>` comment near its top. |
+
+Files annotated as oversized at v1.0.0 (`src/app.rs`, `src/config.rs`, `src/tui/configure/render.rs`, `src/tui/loop_.rs`) are tracked in `pour - docs/08 specs/pour-v1-decomposition.md` Phase 6 as v1.1 candidates. The annotation count is the maintainer-facing health metric. *[Deviation: original design spec did not contemplate a file-size policy; the v0.3 → v1.0 decomposition pass introduced it.]*
 
 ## __5. Technical Stack__
 
@@ -264,7 +284,7 @@ Phase 1 ships two correctness primitives:
 - __`Idempotency-Key` header__ (optional, 1–128 bytes): the server maintains an in-memory LRU (capacity 1024) per [[pour-api-contract]] §9. In-flight entries TTL at 60 s; completed entries TTL at 5 min. Duplicate submits within that window return the original response without re-writing to the vault.
 - __`captured_at` timestamp__: the submit body may include a client-side ISO 8601 timestamp. If present and parseable, it is used as the entry's timestamp instead of server time — preserving the moment of capture even when connectivity is restored later.
 
-Phase 2 (deferred): offline queue via IndexedDB, service worker app-shell cache, background sync on reconnect. See §6 deferred list.
+Phase 2 (closed 2026-04-27): offline queue via IndexedDB, service worker app-shell cache, background sync on reconnect via `pour-queue-drain` with `window.online` fallback for iOS Safari. Synthetic 202 returned for offline submits; FIFO drain on reconnect with idempotency-key reuse for safe retries. See `[[v1.0.0-phase2-closeout]]`.
 
 ### __7.6 Module Visibility (`mobile_visible`)__
 

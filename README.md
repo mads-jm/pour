@@ -87,7 +87,7 @@ All Pour state lives under `~/.pour/` (override with `POUR_HOME`):
 **2. Point it at your vault**
 
 ```toml
-config_version = "0.3.0"
+config_version = "1.0.0"
 
 [vault]
 base_path = "/path/to/your/vault"
@@ -319,19 +319,27 @@ What is logged at `info`: server startup (bind address, transport mode, vault pa
 mobile_visible = false
 ```
 
-**Today vs. Phase 2.** Phase 1 (shipped): module list, form rendering for all field types, submit, history list. Phase 2 (deferred): offline queue via IndexedDB, service worker app-shell cache, sub-form overlay for `create_template` fields.
+**Phase 1 + Phase 2 shipped.** Module list, form rendering for all field types, submit, history list (Phase 1, v0.3.0 initial). IndexedDB offline queue, service worker app-shell cache, sub-form overlay for `create_template` fields, preset mutation UI (save/edit/delete/reorder from PWA), 90-day history heatmap, bottom-tab navigation, and cursor-paginated history list (Phase 2, closed 2026-04-27). Full closeout report at `pour - docs/06 reports/v1.0.0-phase2-closeout.md`. Phase 3 scope (TLS, mDNS / `pour.local`) remains deferred.
 
 ## Tech Stack
 
 | Area | Crate |
 |------|-------|
 | TUI | `ratatui` + `crossterm` |
-| HTTP server | `axum` + `tokio` |
+| HTTP server | `axum` + `tower` + `tower-http` + `tokio` |
 | HTTP client | `reqwest` |
 | Static assets | `rust-embed` — PWA shell embedded in the binary at compile time |
 | Serialization | `serde` + `toml` + `toml_edit` + `serde_json` |
 | Time | `chrono` |
 | URL encoding | `percent-encoding` — encodes vault paths with spaces in REST API URLs |
+| QR codes | `qrcode` — terminal QR code rendering for `pour serve` |
+| LAN address | `local-ip-address` — discovers the LAN-routable address printed at startup |
+| Identifiers | `uuid` — idempotency keys, capture IDs |
+| Constant-time compare | `subtle` — bearer-token comparison |
+| Logging | `tracing` + `tracing-subscriber` — structured server logs (`POUR_LOG`) |
+| Unicode width | `unicode-width` — terminal cursor / column accounting |
+| Filesystem paths | `dirs` — locates the home directory for `~/.pour/` |
+| Errors | `anyhow` — error propagation in non-trivial Result chains |
 | Shell open | `open` — opens notes in Obsidian via the `o` key on the summary screen |
 
 ## Development
