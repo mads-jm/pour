@@ -84,7 +84,7 @@ mode = "append"
 path = "06 - Periodic/00 - Daily/%Y%m%d.md"
 display_name = "Daily Log"
 icon = "📋"
-append_under_header = "## Notes"
+append_under_header = "##### Notes"
 append_template = "- **{{time}}** · {{entry}}"
 
 [[modules.log.fields]]
@@ -102,8 +102,8 @@ mode = "append"
 path = "06 - Periodic/00 - Daily/%Y%m%d.md"
 display_name = "Workout"
 icon = "💪"
-append_under_header = "## Notes"
-append_template = "- **{{time}}** · {{type}} — {{duration}} min{{notes}}"
+append_under_header = "##### Notes"
+append_template = "- **{{time}}** · {{type}} — {{duration}} min : {{notes}}"
 
 [[modules.workout.fields]]
 name = "type"
