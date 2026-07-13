@@ -178,6 +178,12 @@ pub struct FormState {
     /// Transient status message shown in the composite overlay (e.g. after a
     /// preset save or a schema-adjusted apply). Cleared on next user action.
     pub composite_status: Option<String>,
+    /// Resolved read-only priors panel (§ pour-review-priors). `None` until the
+    /// first resolve completes or when the matched tier is empty (empty state).
+    pub priors_panel: Option<crate::priors::ResolvedPanel>,
+    /// When `true`, the priors panel is collapsed to a one-line summary hint
+    /// (toggled with `Ctrl+R`). Read-only; never affects submit.
+    pub priors_collapsed: bool,
 }
 
 /// Active callout-title edit session on a textarea field.
@@ -608,6 +614,8 @@ impl App {
             field_preset_picker: None,
             last_applied_field_preset: HashMap::new(),
             composite_status: None,
+            priors_panel: None,
+            priors_collapsed: false,
         })
     }
 
