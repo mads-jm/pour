@@ -12,3 +12,4 @@ Vision documents, project narratives, and manifestos.
 - [[the_pour_manifesto|The Pour Manifesto]] — Why we build
 - [[pour_without_obsidian|Pour Without Obsidian]] — Story for the curious outsider
 - [[history_heatmap_dashboard|History Heatmap Dashboard]] — GitHub-style heatmap + atomic trim spec
+- [[priors_at_the_pour|Priors at the Pour]] — Inline, config-declared review of your best prior captures, at capture time
