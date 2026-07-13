@@ -393,4 +393,35 @@ impl FsWriter {
             }
         })
     }
+
+    /// Read a file and its modified time (ms since the Unix epoch) in one shot.
+    ///
+    /// Used by the priors FS-scan fallback, which needs a recency key alongside
+    /// the content. On any metadata error the mtime defaults to `0` — recency
+    /// ordering degrades gracefully rather than failing the read.
+    pub fn read_file_with_mtime(
+        &self,
+        relative_path: &str,
+    ) -> std::result::Result<(String, i64), TransportReadError> {
+        let full_path = self
+            .resolve_path_validated(relative_path)
+            .map_err(|e| TransportReadError::Other(e.to_string()))?;
+        let content = std::fs::read_to_string(&full_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                TransportReadError::NotFound
+            } else {
+                TransportReadError::Other(format!(
+                    "FS: failed to read file {}: {e}",
+                    full_path.display()
+                ))
+            }
+        })?;
+        let mtime = std::fs::metadata(&full_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        Ok((content, mtime))
+    }
 }
