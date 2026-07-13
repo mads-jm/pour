@@ -846,6 +846,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         append_shallow: None,
         mobile_visible: None,
         preset_axes: Vec::new(),
+        priors: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,
