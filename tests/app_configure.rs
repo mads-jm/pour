@@ -333,6 +333,8 @@ fn make_form_state(
         last_applied_field_preset: HashMap::new(),
         composite_status: None,
         axis_warnings: Vec::new(),
+        priors_panel: None,
+        priors_collapsed: false,
     }
 }
 
