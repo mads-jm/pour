@@ -1,0 +1,18 @@
+# Normalize line endings. This repo is worked on from both Linux and Windows
+# (same vault, different mounts — see [vault.platform] in config), so without
+# this a round-trip through the other host rewrites every file to CRLF and
+# buries real changes in whitespace noise.
+#
+# text=auto  — store LF in the repo, detect binary automatically
+# eol=lf     — check out LF everywhere, including Windows
+* text=auto eol=lf
+
+# PowerShell is conventionally CRLF; leave it alone.
+*.ps1 text eol=crlf
+
+# Never touch these.
+*.png binary
+*.ico binary
+*.ttf binary
+*.woff2 binary
+*.wasm binary
