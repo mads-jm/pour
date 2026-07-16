@@ -20,6 +20,7 @@ Feature and component specifications.
 - [[pour-pwa-roadmap]] — PWA companion roadmap and phase plan
 - [[pour-fit-module-brief]]
 - [[pour-project-standards]] — Project standards: error discipline, pub visibility, file-size budget, write paths, test conventions, workflow, release strategy
+- [[pour-lyra-capture]] — `pour lyra` toss-to-inbox module: per-module `base_path` override + `post_write_shell` (auto commit+push), plus a potential `file_select` file-picker expansion. Draft.
 
 ## Index
 
