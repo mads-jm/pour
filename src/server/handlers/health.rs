@@ -28,7 +28,7 @@ pub async fn handler(State(state): State<AppState>) -> Response {
         version: env!("CARGO_PKG_VERSION"),
         schema_version: "1",
         transport_mode,
-        vault_base_path: state.config.vault.base_path.clone(),
+        vault_base_path: state.config.vault.effective_base_path().to_string(),
         capabilities: vec![
             "composite_array",
             "create_template",

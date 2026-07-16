@@ -34,6 +34,33 @@ pub struct VaultConfig {
     /// strftime format string used to render a date-based filename when the
     /// browser picks a directory for an append-mode path. Defaults to `%Y%m%d`.
     pub date_format: Option<String>,
+    /// Optional per-OS overrides for `base_path`, keyed by the value of
+    /// `std::env::consts::OS` ("linux", "macos", "windows", …). When the
+    /// running OS matches a key, that path supersedes `base_path`; an absent
+    /// key falls back to `base_path`. This lets a single `config.toml` describe
+    /// the same logical vault across machines that mount it at different paths
+    /// (e.g. `D:\…\main` on Windows vs `/home/mads/drives/primary/Vault/main`
+    /// on Linux). Resolved via [`VaultConfig::effective_base_path`].
+    #[serde(default)]
+    pub platform: Option<HashMap<String, String>>,
+}
+
+impl VaultConfig {
+    /// The vault base path for the current OS: a matching `[vault.platform]`
+    /// override wins, otherwise `base_path`.
+    ///
+    /// Callers that resolve or report the *physical* vault location must use
+    /// this. The raw `base_path` field is reserved for the on-disk default and
+    /// for the config editor (which reads/writes that literal — see
+    /// `tui/configure`), so an override is never silently persisted over the
+    /// default.
+    pub fn effective_base_path(&self) -> &str {
+        self.platform
+            .as_ref()
+            .and_then(|m| m.get(std::env::consts::OS))
+            .map(String::as_str)
+            .unwrap_or(&self.base_path)
+    }
 }
 
 fn default_api_port() -> Option<u16> {

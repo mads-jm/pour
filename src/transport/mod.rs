@@ -82,7 +82,7 @@ impl Transport {
             return Transport::Api(client);
         }
 
-        let base_path = std::path::PathBuf::from(&config.vault.base_path);
+        let base_path = std::path::PathBuf::from(config.vault.effective_base_path());
         Transport::Fs(FsWriter::new(base_path))
     }
 

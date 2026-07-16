@@ -244,7 +244,7 @@ where
 
     let transport_mode = transport.mode();
 
-    let vault_path = &config.vault.base_path;
+    let vault_path = config.vault.effective_base_path();
     let transport_label = match transport_mode {
         TransportMode::Api => "API",
         TransportMode::FileSystem => "FileSystem",

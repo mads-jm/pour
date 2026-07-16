@@ -322,7 +322,8 @@ pub async fn run_loop(
                 }
 
                 tui::Action::OpenInObsidian(file_path) => {
-                    let uri = obsidian_uri(&app.config.vault.base_path, file_path.as_deref());
+                    let uri =
+                        obsidian_uri(app.config.vault.effective_base_path(), file_path.as_deref());
                     if let Err(e) = open::that(&uri)
                         && let Some(ref mut ss) = app.summary_state
                     {
@@ -939,7 +940,7 @@ async fn handle_save(app: &mut App) {
                 // Warn if the saved config introduced path issues
                 let path_warnings = app
                     .config
-                    .check_paths(std::path::Path::new(&app.config.vault.base_path));
+                    .check_paths(std::path::Path::new(app.config.vault.effective_base_path()));
                 if !path_warnings.is_empty()
                     && let Some(ref mut s) = app.configure_state
                 {

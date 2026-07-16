@@ -78,7 +78,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
 
     // Vault name: last component of base_path
-    let vault_name = std::path::Path::new(&app.config.vault.base_path)
+    let vault_name = std::path::Path::new(app.config.vault.effective_base_path())
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("vault");

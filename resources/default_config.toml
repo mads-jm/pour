@@ -22,6 +22,15 @@ base_path = "VAULT_PATH_PLACEHOLDER"
 # strftime format string used for date-based filenames (default: %Y%m%d)
 # date_format = "%Y%m%d"
 
+# Per-OS base_path overrides — only needed if you run Pour against the SAME vault
+# from machines that mount it at different paths (e.g. a drive letter on Windows
+# vs a mount point on Linux). Keys match `std::env::consts::OS`; a matching key
+# wins over base_path, everything else falls back to it. One config, every host.
+# [vault.platform]
+# linux   = "/home/you/vault"
+# windows = "D:\\vault"
+# macos   = "/Users/you/vault"
+
 # ─── Modules ─────────────────────────────────────────────────────────────────
 # Two modes:
 #   "append" — adds content under a heading in an existing note

@@ -12,13 +12,22 @@ module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "bo
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
-# Absolute path to your Obsidian vault root directory
+# Absolute path to your Obsidian vault root directory. Used as the default when
+# no [vault.platform] override matches the running OS (see below).
 base_path = "D:\\! System\\Documents\\! obsidian\\main"
 # Obsidian Local REST API port (optional — Pour falls back to direct filesystem writes)
 api_port = 27124
 # api_key = "your-api-key"  # or set POUR_API_KEY env var
 # strftime format string used for date-based filenames
 date_format = "%Y%m%d"
+
+# Per-OS base_path overrides. The same logical vault is mounted at different
+# paths on different machines — Windows sees a drive letter, Linux sees the NTFS
+# mount. Keys match `std::env::consts::OS` ("linux", "macos", "windows"); the
+# matching key supersedes base_path, anything unlisted falls back to it. This
+# keeps ONE config.toml correct on every machine instead of divergent copies.
+[vault.platform]
+linux = "/home/mads/drives/primary/Vault/main"
 
 # ─── Modules ─────────────────────────────────────────────────────────────────
 # Two modes:

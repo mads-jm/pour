@@ -147,7 +147,7 @@ async fn main() {
     // Check for path issues at startup; shown as a dismissable overlay on the dashboard
     app.startup_warnings = app
         .config
-        .check_paths(std::path::Path::new(&app.config.vault.base_path));
+        .check_paths(std::path::Path::new(app.config.vault.effective_base_path()));
 
     // Load cache for dynamic selects
     let mut cache = Cache::load();

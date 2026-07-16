@@ -1963,3 +1963,60 @@ fn migrate_api_key_moves_key_from_config_to_secrets() {
         "api_key should be removed from config.toml after migration"
     );
 }
+
+// --- Per-OS base_path override ([vault.platform]) ---
+
+/// Build a minimal config with the given `[vault]` body.
+fn config_with_vault(vault_body: &str) -> String {
+    format!(
+        r#"
+[vault]
+{vault_body}
+
+[modules.test]
+mode = "create"
+path = "test.md"
+
+[[modules.test.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#
+    )
+}
+
+#[test]
+fn effective_base_path_falls_back_without_platform_table() {
+    let config = Config::from_toml(&config_with_vault("base_path = \"/default/vault\""))
+        .expect("should parse");
+    assert_eq!(config.vault.effective_base_path(), "/default/vault");
+}
+
+#[test]
+fn effective_base_path_prefers_current_os_override() {
+    // Key off the OS the test is actually running on so the assertion holds on
+    // every platform CI exercises.
+    let body = format!(
+        "base_path = \"/default/vault\"\n\n[vault.platform]\n{} = \"/override/vault\"",
+        std::env::consts::OS
+    );
+    let config = Config::from_toml(&config_with_vault(&body)).expect("should parse");
+    assert_eq!(config.vault.effective_base_path(), "/override/vault");
+    // The raw field is untouched — the editor still round-trips the default.
+    assert_eq!(config.vault.base_path, "/default/vault");
+}
+
+#[test]
+fn effective_base_path_ignores_non_matching_os_override() {
+    // A platform table that lists only a *different* OS must not shadow base_path.
+    let other_os = if std::env::consts::OS == "linux" {
+        "windows"
+    } else {
+        "linux"
+    };
+    let body = format!(
+        "base_path = \"/default/vault\"\n\n[vault.platform]\n{other_os} = \"/override/vault\""
+    );
+    let config = Config::from_toml(&config_with_vault(&body)).expect("should parse");
+    assert_eq!(config.vault.effective_base_path(), "/default/vault");
+}
