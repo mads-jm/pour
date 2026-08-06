@@ -20,7 +20,8 @@ Feature and component specifications.
 - [[pour-pwa-roadmap]] — PWA companion roadmap and phase plan
 - [[pour-fit-module-brief]]
 - [[pour-project-standards]] — Project standards: error discipline, pub visibility, file-size budget, write paths, test conventions, workflow, release strategy
-- [[pour-lyra-capture]] — `pour lyra` toss-to-inbox module: per-module `base_path` override + `post_write_shell` (auto commit+push), plus a potential `file_select` file-picker expansion. Draft.
+- [[pour-roots-and-hooks]] — Capture beyond the vault: per-module `base_path` override + `post_write_shell` write hooks (auto commit+push), plus a potential `file_select` file-picker expansion. Shipped 2026-07-16 with deviations annotated.
+- [[pour-habit-capture]] — Frontmatter mutation primitives: `update` write mode, `toggle`/`counter` field types with goals, date-target resolution (`rollover`/`--date`), one-shot argv capture. Includes the ambient-state-vs-event-note creed. Draft.
 
 ## Index
 

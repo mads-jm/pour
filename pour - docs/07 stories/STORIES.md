@@ -12,3 +12,4 @@ Vision documents, project narratives, and manifestos.
 - [[the_pour_manifesto|The Pour Manifesto]] — Why we build
 - [[pour_without_obsidian|Pour Without Obsidian]] — Story for the curious outsider
 - [[history_heatmap_dashboard|History Heatmap Dashboard]] — GitHub-style heatmap + atomic trim spec
+- [[the_habit_story|The Habit Story]] — Ambient state deserves a reflex too; the creed and the limit
