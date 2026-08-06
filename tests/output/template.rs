@@ -1,7 +1,7 @@
 use chrono::Local;
 use pour::config::Config;
 use pour::output::CompositeData;
-use pour::output::template::{render_append_template, render_path};
+use pour::output::template::{render_append_template, render_path, slug_from_title, slug_tokens};
 use std::collections::HashMap;
 
 /// Minimal module config for template tests that don't use composite fields.
@@ -22,6 +22,10 @@ prompt = "Body"
 "####;
     let config = Config::from_toml(toml).unwrap();
     config.modules.into_values().next().unwrap()
+}
+
+fn no_fields_map() -> HashMap<String, String> {
+    HashMap::new()
 }
 
 fn no_composites() -> CompositeData {
@@ -717,4 +721,123 @@ callout_title = "Default"
         !result.contains("Default"),
         "default title should be hidden when runtime title set, got: {result}"
     );
+}
+
+// ── {{slug}} / {{slug_or_time}} ──────────────────────────────────────────────
+//
+// The slug must match the Lyra Templater's JS exactly:
+//   title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+// so a hand-authored toss and a poured one land on the same filename.
+
+/// Fixed local timestamp: 2026-07-16 14:32:55.
+fn slug_now() -> chrono::DateTime<Local> {
+    use chrono::TimeZone as _;
+    Local.with_ymd_and_hms(2026, 7, 16, 14, 32, 55).unwrap()
+}
+
+#[test]
+fn slug_kebab_cases_a_title() {
+    assert_eq!(slug_from_title("Peace vs Effort"), "peace-vs-effort");
+}
+
+#[test]
+fn slug_collapses_punctuation_runs_into_single_dashes() {
+    assert_eq!(slug_from_title("a!!!b???c"), "a-b-c");
+    assert_eq!(slug_from_title("hello -- world"), "hello-world");
+}
+
+#[test]
+fn slug_trims_leading_and_trailing_dashes() {
+    assert_eq!(slug_from_title("---trim me---"), "trim-me");
+    assert_eq!(slug_from_title("  spaced  "), "spaced");
+}
+
+#[test]
+fn slug_of_untitled_is_empty() {
+    assert_eq!(slug_from_title(""), "");
+}
+
+#[test]
+fn slug_of_punctuation_only_is_empty() {
+    // Every character is dropped, and the trim leaves nothing behind — not "-".
+    assert_eq!(slug_from_title("!!!"), "");
+    assert_eq!(slug_from_title("---"), "");
+}
+
+#[test]
+fn slug_drops_non_ascii_like_the_js_regex() {
+    // `[a-z0-9]` never matches a non-ASCII letter, so JS turns "café" into
+    // "caf-" and then trims the trailing dash. Pour must do the same, however
+    // unintuitive — parity with the Templater is the whole point.
+    assert_eq!(slug_from_title("café"), "caf");
+    assert_eq!(slug_from_title("naïve idea"), "na-ve-idea");
+    assert_eq!(slug_from_title("日本語"), "");
+}
+
+#[test]
+fn slug_keeps_digits() {
+    assert_eq!(slug_from_title("v2 Roadmap 2026"), "v2-roadmap-2026");
+}
+
+#[test]
+fn slug_token_is_dash_prefixed_in_a_path() {
+    let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "Peace vs Effort".to_string());
+
+    let result = render_path("inbox/%Y%m%d-%H%M%S{{slug}}.md", &fields, None, slug_now());
+
+    assert_eq!(result, "inbox/20260716-143255-peace-vs-effort.md");
+}
+
+#[test]
+fn slug_token_is_empty_when_untitled() {
+    // The regression this guards: an unregistered {{slug}} would be *stripped*
+    // by render_path's unknown-placeholder pass, which produces this same
+    // filename — so this test only means something alongside the titled case.
+    let result = render_path(
+        "inbox/%Y%m%d-%H%M%S{{slug}}.md",
+        &no_fields_map(),
+        None,
+        slug_now(),
+    );
+
+    assert_eq!(result, "inbox/20260716-143255.md");
+}
+
+#[test]
+fn slug_token_is_empty_when_title_is_punctuation_only() {
+    let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "!!!".to_string());
+
+    let result = render_path("inbox/%Y%m%d-%H%M%S{{slug}}.md", &fields, None, slug_now());
+
+    assert_eq!(result, "inbox/20260716-143255.md");
+}
+
+#[test]
+fn slug_or_time_falls_back_to_timestamp_when_untitled() {
+    let (slug, slug_or_time) = slug_tokens("", slug_now());
+
+    assert_eq!(slug, "");
+    assert_eq!(slug_or_time, "20260716-143255");
+}
+
+#[test]
+fn slug_or_time_is_the_bare_slug_when_titled() {
+    let (slug, slug_or_time) = slug_tokens("Peace vs Effort", slug_now());
+
+    assert_eq!(slug, "-peace-vs-effort");
+    assert_eq!(slug_or_time, "peace-vs-effort");
+}
+
+#[test]
+fn slug_tokens_are_disjoint_in_a_template() {
+    // {{slug}} is a prefix of neither {{slug_or_time}} nor vice versa — pin it,
+    // because a naive substitution order would corrupt one of them.
+    let mut fields = HashMap::new();
+    fields.insert("title".to_string(), "Two Tokens".to_string());
+
+    let result = render_path("{{slug_or_time}}{{slug}}.md", &fields, None, slug_now());
+
+    assert_eq!(result, "two-tokens-two-tokens.md");
 }

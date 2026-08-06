@@ -1384,3 +1384,209 @@ async fn submit_history_written_to_pour_home_not_real_home() {
          expected {prior_pour_home:?}, got {restored:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// post_write_shell over the serve path
+// ---------------------------------------------------------------------------
+
+/// A create-mode module whose hook drops a `marker` file into `base_path`.
+/// `hook_body` supplies (or omits) `post_write_shell_on_serve`.
+fn hook_config(base_path: &str, hook_body: &str) -> pour::config::Config {
+    let toml = format!(
+        r#"
+[vault]
+base_path = "{base_path}"
+
+[modules.toss]
+mode = "create"
+path = "inbox/note.md"
+post_write_shell = "touch marker"
+{hook_body}
+
+[[modules.toss.fields]]
+name = "body"
+field_type = "text"
+prompt = "Body"
+"#
+    );
+    pour::config::Config::from_toml(&toml).expect("hook config")
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_lan_capture_does_not_fire_the_hook_by_default() {
+    // The default that matters: a phone on the LAN can capture, but cannot make
+    // this machine run a command. `post_write_shell_on_serve` is absent here.
+    let _lock = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
+
+    let state = make_state(hook_config(&base, ""), tmp.path());
+    let router = make_router(state);
+
+    let req = json_request(
+        "toss",
+        Some("test-token"),
+        json!({ "field_values": { "body": "a thought" } }),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    assert!(
+        tmp.path().join("inbox/note.md").exists(),
+        "the capture itself must still be written"
+    );
+    assert!(
+        !tmp.path().join("marker").exists(),
+        "the hook must NOT run for a LAN capture unless the module opts in"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_lan_capture_fires_the_hook_when_the_module_opts_in() {
+    let _lock = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
+
+    let state = make_state(
+        hook_config(&base, "post_write_shell_on_serve = true"),
+        tmp.path(),
+    );
+    let router = make_router(state);
+
+    let req = json_request(
+        "toss",
+        Some("test-token"),
+        json!({ "field_values": { "body": "a thought" } }),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    assert!(
+        tmp.path().join("marker").exists(),
+        "an explicit opt-in must fire the hook"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failing_hook_still_returns_201_with_a_warning() {
+    // Best-effort by contract: the note is already on disk, so a hook failure
+    // is a warning on a successful response, never a lost capture.
+    let _lock = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
+
+    let toml = format!(
+        r#"
+[vault]
+base_path = "{base}"
+
+[modules.toss]
+mode = "create"
+path = "inbox/note.md"
+post_write_shell = "exit 7"
+post_write_shell_on_serve = true
+
+[[modules.toss.fields]]
+name = "body"
+field_type = "text"
+prompt = "Body"
+"#
+    );
+    let config = pour::config::Config::from_toml(&toml).unwrap();
+    let state = make_state(config, tmp.path());
+    let router = make_router(state);
+
+    let req = json_request(
+        "toss",
+        Some("test-token"),
+        json!({ "field_values": { "body": "a thought" } }),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    assert!(
+        tmp.path().join("inbox/note.md").exists(),
+        "note must survive"
+    );
+
+    let json = body_json(resp.into_body()).await;
+    let warnings = json["warnings"].as_array().unwrap();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w["code"] == "post_write_shell_failed"),
+        "expected a hook warning, got: {json}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SubmitRequest wire surface
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_lan_client_cannot_inject_a_hook_through_the_submit_body() {
+    // The config-injection exclusion is true *by construction*: `SubmitRequest`
+    // (src/server/dto/requests.rs) is a typed DTO carrying only field_values,
+    // composite_data, callout_*, auto_create_inputs, captured_at and client_id.
+    // There is no filter stripping config keys — there is nowhere for them to
+    // land, so serde drops them at the wire boundary.
+    //
+    // This test pins that property from the outside, since `dto` is crate-
+    // private and deliberately not part of the external Rust API. If a config
+    // key is ever added to the DTO, the serve path gains remote command
+    // execution and this test fails. That is the intended tripwire: it is a
+    // security change, not a feature.
+    let _lock = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = fwd(tmp.path());
+    let _env = EnvGuard::set("POUR_HOME", tmp.path().to_str().unwrap());
+
+    // The module has NO post_write_shell and NO base_path of its own.
+    let state = make_state(create_config(&base), tmp.path());
+    let router = make_router(state);
+
+    let req = json_request(
+        "coffee",
+        Some("test-token"),
+        json!({
+            "field_values": { "bean": "Ethiopia" },
+            // Every config key an attacker would want to set:
+            "post_write_shell": "touch pwned",
+            "post_write_shell_on_serve": true,
+            "base_path": "/etc",
+            "path": "../../pwned.md",
+            "frontmatter": { "author": "not-mads" },
+            "frontmatter_date_format": "%Y"
+        }),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+
+    // Unknown keys are ignored, not rejected — the capture still succeeds.
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    assert!(
+        !tmp.path().join("pwned").exists(),
+        "a body-supplied post_write_shell must never execute"
+    );
+    assert!(
+        tmp.path().join("Coffee/note.md").exists(),
+        "the write must use the module's configured path"
+    );
+    assert!(
+        !tmp.path().parent().unwrap().join("pwned.md").exists(),
+        "a body-supplied path must not redirect the write"
+    );
+
+    let content = std::fs::read_to_string(tmp.path().join("Coffee/note.md")).unwrap();
+    assert!(
+        !content.contains("not-mads"),
+        "body-supplied frontmatter must not reach the note, got: {content}"
+    );
+}

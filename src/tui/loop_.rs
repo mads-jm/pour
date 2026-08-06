@@ -555,13 +555,27 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     if let Some(ref mut fs) = app.form_state {
         fs.validation_errors.clear();
     }
-    let transport_mode = app.transport.mode();
+
+    // A module that overrides the vault root writes through its own filesystem
+    // transport; everything else uses the app-level one. `transport_mode` must
+    // be read from whichever is actually used — reading it from `app.transport`
+    // would report "API" for a write that went straight to disk.
+    let module_transport = crate::transport::Transport::for_module(module);
+    let transport = module_transport.as_ref().unwrap_or(&app.transport);
+    let transport_mode = transport.mode();
 
     // Capture current time once so all engine calls use the same instant.
     let now_local = chrono::Local::now();
     let now_utc = chrono::Utc::now();
 
     // Auto-create bare notes for novel dynamic_select values (best-effort, before main write)
+    //
+    // Deliberately the app transport, not `transport`: a field's `source` is
+    // read from the vault (`data::fetch_options` uses the app transport), so an
+    // auto-created note must land where the reader will look for it next time.
+    // Consequence: on a root-overriding module, only the module's own note goes
+    // to the overridden root — its dynamic_select sources still resolve against
+    // the vault.
     let today = now_local.format("%Y-%m-%d").to_string();
     let auto_created = crate::autocreate::run(
         module,
@@ -579,7 +593,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     let write_result = match module.mode {
         WriteMode::Create => {
             output::write_create(
-                &app.transport,
+                transport,
                 module,
                 &field_values,
                 &composite_data,
@@ -592,7 +606,7 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
         }
         WriteMode::Append => {
             output::write_append(
-                &app.transport,
+                transport,
                 module,
                 &field_values,
                 &composite_data,
@@ -626,6 +640,23 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             let mut summary_message = "Entry saved successfully.".to_string();
             if let Some(w) = history_warning {
                 summary_message.push_str(&w);
+            }
+
+            // post_write_shell — best-effort, and only ever additive to the
+            // message: the note is on disk by this point, so a failing hook is
+            // reported, never fatal.
+            if let Some(command) = &module.post_write_shell {
+                let root = module
+                    .root_override()
+                    .unwrap_or(app.config.vault.effective_base_path());
+                let title = field_values
+                    .get("title")
+                    .map(String::as_str)
+                    .unwrap_or_default();
+                let ctx = crate::hooks::HookContext::new(root, &vault_path, title, now_local);
+                if let Some(warning) = crate::hooks::run(command, &ctx).await {
+                    summary_message.push_str(&format!(" (Warning: {warning})"));
+                }
             }
 
             app.summary_state = Some(SummaryState {
@@ -1281,6 +1312,14 @@ fn handle_save_new_module(app: &mut App) {
         append_shallow: None,
         mobile_visible: None,
         preset_axes: Vec::new(),
+        // A module built through the configure UI writes to the vault with no
+        // hook — every one of these is opt-in via config.toml only.
+        base_path: None,
+        platform: None,
+        frontmatter: None,
+        frontmatter_date_format: None,
+        post_write_shell: None,
+        post_write_shell_on_serve: None,
         fields: vec![FieldConfig {
             name: "title".to_string(),
             field_type: FieldType::Text,

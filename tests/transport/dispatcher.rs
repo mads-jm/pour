@@ -158,3 +158,67 @@ fn transport_mode_display() {
     assert_eq!(TransportMode::Api.to_string(), "API");
     assert_eq!(TransportMode::FileSystem.to_string(), "File System");
 }
+
+// ── Per-module root override (`Transport::for_module`) ───────────────────────
+
+/// Config with a vault plus a module `lyra` rooted somewhere else entirely.
+fn config_with_module_root(module_body: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.lyra]
+mode = "create"
+path = "inbox/note.md"
+{module_body}
+
+[[modules.lyra.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"####
+    );
+    Config::from_toml(&toml).expect("test config should parse")
+}
+
+#[test]
+fn for_module_is_none_when_the_module_uses_the_vault() {
+    // None means "use the app transport" — every existing module is unaffected.
+    let config = config_with_module_root("");
+    assert!(Transport::for_module(&config.modules["lyra"]).is_none());
+}
+
+#[test]
+fn for_module_is_a_filesystem_transport_rooted_at_the_override() {
+    let config = config_with_module_root(r#"base_path = "/srv/inbox""#);
+
+    let transport = Transport::for_module(&config.modules["lyra"]).expect("override → transport");
+
+    assert_eq!(
+        transport.mode(),
+        TransportMode::FileSystem,
+        "a root override is always filesystem — the Obsidian API cannot reach outside its vault"
+    );
+    match transport {
+        Transport::Fs(writer) => {
+            assert_eq!(writer.base_path().to_str(), Some("/srv/inbox"));
+        }
+        Transport::Api(_) => panic!("must never select the API transport for a root override"),
+    }
+}
+
+#[test]
+fn for_module_prefers_the_per_os_override() {
+    let body = format!(
+        "base_path = \"/srv/inbox\"\n\n[modules.lyra.platform]\n{} = \"/srv/os-specific\"",
+        std::env::consts::OS
+    );
+    let config = config_with_module_root(&body);
+
+    let transport = Transport::for_module(&config.modules["lyra"]).expect("override → transport");
+    match transport {
+        Transport::Fs(writer) => assert_eq!(writer.base_path().to_str(), Some("/srv/os-specific")),
+        Transport::Api(_) => panic!("must be filesystem"),
+    }
+}

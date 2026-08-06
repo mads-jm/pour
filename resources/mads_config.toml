@@ -5,10 +5,10 @@
 # Each [modules.<name>] block becomes a `pour <name>` command.
 
 # Schema version — used for migration support when the config format changes.
-config_version = "0.3.0"
+config_version = "0.4.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
-module_order = ["me", "todo", "log", "workout", "note", "coffee", "journal", "book"]
+module_order = ["me", "todo", "log", "workout", "note", "lyra", "coffee", "journal", "book"]
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
@@ -160,6 +160,87 @@ field_type = "textarea"
 prompt = "Content"
 target = "body"
 preset_exclude = true      # freeform content varies every entry
+
+# ── lyra ─────────────────────────────────────────────────────────────────────
+# Usage: `pour lyra`
+# Tosses a thought into Lyra's inbox. Her mind is plaintext in the dotfiles
+# repo, so a toss only reaches cloud-Lyra once it is committed and pushed —
+# hence base_path (her inbox is not in the vault) + post_write_shell (delivery).
+#
+# NOTE ON TOML ORDERING: every plain key below must come BEFORE the
+# [modules.lyra.frontmatter] / [modules.lyra.platform] sub-tables. Once a
+# sub-table header is opened, following bare keys belong to *it* — a
+# post_write_shell written after [modules.lyra.frontmatter] silently becomes a
+# frontmatter entry instead of a hook, with no error.
+[modules.lyra]
+mode = "create"
+# Per-module root override: this module ignores [vault].base_path entirely.
+# Absolute paths only — `~` is NOT expanded anywhere in Pour.
+# A module with a base_path always writes over the filesystem transport; the
+# Obsidian API can only reach the vault it serves.
+base_path = "/home/mads/.dotfiles"
+# Seconds in the stamp, because two untitled tosses in the same minute would
+# otherwise collide — and a filesystem collision is a hard error that discards
+# the thought you just typed, not a silent overwrite.
+# {{slug}} is the kebab-cased title, dash-prefixed, or empty when untitled.
+path = "Lyra - mind/inbox/%Y%m%d-%H%M%S{{slug}}.md"
+display_name = "Toss to Lyra"
+icon = "🌒"
+daily_link = false         # this is HER inbox, not your daily note
+
+# A toss is a moment, not a day: minutes let Lyra order same-day tosses.
+# Per-module — the coffee/journal/note corpora stay date-only.
+frontmatter_date_format = "%Y-%m-%dT%H:%M"
+
+# Delivery. Runs from base_path, so no `git -C` is needed.
+#   - `add` stages the new file (it is untracked, so `commit` alone cannot see it).
+#   - `commit -- <path>` restricts the commit to THIS file: ~/.dotfiles is where
+#     the pour config itself is stowed, so the index is dirty often, and a bare
+#     `commit` would sweep unrelated staged work into a toss.
+# Only Pour-generated tokens interpolate here; {{title}} and friends are
+# rejected at config-load time. See `src/hooks.rs`.
+post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'toss: {{slug_or_time}}' -- '{{rel_path}}' && git push -q"
+# post_write_shell_on_serve defaults to false: a phone on the LAN can capture,
+# but cannot make this machine run git.
+
+# Same logical root, different mount per machine — mirrors [vault.platform].
+# Uncomment and fill in the Windows path to make `pour lyra` work there too.
+# [modules.lyra.platform]
+# windows = "C:\\Users\\<you>\\.dotfiles"
+
+# Static frontmatter — properties of the module, not of the capture. Emitted
+# literally (no token interpolation), arrays become YAML block sequences.
+[modules.lyra.frontmatter]
+tags = ["lyra", "toss"]
+cssclasses = ["mads-toss"]
+author = "mads"
+
+# What kind of toss — lets Lyra weight it. allow_create so the vocabulary grows.
+[[modules.lyra.fields]]
+name = "kind"
+field_type = "static_select"
+prompt = "Kind"
+options = ["musing", "vision", "correction", "context", "directive-hint"]
+default = "musing"
+target = "frontmatter"
+allow_create = true
+
+# Optional title → becomes the filename slug AND a frontmatter key.
+[[modules.lyra.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title (optional)"
+target = "frontmatter"
+preset_exclude = true
+
+# The thought itself.
+[[modules.lyra.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Toss her a thought"
+required = true
+target = "body"
+preset_exclude = true
 
 # ── coffee ───────────────────────────────────────────────────────────────────
 # Usage: `pour coffee`
@@ -524,7 +605,7 @@ prompt = "Roast date (YYYY-MM-DD)"
 name = "origin"
 field_type = "static_select"
 prompt = "Origin"
-options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen", "Nicaragua"]
+options = ["Blend", "Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil", "Tanzania", "Yemen", "Nicaragua", "Rwanda"]
 # Typing a novel value at capture time appends it to this list and persists
 # to config.toml so it's available next session.
 allow_create = true
@@ -533,7 +614,7 @@ allow_create = true
 name = "varietal"
 field_type = "static_select"
 prompt = "Varietal (optional)"
-options = ["Typica", "Bourbon", "Caturra", "Catuai", "Geisha", "SL28", "SL34", "Heirloom", "Pacamara"]
+options = ["Typica", "Bourbon", "Caturra", "Catuai", "Geisha", "SL28", "SL34", "Heirloom", "Pacamara", "Red Bourbon", "74158"]
 allow_create = true
 
 [[templates.bean.fields]]

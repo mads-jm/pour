@@ -26,10 +26,17 @@ const YAML_SPECIAL_START: &[char] = &['-'];
 ///   (e.g. `"a, b, c"`) are emitted as a YAML sequence. Otherwise the value
 ///   is treated as a literal string and properly escaped.
 /// - Composite fields are emitted as YAML sequence-of-mappings.
+/// - `statics` (`[modules.<n>.frontmatter]`) are emitted after the captured
+///   fields and before composites, exactly as written in the config — arrays
+///   become YAML block sequences, scalars become scalars. The caller is
+///   responsible for having already dropped any static whose key collides with
+///   a captured field (see `write_create`), since duplicate YAML keys are
+///   invalid.
 pub fn generate_frontmatter(
     fields: &[(String, String, bool)],
     composites: &[FrontmatterComposite<'_>],
     date_str: &str,
+    statics: &[(&str, &toml::Value)],
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
 
@@ -65,6 +72,33 @@ pub fn generate_frontmatter(
         } else {
             let formatted = format_value(value);
             lines.push(format!("{key}: {formatted}"));
+        }
+    }
+
+    // Static module frontmatter → scalars and block sequences.
+    //
+    // This cannot reuse the `list = true` path above: that only emits a
+    // sequence when the value `contains(", ")`, so a single-element
+    // `tags = ["lyra"]` would come out as the scalar `tags: lyra`. An array in
+    // config means a sequence in YAML, whatever its length.
+    for (key, value) in statics {
+        match value {
+            toml::Value::Array(items) => {
+                if items.is_empty() {
+                    continue;
+                }
+                lines.push(format!("{key}:"));
+                for item in items {
+                    lines.push(format!("  - {}", format_toml_scalar(item)));
+                }
+            }
+            scalar => {
+                let formatted = format_toml_scalar(scalar);
+                if formatted.is_empty() {
+                    continue;
+                }
+                lines.push(format!("{key}: {formatted}"));
+            }
         }
     }
 
@@ -124,6 +158,25 @@ fn format_composite_row(sub_fields: &[SubFieldConfig], row: &[String], lines: &m
             // Continuation fields: indented mapping
             lines.push(format!("    {}: {formatted}", sub.name));
         }
+    }
+}
+
+/// Render a TOML scalar from `[modules.<n>.frontmatter]` as a YAML scalar.
+///
+/// Numbers and booleans pass through unquoted — they are typed in the config,
+/// so they should stay typed in the frontmatter. Strings go through
+/// `format_scalar`, which quotes only when YAML would otherwise misread them.
+///
+/// Arrays, tables, and datetimes are rejected by config validation
+/// (`Config::is_frontmatter_value`) and so cannot arrive here; the fallback
+/// keeps this function total rather than panicking if that guard ever moves.
+fn format_toml_scalar(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => format_scalar(s),
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Float(f) => f.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        other => format_scalar(&other.to_string()),
     }
 }
 

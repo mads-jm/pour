@@ -151,7 +151,55 @@ path = "Coffee/{{bean}}@%Y%m%d.md"
 
 # special tokens: {{date}}, {{time}}
 path = "Notes/%Y/%m/{{title}}.md"
+
+# {{slug}} - kebab-cased `title` field, dash-prefixed; empty when untitled.
+# Untitled captures in the same minute collide, so use %S when title is optional.
+path = "inbox/%Y%m%d-%H%M%S{{slug}}.md"   # 20260716-143255-my-title.md
 ```
+
+### Static Module Frontmatter
+
+Keys that belong to the module rather than the capture. Arrays become YAML block sequences; values are literal (no interpolation). Create mode only.
+
+```toml
+[modules.inbox.frontmatter]
+tags = ["inbox", "capture"]
+cssclasses = ["poured"]
+author = "sam"
+
+# Shape of the auto-injected `date` key. Absent → %Y-%m-%d.
+[modules.inbox]
+frontmatter_date_format = "%Y-%m-%dT%H:%M"
+```
+
+### Per-Module Root (`base_path`)
+
+By default every module writes under `[vault].base_path`. A module can override it to capture somewhere that isn't the vault at all:
+
+```toml
+[modules.inbox]
+base_path = "/home/user/notes-repo"    # absolute only; `~` is NOT expanded
+path = "inbox/%Y%m%d-%H%M%S{{slug}}.md"
+
+[modules.inbox.platform]               # optional per-OS override
+windows = "C:\\Users\\user\\notes-repo"
+```
+
+`path` stays root-relative (traversal is still rejected), and such a module always writes via the filesystem — the Obsidian API can only reach the vault it serves.
+
+### Post-Write Hooks (`post_write_shell`)
+
+Run a command after a successful write — e.g. to deliver a note somewhere a local file can't reach:
+
+```toml
+[modules.inbox]
+post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_or_time}}' -- '{{rel_path}}' && git push -q"
+# post_write_shell_on_serve = true   # default false — LAN captures don't run commands
+```
+
+Runs from `base_path` through the OS shell. Best-effort: the note is written first, so a failing hook warns and never loses the capture.
+
+> **This is arbitrary command execution from your config.** Only `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, and `{{slug_or_time}}` interpolate — all Pour-generated. `{{field_name}}` is **rejected at load**, not stripped: captured text must never reach a shell string. A hook that auto-commits and pushes also makes a bad capture public history.
 
 ### Conditional Fields (`show_when`)
 
@@ -237,6 +285,8 @@ Pour writes to Obsidian via two paths, falling back automatically:
 
 1. **API** - HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in `~/.pour/secrets.toml` or via `POUR_API_KEY` env var.
 2. **Filesystem** - Direct `std::fs` writes to `vault.base_path`. Always available.
+
+A module with its own `base_path` always uses the filesystem path, and the summary reports it as such — the API can only address notes inside the vault it serves.
 
 ```toml
 # ~/.pour/config.toml

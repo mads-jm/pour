@@ -64,6 +64,71 @@ fn escape_nonspecifier_percent(template: &str) -> String {
     out
 }
 
+/// The field whose value backs the `{{slug}}` / `{{slug_or_time}}` tokens.
+///
+/// A reserved field name, in the same spirit as the template `{{name}}`
+/// placeholder: a module opts into slugs by having a field called this.
+const SLUG_SOURCE_FIELD: &str = "title";
+
+/// Timestamp shape `{{slug_or_time}}` falls back to when there is no title.
+const SLUG_TIME_FORMAT: &str = "%Y%m%d-%H%M%S";
+
+/// Kebab-case a title into a filename slug.
+///
+/// Mirrors the Lyra Templater's JS exactly —
+/// `title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")` —
+/// so a hand-authored note and a poured one land on the same name. Every run of
+/// characters outside `[a-z0-9]` collapses to a single `-` (note that this
+/// includes *all* non-ASCII: `[a-z0-9]` never matches `é`, so "café" slugs to
+/// "caf"), then leading and trailing dashes are trimmed. An untitled or
+/// punctuation-only title yields an empty string.
+///
+/// This is new code rather than a call to `sanitize_filename_chars`: that
+/// function only swaps Windows-illegal characters and collapses dashes — it
+/// does not lowercase, does not kebab-case, and does not trim.
+///
+/// The result is `[a-z0-9-]` by construction. That property is load-bearing:
+/// it is why `{{slug}}` is safe to interpolate into `post_write_shell` without
+/// quoting (see `src/hooks.rs`).
+pub fn slug_from_title(title: &str) -> String {
+    let lowered = title.to_lowercase();
+    let mut out = String::with_capacity(lowered.len());
+    let mut pending_dash = false;
+
+    for c in lowered.chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            // Only emit a separator between kept characters — this trims the
+            // leading run, and the trailing run is never emitted at all.
+            if pending_dash && !out.is_empty() {
+                out.push('-');
+            }
+            pending_dash = false;
+            out.push(c);
+        } else {
+            pending_dash = true;
+        }
+    }
+
+    out
+}
+
+/// The `{{slug}}` and `{{slug_or_time}}` values for a capture.
+///
+/// - `slug` is dash-**prefixed** (`-my-title`) or empty, so that
+///   `%Y%m%d-%H%M%S{{slug}}.md` reads as `20260716-143255-my-title.md` when
+///   titled and `20260716-143255.md` when not — no dangling separator.
+/// - `slug_or_time` is the bare slug (`my-title`), falling back to a timestamp
+///   when untitled, for places that need a non-empty label (a commit message).
+pub fn slug_tokens(title: &str, now: DateTime<Local>) -> (String, String) {
+    let bare = slug_from_title(title);
+
+    if bare.is_empty() {
+        (String::new(), now.format(SLUG_TIME_FORMAT).to_string())
+    } else {
+        (format!("-{bare}"), bare)
+    }
+}
+
 /// What to do with a `{{key}}` placeholder whose key is not present in the
 /// variable map.
 enum OnUnknown {
@@ -112,6 +177,16 @@ fn substitute_keys(
 /// Special tokens (resolved before field lookup):
 /// - `{{date}}` — current date in `YYYY-MM-DD` format
 /// - `{{time}}` — current time in `HH:MM` format
+/// - `{{slug}}` — dash-prefixed kebab-case of the `title` field, or empty
+/// - `{{slug_or_time}}` — bare slug, or a timestamp when untitled
+///
+/// The slug tokens must be registered *here*, as specials, and not left to the
+/// field pass: unknown placeholders are stripped in Step 3, so an unregistered
+/// `{{slug}}` would render to nothing and `%Y%m%d-%H%M%S{{slug}}.md` would
+/// quietly produce `20260716-143255.md` for every capture, titled or not.
+///
+/// A field literally named `slug` is shadowed by the special token, the same
+/// way a field named `date` already is.
 ///
 /// Processing order (prevents `%` in user values from corrupting output):
 /// 1. Expand strftime specifiers (`%Y`, `%m`, `%d`, …) on the raw template.
@@ -144,6 +219,13 @@ pub fn render_path(
     let mut special_vars: HashMap<String, String> = HashMap::new();
     special_vars.insert("date".to_string(), now.format(date_fmt).to_string());
     special_vars.insert("time".to_string(), now.format("%H:%M").to_string());
+    let title = field_values
+        .get(SLUG_SOURCE_FIELD)
+        .map(String::as_str)
+        .unwrap_or("");
+    let (slug, slug_or_time) = slug_tokens(title, now);
+    special_vars.insert("slug".to_string(), slug);
+    special_vars.insert("slug_or_time".to_string(), slug_or_time);
     // Substitute special tokens first (they don't use Strip — they're known tokens;
     // we use a merged approach: insert specials, then do one substitution pass).
     let after_special = substitute_keys(&strftime_expanded, &special_vars, OnUnknown::Leave);

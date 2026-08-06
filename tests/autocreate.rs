@@ -113,6 +113,12 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         append_shallow: None,
         mobile_visible: None,
         preset_axes: Vec::new(),
+        base_path: None,
+        platform: None,
+        frontmatter: None,
+        frontmatter_date_format: None,
+        post_write_shell: None,
+        post_write_shell_on_serve: None,
     }
 }
 

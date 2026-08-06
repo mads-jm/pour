@@ -4,6 +4,7 @@ pub mod config;
 pub(crate) mod config_edit;
 pub(crate) mod config_updates; // internal TUI configure helper — no external API
 pub mod data;
+pub mod hooks;
 pub mod init;
 pub mod output;
 pub mod paths;

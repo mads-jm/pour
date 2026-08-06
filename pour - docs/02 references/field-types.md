@@ -436,6 +436,120 @@ These keys are set on the module itself, not on individual fields:
 | `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note |
 | `append_shallow` | boolean | no | When `true` (append mode only), treats any subsequent heading as a section boundary — prevents sub-headings from being absorbed into the append target |
 | `mobile_visible` | boolean | no | When `false`, this module is hidden from the mobile PWA (`/api/v1/config` omits it entirely). Defaults to `true`. Togglable from the module configure screen. |
+| `base_path` | string | no | Per-module root override. When set, this module's `path` resolves against it instead of `[vault].base_path`. **Absolute only — `~` is not expanded** (Pour expands it nowhere). Absent → the vault, exactly as before. See [[#Per-module root (`base_path`)]]. |
+| `[modules.<name>.platform]` | table | no | Per-OS overrides for this module's `base_path`, keyed by `std::env::consts::OS` (`linux`, `macos`, `windows`). Mirrors `[vault.platform]`. |
+| `[modules.<name>.frontmatter]` | table | no | Static key→value frontmatter merged into **create**-mode output. Arrays render as YAML block sequences; scalars as scalars. **No token interpolation** — values are emitted literally. See [[#Static module frontmatter]]. |
+| `frontmatter_date_format` | string | no | strftime format for the auto-injected create-mode `date` key. Absent → `%Y-%m-%d`. Per-module only; there is no global equivalent. Create mode only. |
+| `post_write_shell` | string | no | Shell command run after a successful write. Only the tokens in [[#`post_write_shell`]] may be interpolated; anything else is rejected at load. |
+| `post_write_shell_on_serve` | boolean | no | Whether `post_write_shell` also fires for captures submitted over the LAN (`pour serve`). **Defaults to `false`.** Requires `post_write_shell`. |
+
+## Per-module root (`base_path`)
+
+By default every module writes under `[vault].base_path`. A module that sets its own `base_path` writes somewhere else entirely — useful when a capture target is genuinely not part of the vault (e.g. an agent inbox kept in a different git repo).
+
+Resolution order, first match wins:
+
+```
+[modules.<name>.platform][OS]  →  [modules.<name>].base_path  →  [vault.platform][OS]  →  [vault].base_path
+```
+
+```toml
+[modules.inbox]
+mode = "create"
+base_path = "/home/user/notes-repo"    # absolute; `~` is NOT expanded
+path = "inbox/%Y%m%d-%H%M%S{{slug}}.md"
+
+# Optional: same logical root, different mount per machine.
+[modules.inbox.platform]
+windows = "C:\\Users\\user\\notes-repo"
+```
+
+Notes and limits:
+
+- **`path` stays root-relative.** The override moves the root; it does not relax any guard. Absolute paths, drive letters, UNC paths, and `..` traversal are still rejected — now against the module's root.
+- **Always filesystem transport.** The Obsidian Local REST API can only address notes inside the vault it serves, so a root-overriding module bypasses the API even when it is connected. The TUI summary and the `/api/v1/submit` response both report `FileSystem` for these captures — truthfully, not as a fallback.
+- **Known limit:** a `dynamic_select` `source` on a root-overriding module still resolves against the **vault**, not the module root. Reads and auto-creates stay consistent with each other; only the module's own note is redirected.
+- Windows-style and Unix-style absolute paths both validate on every OS — one `config.toml` is meant to describe every machine.
+
+## Static module frontmatter
+
+`[modules.<name>.frontmatter]` holds keys that are a property of the *module* rather than of the capture:
+
+```toml
+[modules.inbox.frontmatter]
+tags = ["inbox", "capture"]
+cssclasses = ["poured"]
+author = "sam"
+```
+
+```yaml
+---
+date: 2026-07-16T14:32
+kind: musing
+author: sam
+cssclasses:
+  - poured
+tags:
+  - inbox
+  - capture
+---
+```
+
+- **Arrays always become block sequences**, even single-element ones. This is *not* the `list = true` path, which only splits a comma-joined string and would render `tags = ["inbox"]` as the scalar `tags: inbox`.
+- **Values are literal.** There is no token interpolation here, deliberately — it is static config, not a template.
+- **Emitted after captured fields**, in alphabetical key order (stable across runs).
+- **The capture wins on collision.** A static whose key matches a captured field (or the injected `icon`/`daily`) is skipped — a static is a default, not an override.
+- **Create mode only.** Append mode has no frontmatter block; setting it there is a validation error rather than a silent no-op.
+- `date` is rejected as a static key — use `frontmatter_date_format` to change its shape.
+
+> [!warning] TOML ordering
+> Every plain module key (`path`, `post_write_shell`, …) must appear **before** `[modules.<name>.frontmatter]` and `[modules.<name>.platform]`. Once a sub-table header is opened, following bare keys belong to *it* — a `post_write_shell` written after `[modules.inbox.frontmatter]` silently becomes a frontmatter entry instead of a hook, with no error.
+
+## `post_write_shell`
+
+An optional command run after a successful write — the step that turns a local file into something delivered (committed and pushed, synced, indexed).
+
+```toml
+[modules.inbox]
+post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_or_time}}' -- '{{rel_path}}' && git push -q"
+# post_write_shell_on_serve = true   # default false
+```
+
+**Tokens — this list is exhaustive:**
+
+| Token | Value |
+|---|---|
+| `{{base_path}}` | the module's resolved root |
+| `{{rel_path}}` | written file, relative to `base_path` |
+| `{{abs_path}}` | written file, absolute |
+| `{{slug}}` | kebab-cased `title` field, dash-prefixed (`-my-title`); empty when untitled |
+| `{{slug_or_time}}` | bare slug (`my-title`), or a `%Y%m%d-%H%M%S` timestamp when untitled |
+
+**Any other token — including `{{field_name}}` and `{{title}}` — is rejected at config-load time**, not silently stripped (contrast `path`, where unknown placeholders *are* stripped). Token spelling is exact: `{{ slug }}` is an error, not a synonym for `{{slug}}`.
+
+Semantics:
+
+- **Working directory is `base_path`** — so `git add <rel_path>` needs no `git -C`.
+- Runs through the OS shell (`sh -c` / `cmd /C`), so `&&` and pipelines work.
+- **Best-effort, never fatal.** The note is on disk before the hook runs. A non-zero exit, a spawn failure, or a 30s timeout surfaces as a warning (TUI summary message, or a `post_write_shell_failed` warning on the 201) — the capture is never lost.
+- The child gets **null stdin and piped stdout/stderr**: a command that prompts fails fast instead of hanging behind the TUI, and its output cannot corrupt the terminal.
+- **`post_write_shell_on_serve` defaults to `false`.** A LAN capture does not run commands unless the module opts in. (The wire DTO cannot carry config keys at all, so this is a second gate, not the only one.)
+
+> [!danger] This is arbitrary command execution from config
+> It is safe to interpolate without quoting **only because no token can carry raw user text** — the slug is `[a-z0-9-]` by construction. If a hook ever needs a token that *can* carry user text, that is the trigger to move to argv-style execution, **not** to extend the token list. Note also that a hook which auto-commits and pushes makes a bad capture public history.
+
+## `{{slug}}` in `path`
+
+`{{slug}}` and `{{slug_or_time}}` are **special** path tokens (like `{{date}}` and `{{time}}`), derived from the module's `title` field:
+
+```
+title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+```
+
+- Runs of non-`[a-z0-9]` collapse to a single `-`; leading/trailing dashes are trimmed. **All non-ASCII is dropped** — `café` → `caf` — matching the Obsidian Templater's JS exactly, so hand-authored and poured notes land on the same name.
+- `{{slug}}` is dash-*prefixed* so `%Y%m%d-%H%M%S{{slug}}.md` reads `20260716-143255-my-title.md` when titled and `20260716-143255.md` when not.
+- A field literally named `slug` is shadowed by the token (as a field named `date` already is).
+- **Use `%S` in an untitled-capable path.** Two untitled captures in the same minute collide, and a filesystem collision is a hard error that discards the entry just typed — not a silent overwrite.
 
 ## Top-Level Config Keys
 
@@ -521,4 +635,15 @@ This means Pour handles *data capture* and Templater handles *presentation* — 
 - `create_template` is only valid on `dynamic_select` fields with `allow_create = true`
 - `post_create_command` requires `create_template` to be set on the same field
 - Referenced template names must exist in `[templates]`
+
+### Module Validation Rules (root, frontmatter, hooks)
+
+- `base_path` and every `[modules.<name>.platform]` value must be **absolute** and must not start with `~`
+- `module.path` must stay root-relative even when `base_path` is set (no absolute, drive-qualified, UNC, or `..` paths)
+- `[modules.<name>.frontmatter]` values must be a string, number, boolean, or a flat array of those — nested tables and TOML datetimes are rejected
+- `date` is not a permitted `[modules.<name>.frontmatter]` key (auto-injected; use `frontmatter_date_format`)
+- `[modules.<name>.frontmatter]` and `frontmatter_date_format` are `create`-mode only
+- `post_write_shell` may only interpolate `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, `{{slug_or_time}}`; any other token is a load error
+- `post_write_shell` must not be empty
+- `post_write_shell_on_serve` requires `post_write_shell`
 

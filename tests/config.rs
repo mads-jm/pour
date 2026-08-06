@@ -2020,3 +2020,389 @@ fn effective_base_path_ignores_non_matching_os_override() {
     let config = Config::from_toml(&config_with_vault(&body)).expect("should parse");
     assert_eq!(config.vault.effective_base_path(), "/default/vault");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-module root override, static frontmatter, and post_write_shell
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A create-mode module `t` whose body is `module_body`, with one text field.
+fn config_with_module(module_body: &str) -> String {
+    format!(
+        r#"
+[vault]
+base_path = "/default/vault"
+
+[modules.t]
+mode = "create"
+path = "inbox/note.md"
+{module_body}
+
+[[modules.t.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#
+    )
+}
+
+// ── root resolution ──────────────────────────────────────────────────────────
+
+#[test]
+fn root_override_is_none_when_module_does_not_override() {
+    // Absent means today's behavior exactly: use the vault.
+    let config = Config::from_toml(&config_with_module("")).expect("should parse");
+    assert_eq!(config.modules["t"].root_override(), None);
+}
+
+#[test]
+fn root_override_returns_module_base_path() {
+    let config = Config::from_toml(&config_with_module(r#"base_path = "/srv/inbox""#))
+        .expect("should parse");
+    assert_eq!(config.modules["t"].root_override(), Some("/srv/inbox"));
+}
+
+#[test]
+fn module_platform_override_wins_over_module_base_path() {
+    let body = format!(
+        "base_path = \"/srv/inbox\"\n\n[modules.t.platform]\n{} = \"/srv/override\"",
+        std::env::consts::OS
+    );
+    let config = Config::from_toml(&config_with_module(&body)).expect("should parse");
+    assert_eq!(config.modules["t"].root_override(), Some("/srv/override"));
+}
+
+#[test]
+fn module_platform_for_another_os_falls_back_to_module_base_path() {
+    let other_os = if std::env::consts::OS == "linux" {
+        "windows"
+    } else {
+        "linux"
+    };
+    let body = format!(
+        "base_path = \"/srv/inbox\"\n\n[modules.t.platform]\n{other_os} = \"C:\\\\override\""
+    );
+    let config = Config::from_toml(&config_with_module(&body)).expect("should parse");
+    assert_eq!(config.modules["t"].root_override(), Some("/srv/inbox"));
+}
+
+#[test]
+fn module_platform_for_another_os_alone_falls_back_to_the_vault() {
+    // No module base_path at all → the chain continues on to vault.*
+    let other_os = if std::env::consts::OS == "linux" {
+        "windows"
+    } else {
+        "linux"
+    };
+    let body = format!("[modules.t.platform]\n{other_os} = \"C:\\\\override\"");
+    let config = Config::from_toml(&config_with_module(&body)).expect("should parse");
+    assert_eq!(config.modules["t"].root_override(), None);
+}
+
+#[test]
+fn module_base_path_with_tilde_fails_validation() {
+    // Pour expands `~` nowhere; accepting it here would create a literal `~` dir.
+    let msg = Config::from_toml(&config_with_module(r#"base_path = "~/.dotfiles""#))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("base_path") && msg.contains("'~' is not expanded"),
+        "expected tilde rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn relative_module_base_path_fails_validation() {
+    let msg = Config::from_toml(&config_with_module(r#"base_path = "some/dir""#))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("must be an absolute path"),
+        "expected absolute-path error, got: {msg}"
+    );
+}
+
+#[test]
+fn windows_style_module_base_path_is_absolute_on_every_os() {
+    // One config.toml describes every machine, so a Windows root must validate
+    // when the config is loaded on Linux (and vice versa).
+    for root in [r"C:\Users\mads\.dotfiles", r"\\server\share", "/home/mads"] {
+        let body = format!("base_path = {root:?}");
+        assert!(
+            Config::from_toml(&config_with_module(&body)).is_ok(),
+            "{root} should validate as absolute"
+        );
+    }
+}
+
+#[test]
+fn module_platform_values_are_validated_too() {
+    let body = format!(
+        "[modules.t.platform]\n{} = \"~/.dotfiles\"",
+        std::env::consts::OS
+    );
+    let msg = Config::from_toml(&config_with_module(&body))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("platform.") && msg.contains("'~' is not expanded"),
+        "expected platform tilde rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn module_path_stays_root_relative_even_with_a_base_path_override() {
+    // The override moves the root; it does not relax the guard on `path`.
+    let toml = r#"
+[vault]
+base_path = "/default/vault"
+
+[modules.t]
+mode = "create"
+base_path = "/srv/inbox"
+path = "/etc/passwd"
+
+[[modules.t.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#;
+    let msg = Config::from_toml(toml).unwrap_err().to_string();
+    assert!(
+        msg.contains("path must be vault-relative"),
+        "expected relative-path error, got: {msg}"
+    );
+}
+
+#[test]
+fn module_path_traversal_is_rejected_even_with_a_base_path_override() {
+    let toml = r#"
+[vault]
+base_path = "/default/vault"
+
+[modules.t]
+mode = "create"
+base_path = "/srv/inbox"
+path = "../../etc/passwd"
+
+[[modules.t.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"#;
+    let msg = Config::from_toml(toml).unwrap_err().to_string();
+    assert!(
+        msg.contains("must not contain '..'"),
+        "expected traversal error, got: {msg}"
+    );
+}
+
+// ── static frontmatter ───────────────────────────────────────────────────────
+
+#[test]
+fn module_frontmatter_parses_scalars_and_arrays() {
+    let config = Config::from_toml(&config_with_module(
+        "[modules.t.frontmatter]\ntags = [\"lyra\", \"toss\"]\nauthor = \"mads\"",
+    ))
+    .expect("should parse");
+
+    let fm = config.modules["t"].frontmatter.as_ref().expect("present");
+    assert_eq!(fm["author"].as_str(), Some("mads"));
+    assert_eq!(fm["tags"].as_array().map(Vec::len), Some(2));
+}
+
+#[test]
+fn module_frontmatter_date_key_fails_validation() {
+    let msg = Config::from_toml(&config_with_module(
+        "[modules.t.frontmatter]\ndate = \"2026-01-01\"",
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("auto-injected") && msg.contains("frontmatter_date_format"),
+        "expected date guidance, got: {msg}"
+    );
+}
+
+#[test]
+fn module_frontmatter_nested_table_fails_validation() {
+    let msg = Config::from_toml(&config_with_module(
+        "[modules.t.frontmatter]\nnested = { a = 1 }",
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("must be a string, number, boolean, or an array"),
+        "expected scalar-only error, got: {msg}"
+    );
+}
+
+#[test]
+fn module_frontmatter_on_append_module_fails_validation() {
+    // Append mode has no frontmatter block, so silently ignoring it would trap.
+    let toml = r####"
+[vault]
+base_path = "/default/vault"
+
+[modules.t]
+mode = "append"
+path = "log.md"
+append_under_header = "## Log"
+
+[modules.t.frontmatter]
+author = "mads"
+
+[[modules.t.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"####;
+    let msg = Config::from_toml(toml).unwrap_err().to_string();
+    assert!(
+        msg.contains("'frontmatter' is only valid on create mode"),
+        "expected create-only error, got: {msg}"
+    );
+}
+
+#[test]
+fn frontmatter_date_format_parses() {
+    let config = Config::from_toml(&config_with_module(
+        r#"frontmatter_date_format = "%Y-%m-%dT%H:%M""#,
+    ))
+    .expect("should parse");
+    assert_eq!(
+        config.modules["t"].frontmatter_date_format.as_deref(),
+        Some("%Y-%m-%dT%H:%M")
+    );
+}
+
+// ── post_write_shell ─────────────────────────────────────────────────────────
+
+#[test]
+fn post_write_shell_accepts_every_safe_token() {
+    let config = Config::from_toml(&config_with_module(
+        r#"post_write_shell = "echo {{base_path}} {{rel_path}} {{abs_path}} {{slug}} {{slug_or_time}}""#,
+    ))
+    .expect("all allowed tokens should validate");
+    assert!(config.modules["t"].post_write_shell.is_some());
+}
+
+#[test]
+fn post_write_shell_rejects_field_tokens() {
+    // THE security test. `{{title}}` carries raw user text; interpolating it
+    // into a shell string is command injection. Rejected at load, never
+    // stripped — a silent strip would read as "user text is supported here".
+    let msg = Config::from_toml(&config_with_module(
+        r#"post_write_shell = "git commit -m '{{title}}'""#,
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("unknown token '{{title}}'"),
+        "expected token rejection, got: {msg}"
+    );
+}
+
+#[test]
+fn post_write_shell_rejects_arbitrary_unknown_tokens() {
+    let msg = Config::from_toml(&config_with_module(
+        r#"post_write_shell = "echo {{field_name}} {{body}}""#,
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(msg.contains("unknown token '{{field_name}}'"), "got: {msg}");
+    assert!(msg.contains("unknown token '{{body}}'"), "got: {msg}");
+}
+
+#[test]
+fn post_write_shell_rejects_padded_token_spelling() {
+    // `{{ slug }}` is NOT substituted by hooks::render, so it would survive
+    // into the executed command as literal text. Reject rather than tolerate.
+    let msg = Config::from_toml(&config_with_module(
+        r#"post_write_shell = "echo {{ slug }}""#,
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(msg.contains("unknown token"), "got: {msg}");
+}
+
+#[test]
+fn post_write_shell_with_no_tokens_is_fine() {
+    assert!(Config::from_toml(&config_with_module(r#"post_write_shell = "git push""#)).is_ok());
+}
+
+#[test]
+fn empty_post_write_shell_fails_validation() {
+    let msg = Config::from_toml(&config_with_module(r#"post_write_shell = "   ""#))
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("must not be empty"), "got: {msg}");
+}
+
+#[test]
+fn post_write_shell_on_serve_defaults_to_false() {
+    let config =
+        Config::from_toml(&config_with_module(r#"post_write_shell = "git push""#)).expect("parses");
+    assert!(
+        !config.modules["t"].hook_fires_on_serve(),
+        "a LAN capture must not fire a hook unless the module opts in"
+    );
+}
+
+#[test]
+fn post_write_shell_on_serve_opts_in_explicitly() {
+    let config = Config::from_toml(&config_with_module(
+        "post_write_shell = \"git push\"\npost_write_shell_on_serve = true",
+    ))
+    .expect("parses");
+    assert!(config.modules["t"].hook_fires_on_serve());
+}
+
+#[test]
+fn post_write_shell_on_serve_without_a_hook_fails_validation() {
+    let msg = Config::from_toml(&config_with_module("post_write_shell_on_serve = true"))
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("requires 'post_write_shell'"), "got: {msg}");
+}
+
+// ── shipped resource configs ─────────────────────────────────────────────────
+//
+// `resources/mads_config.toml` is a seed, not a mirror — nothing else in the
+// build parses it, so without these its `[modules.lyra]` preset could ship
+// broken and no test would notice.
+
+#[test]
+fn shipped_default_config_is_valid() {
+    Config::from_toml(include_str!("../resources/default_config.toml"))
+        .expect("resources/default_config.toml must validate");
+}
+
+#[test]
+fn shipped_mads_config_is_valid() {
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let config = Config::from_toml(include_str!("../resources/mads_config.toml"))
+        .expect("resources/mads_config.toml must validate");
+
+    // The lyra preset is the deliverable of this cycle: a root override, static
+    // frontmatter, a datetime stamp, and a delivery hook.
+    let lyra = &config.modules["lyra"];
+    assert_eq!(lyra.root_override(), Some("/home/mads/.dotfiles"));
+    assert_eq!(
+        lyra.frontmatter_date_format.as_deref(),
+        Some("%Y-%m-%dT%H:%M")
+    );
+    assert!(
+        lyra.path.contains("%S"),
+        "untitled tosses collide without seconds"
+    );
+    assert!(lyra.path.contains("{{slug}}"));
+    assert!(lyra.post_write_shell.is_some());
+    assert!(
+        !lyra.hook_fires_on_serve(),
+        "the shipped preset must not fire git from a LAN capture"
+    );
+
+    let fm = lyra.frontmatter.as_ref().expect("static frontmatter");
+    assert_eq!(fm["tags"].as_array().map(Vec::len), Some(2));
+    assert_eq!(fm["author"].as_str(), Some("mads"));
+}

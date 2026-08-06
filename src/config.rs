@@ -1,7 +1,7 @@
 // LINTOK: oversized: pending Slice 3 + Slice 8 decomposition (config types/validation split)
 
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
@@ -104,6 +104,58 @@ pub struct ModuleConfig {
     /// Empty/absent → no picker; the legacy Left/Right cycler stays active.
     #[serde(default)]
     pub preset_axes: Vec<String>,
+    /// Optional per-module root override. When set, this module's `path`
+    /// resolves against this root instead of `[vault].base_path` — used to
+    /// capture into a directory that is not the configured vault at all
+    /// (e.g. an agent inbox living in a different repo).
+    ///
+    /// Absolute paths only: Pour performs no tilde expansion anywhere, and
+    /// `FsWriter::resolve_path_validated` actively rejects `~`.
+    ///
+    /// A module with a root override always writes over the **filesystem**
+    /// transport — the Obsidian Local REST API can only reach the vault it is
+    /// serving. Resolved via [`ModuleConfig::root_override`].
+    #[serde(default)]
+    pub base_path: Option<String>,
+    /// Optional per-OS overrides for this module's `base_path`, keyed by the
+    /// value of `std::env::consts::OS`. Mirrors `[vault.platform]` exactly.
+    #[serde(default)]
+    pub platform: Option<HashMap<String, String>>,
+    /// Static frontmatter merged into **create**-mode output after the captured
+    /// fields, for keys that are a property of the module rather than of the
+    /// capture (e.g. `tags`, `cssclasses`, `author`).
+    ///
+    /// Values are TOML scalars or arrays of scalars; arrays render as YAML
+    /// block sequences. Values are emitted **literally** — there is no token
+    /// interpolation here, deliberately. A key that collides with a captured
+    /// field (or with the injected `icon`/`daily`) is skipped: the capture wins.
+    ///
+    /// `BTreeMap`, not `HashMap`: the emitted key order must be stable across
+    /// runs, so keys are written alphabetically.
+    #[serde(default)]
+    pub frontmatter: Option<BTreeMap<String, toml::Value>>,
+    /// strftime format for the auto-injected create-mode `date` frontmatter
+    /// key. Absent → `%Y-%m-%d`, which is what every module emitted before this
+    /// key existed. Per-module by design: a corpus that is already date-only
+    /// stays date-only.
+    ///
+    /// The rendered value is emitted **unquoted** (see
+    /// `frontmatter::generate_frontmatter`), so a format containing `": "`
+    /// yields invalid YAML. Config-file-only and immediately visible.
+    #[serde(default)]
+    pub frontmatter_date_format: Option<String>,
+    /// Optional shell command run after a successful write. Best-effort: the
+    /// note is already on disk, so a failing hook warns and never loses it.
+    ///
+    /// Only the tokens in [`crate::hooks::ALLOWED_TOKENS`] may be interpolated;
+    /// anything else is a config validation error. See `src/hooks.rs` for why.
+    #[serde(default)]
+    pub post_write_shell: Option<String>,
+    /// Whether `post_write_shell` also fires for captures submitted over the
+    /// LAN (`pour serve`). Defaults to `false` — a phone on the network cannot
+    /// trigger command execution unless this module opts in explicitly.
+    #[serde(default)]
+    pub post_write_shell_on_serve: Option<bool>,
 }
 
 impl ModuleConfig {
@@ -112,6 +164,29 @@ impl ModuleConfig {
     /// `None` and `Some(true)` both mean visible; only `Some(false)` hides it.
     pub fn is_mobile_visible(&self) -> bool {
         self.mobile_visible.unwrap_or(true)
+    }
+
+    /// This module's own root for the current OS, or `None` to use the vault's.
+    ///
+    /// Precedence: `[modules.<n>.platform][OS]` → `base_path` → `None`.
+    /// `None` is what completes the full resolution chain — callers fall back
+    /// to [`VaultConfig::effective_base_path`], giving
+    /// `module.platform[OS] ?? module.base_path ?? vault.platform[OS] ?? vault.base_path`.
+    ///
+    /// Returning `Option` rather than the resolved path is deliberate: callers
+    /// need to know *whether* the module overrides the root, because an
+    /// overriding module must bypass the app-level transport entirely.
+    pub fn root_override(&self) -> Option<&str> {
+        self.platform
+            .as_ref()
+            .and_then(|m| m.get(std::env::consts::OS))
+            .map(String::as_str)
+            .or(self.base_path.as_deref())
+    }
+
+    /// Whether `post_write_shell` should fire for a LAN-submitted capture.
+    pub fn hook_fires_on_serve(&self) -> bool {
+        self.post_write_shell_on_serve.unwrap_or(false)
     }
 }
 
@@ -2327,6 +2402,66 @@ impl Config {
         }
     }
 
+    /// Check that a module root override is an absolute path.
+    ///
+    /// Both Unix (`/…`) and Windows (`C:\…`, `\\server\share`) forms are
+    /// accepted regardless of the running OS: one `config.toml` describes every
+    /// machine, and `[modules.<n>.platform]` picks between them at runtime.
+    ///
+    /// `~` is rejected rather than expanded. Pour has no tilde expansion
+    /// anywhere — `FsWriter::resolve_path_validated` rejects `~` outright — so
+    /// accepting it here would silently create a literal `./~/…` directory.
+    fn validate_absolute_root(path: &str, label: &str, errors: &mut Vec<String>) {
+        let trimmed = path.trim();
+
+        if trimmed.is_empty() {
+            errors.push(format!("{label}: must not be empty"));
+            return;
+        }
+
+        if trimmed.starts_with('~') {
+            errors.push(format!(
+                "{label}: must be an absolute path — '~' is not expanded"
+            ));
+            return;
+        }
+
+        let unix_absolute = trimmed.starts_with('/');
+        let unc = trimmed.starts_with("\\\\");
+        let bytes = trimmed.as_bytes();
+        let drive_qualified = bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'\\' || bytes[2] == b'/');
+
+        if !(unix_absolute || unc || drive_qualified) {
+            errors.push(format!("{label}: must be an absolute path"));
+        }
+    }
+
+    /// Whether a `[modules.<n>.frontmatter]` value is a scalar Pour can render.
+    ///
+    /// TOML datetimes and inline tables are excluded: both would force Pour to
+    /// invent a YAML rendering, and neither has a caller.
+    fn is_frontmatter_scalar(value: &toml::Value) -> bool {
+        matches!(
+            value,
+            toml::Value::String(_)
+                | toml::Value::Integer(_)
+                | toml::Value::Float(_)
+                | toml::Value::Boolean(_)
+        )
+    }
+
+    /// Whether a `[modules.<n>.frontmatter]` value is a scalar or a flat array
+    /// of scalars — the only two shapes with a YAML rendering.
+    fn is_frontmatter_value(value: &toml::Value) -> bool {
+        match value {
+            toml::Value::Array(items) => items.iter().all(Self::is_frontmatter_scalar),
+            other => Self::is_frontmatter_scalar(other),
+        }
+    }
+
     /// Validate the parsed config against business rules.
     /// Validate `config_version`: must be a parseable `major.minor.patch` semver string
     /// with a major version this build of Pour supports.
@@ -2412,6 +2547,81 @@ impl Config {
             if module.mode == WriteMode::Append && module.append_under_header.is_none() {
                 errors.push(format!(
                     "module '{name}': append mode requires 'append_under_header'"
+                ));
+            }
+
+            // Per-module root overrides must be absolute. `module.path` itself
+            // stays root-relative and is still checked above — the override
+            // moves the root, it does not relax the guard.
+            if let Some(base) = &module.base_path {
+                Self::validate_absolute_root(
+                    base,
+                    &format!("module '{name}', base_path"),
+                    &mut errors,
+                );
+            }
+            if let Some(platform) = &module.platform {
+                // Sorted so the error list is stable across runs.
+                let mut os_keys: Vec<&String> = platform.keys().collect();
+                os_keys.sort();
+                for os in os_keys {
+                    Self::validate_absolute_root(
+                        &platform[os],
+                        &format!("module '{name}', platform.{os}"),
+                        &mut errors,
+                    );
+                }
+            }
+
+            // Static frontmatter is a create-mode concept; append mode has no
+            // frontmatter block to merge into, so silently ignoring it would
+            // be a trap.
+            if let Some(fm) = &module.frontmatter {
+                if module.mode != WriteMode::Create {
+                    errors.push(format!(
+                        "module '{name}': 'frontmatter' is only valid on create mode modules"
+                    ));
+                }
+                for (key, value) in fm {
+                    if key == "date" {
+                        errors.push(format!(
+                            "module '{name}', frontmatter '{key}': 'date' is auto-injected — use 'frontmatter_date_format' to change its shape"
+                        ));
+                    }
+                    if !Self::is_frontmatter_value(value) {
+                        errors.push(format!(
+                            "module '{name}', frontmatter '{key}': value must be a string, number, boolean, or an array of those"
+                        ));
+                    }
+                }
+            }
+            if module.frontmatter_date_format.is_some() && module.mode != WriteMode::Create {
+                errors.push(format!(
+                    "module '{name}': 'frontmatter_date_format' is only valid on create mode modules"
+                ));
+            }
+
+            // post_write_shell: reject unknown interpolation tokens at load
+            // time. Stripping them (as `render_path` does for paths) would be a
+            // security footgun — `{{title}}` silently becoming an empty string
+            // reads as "user text is supported here" while quietly changing the
+            // command. See `src/hooks.rs`.
+            if let Some(command) = &module.post_write_shell {
+                if command.trim().is_empty() {
+                    errors.push(format!(
+                        "module '{name}': 'post_write_shell' must not be empty"
+                    ));
+                }
+                for token in crate::hooks::unknown_tokens(command) {
+                    errors.push(format!(
+                        "module '{name}', post_write_shell: unknown token '{{{{{token}}}}}' — allowed tokens are {}",
+                        crate::hooks::allowed_tokens_display()
+                    ));
+                }
+            }
+            if module.post_write_shell_on_serve.is_some() && module.post_write_shell.is_none() {
+                errors.push(format!(
+                    "module '{name}': 'post_write_shell_on_serve' requires 'post_write_shell' to be set"
                 ));
             }
 

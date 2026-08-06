@@ -28,7 +28,7 @@ API-key precedence: `POUR_API_KEY` env var > `secrets.toml` > `config.toml [vaul
 ## Top-level config structure
 
 ```toml
-config_version = "0.3.0"                           # schema version
+config_version = "0.4.0"                           # schema version
 module_order = ["me", "note", "coffee"]             # dashboard display order
 
 [vault]
@@ -56,7 +56,7 @@ Module keys:
 | Key | Required | Notes |
 |-----|----------|-------|
 | `mode` | yes | `"append"` or `"create"` |
-| `path` | yes | Vault-relative. strftime tokens (`%Y %m %d %H %M %S`), `{{date}}`, `{{time}}`, `{{field_name}}` |
+| `path` | yes | Vault-relative (or relative to `base_path`, if set). strftime tokens (`%Y %m %d %H %M %S`), `{{date}}`, `{{time}}`, `{{slug}}`, `{{slug_or_time}}`, `{{field_name}}` |
 | `display_name` | no | Dashboard label; defaults to module key |
 | `icon` | no | Emoji shown on dashboard. In create mode, also written to output frontmatter |
 | `append_under_header` | append only | Heading text to append under (e.g. `"## Log"`) |
@@ -64,6 +64,12 @@ Module keys:
 | `append_shallow` | no | If `true`, append_under_header matches any heading depth (e.g. `### Tasks` under `## Today`) |
 | `callout_type` | no | Default Obsidian callout type resolved as `{{callout}}` in templates |
 | `daily_link` | no | Create mode: inserts a wikilink to today's daily note at the top of the created file |
+| `base_path` | no | Per-module root override. **Absolute only — `~` is NOT expanded.** Resolution: `[modules.<n>.platform][OS]` → `base_path` → `[vault.platform][OS]` → `[vault].base_path`. Such a module always writes via the filesystem transport (the Obsidian API can only reach its own vault) and reports `FileSystem` in the summary. `path` stays root-relative — traversal is still rejected |
+| `[modules.<n>.platform]` | no | Per-OS overrides for this module's `base_path`, keyed by `std::env::consts::OS` (`linux`/`macos`/`windows`). Mirrors `[vault.platform]` |
+| `[modules.<n>.frontmatter]` | no | Create mode only. Static key→value frontmatter merged **after** captured fields, in alphabetical key order. Arrays → YAML block sequences (even single-element); scalars → scalars. **No token interpolation — values are literal.** A key that collides with a captured field is skipped (the capture wins). `date` is not permitted here |
+| `frontmatter_date_format` | no | Create mode only. strftime for the auto-injected `date` key. Absent → `%Y-%m-%d`. Emitted **unquoted**, so a format containing `": "` yields invalid YAML |
+| `post_write_shell` | no | Shell command run after a successful write, from `base_path`. Only `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, `{{slug_or_time}}` interpolate — **any other token is rejected at load**. Best-effort: a failure warns, never loses the note |
+| `post_write_shell_on_serve` | no | Whether `post_write_shell` also fires for LAN (`pour serve`) captures. **Defaults to `false`.** Requires `post_write_shell` |
 
 ## Field types
 
@@ -188,6 +194,11 @@ Behavior:
 - **Per-platform path separators** — Pour accepts forward slashes in paths on all platforms and normalizes them internally. Use `/` in TOML regardless of OS.
 - **`composite_array` sub-fields** can't use `show_when` and can't be nested. Only `text`, `number`, `static_select` allowed inside.
 - **Changing `config_version`** — supported majors only. Downgrading past a breaking bump fails at load.
+- **NEVER put a field token in `post_write_shell`.** `{{title}}`/`{{field_name}}` are **rejected at config-load time**, not stripped — that rejection is a security boundary, not a limitation to work around. The allowed tokens are all Pour-generated and cannot carry user text, which is why the command needs no quoting. If a hook seems to need a captured value, that is a request to change the execution model (argv-style), not the token list.
+- **`post_write_shell` is arbitrary command execution from config.** Do not add one on a user's behalf without asking. A hook that auto-commits and pushes turns a bad capture into public history.
+- **TOML ordering around `[modules.<n>.frontmatter]` / `[modules.<n>.platform]`** — every plain module key must come **before** these sub-table headers. A `post_write_shell` written after `[modules.<n>.frontmatter]` silently becomes a frontmatter entry instead of a hook, with no error.
+- **`{{slug}}` needs a `title` field, and `%S` in the path.** It is derived from the module's `title` field, is dash-prefixed (`-my-title`), and is empty when untitled — so two untitled captures in the same minute collide on `%Y%m%d-%H%M`. A filesystem collision is a hard error that discards the entry just typed. Use `%Y%m%d-%H%M%S{{slug}}.md`.
+- **`config_version` gates nothing below the major.** It is documentary: `CURRENT_CONFIG_VERSION` is `"1.0.0"` and only the major is validated. An older binary silently ignores keys it does not know (there is no `deny_unknown_fields`), so a config using `post_write_shell` loads fine on a build that never runs it.
 
 ## Validating a config
 

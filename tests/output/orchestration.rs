@@ -1311,3 +1311,357 @@ async fn write_create_date_frontmatter_uses_now_not_server_clock() {
         );
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-module root, static frontmatter, and frontmatter_date_format
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fixed local timestamp: 2026-07-16 14:32:55.
+fn toss_now() -> chrono::DateTime<Local> {
+    Local.with_ymd_and_hms(2026, 7, 16, 14, 32, 55).unwrap()
+}
+
+/// A vault plus a `lyra` module rooted at `module_root`, shaped like the
+/// shipped preset: datetime stamp, static frontmatter, `{{slug}}` filename.
+fn lyra_config(vault: &str, module_root: &str) -> Config {
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{vault}"
+
+[modules.lyra]
+mode = "create"
+base_path = "{module_root}"
+path = "inbox/%Y%m%d-%H%M%S{{{{slug}}}}.md"
+frontmatter_date_format = "%Y-%m-%dT%H:%M"
+
+[modules.lyra.frontmatter]
+tags = ["lyra", "toss"]
+cssclasses = ["mads-toss"]
+author = "mads"
+
+[[modules.lyra.fields]]
+name = "kind"
+field_type = "static_select"
+prompt = "Kind"
+options = ["musing", "vision"]
+
+[[modules.lyra.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+
+[[modules.lyra.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+target = "body"
+"####
+    );
+    Config::from_toml(&toml).expect("lyra test config should parse")
+}
+
+#[tokio::test]
+async fn a_module_with_a_base_path_writes_outside_the_vault() {
+    let vault = TempDir::new().unwrap();
+    let inbox = TempDir::new().unwrap();
+    let config = lyra_config(
+        &vault.path().to_string_lossy().replace('\\', "/"),
+        &inbox.path().to_string_lossy().replace('\\', "/"),
+    );
+    let module = &config.modules["lyra"];
+
+    let transport = Transport::for_module(module).expect("module overrides the root");
+
+    let mut values = HashMap::new();
+    values.insert("kind".to_string(), "musing".to_string());
+    values.insert("title".to_string(), "Peace vs Effort".to_string());
+    values.insert("body".to_string(), "the thing I keep circling".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        toss_now(),
+    )
+    .await
+    .expect("write should succeed");
+
+    assert_eq!(path, "inbox/20260716-143255-peace-vs-effort.md");
+    assert!(
+        inbox.path().join(&path).exists(),
+        "the note must land under the module root"
+    );
+    assert!(
+        !vault.path().join(&path).exists(),
+        "the note must NOT land in the vault"
+    );
+}
+
+#[tokio::test]
+async fn a_toss_has_the_canonical_frontmatter_shape() {
+    let vault = TempDir::new().unwrap();
+    let inbox = TempDir::new().unwrap();
+    let config = lyra_config(
+        &vault.path().to_string_lossy().replace('\\', "/"),
+        &inbox.path().to_string_lossy().replace('\\', "/"),
+    );
+    let module = &config.modules["lyra"];
+    let transport = Transport::for_module(module).unwrap();
+
+    let mut values = HashMap::new();
+    values.insert("kind".to_string(), "musing".to_string());
+    values.insert("title".to_string(), "peace vs effort".to_string());
+    values.insert("body".to_string(), "the thought".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        toss_now(),
+    )
+    .await
+    .unwrap();
+
+    let content = std::fs::read_to_string(inbox.path().join(&path)).unwrap();
+
+    // The datetime is emitted UNQUOTED. Routing it through `format_value` would
+    // quote it (the colon is YAML-special there) and diverge from every toss
+    // already in the corpus. `2026-07-16T14:32` is a valid YAML plain scalar
+    // because the colon is not followed by a space.
+    assert_eq!(
+        content,
+        "---\n\
+         date: 2026-07-16T14:32\n\
+         kind: musing\n\
+         title: peace vs effort\n\
+         author: mads\n\
+         cssclasses:\n  - mads-toss\n\
+         tags:\n  - lyra\n  - toss\n\
+         ---\n\
+         \n\
+         the thought\n"
+    );
+}
+
+#[tokio::test]
+async fn an_untitled_toss_drops_the_slug_and_the_title_key() {
+    let vault = TempDir::new().unwrap();
+    let inbox = TempDir::new().unwrap();
+    let config = lyra_config(
+        &vault.path().to_string_lossy().replace('\\', "/"),
+        &inbox.path().to_string_lossy().replace('\\', "/"),
+    );
+    let module = &config.modules["lyra"];
+    let transport = Transport::for_module(module).unwrap();
+
+    let mut values = HashMap::new();
+    values.insert("kind".to_string(), "musing".to_string());
+    values.insert("body".to_string(), "quick thought".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        toss_now(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(path, "inbox/20260716-143255.md");
+
+    let content = std::fs::read_to_string(inbox.path().join(&path)).unwrap();
+    assert!(!content.contains("title:"), "got: {content}");
+    assert!(
+        content.contains("tags:\n  - lyra\n  - toss\n"),
+        "got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn seconds_in_the_stamp_keep_same_minute_tosses_apart() {
+    // The real failure this guards: `create_file` hard-errors on an existing
+    // path, and the TUI then discards the thought that was just typed. Two
+    // untitled tosses in the same minute must not collide.
+    let vault = TempDir::new().unwrap();
+    let inbox = TempDir::new().unwrap();
+    let config = lyra_config(
+        &vault.path().to_string_lossy().replace('\\', "/"),
+        &inbox.path().to_string_lossy().replace('\\', "/"),
+    );
+    let module = &config.modules["lyra"];
+    let transport = Transport::for_module(module).unwrap();
+
+    let mut values = HashMap::new();
+    values.insert("kind".to_string(), "musing".to_string());
+    values.insert("body".to_string(), "first".to_string());
+
+    let first = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        Local.with_ymd_and_hms(2026, 7, 16, 14, 32, 10).unwrap(),
+    )
+    .await
+    .unwrap();
+
+    values.insert("body".to_string(), "second".to_string());
+    let second = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        Local.with_ymd_and_hms(2026, 7, 16, 14, 32, 48).unwrap(),
+    )
+    .await
+    .expect("second toss in the same minute must not collide");
+
+    assert_ne!(first, second);
+    assert_eq!(first, "inbox/20260716-143210.md");
+    assert_eq!(second, "inbox/20260716-143248.md");
+}
+
+#[tokio::test]
+async fn a_traversal_path_is_rejected_against_an_overridden_root_too() {
+    // The override moves the root; `FsWriter::resolve_path_validated` still
+    // guards it. Built by hand because config validation rejects this too —
+    // the point is that BOTH guards hold, independently.
+    let inbox = TempDir::new().unwrap();
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(
+        inbox.path().to_path_buf(),
+    ));
+
+    let err = transport
+        .create_file("../escaped.md", "x")
+        .await
+        .expect_err("traversal must be rejected");
+
+    assert!(err.to_string().contains(".."), "got: {err}");
+    assert!(
+        !inbox.path().parent().unwrap().join("escaped.md").exists(),
+        "nothing may be written outside the module root"
+    );
+}
+
+#[tokio::test]
+async fn a_module_without_a_date_format_is_byte_identical_to_before() {
+    // The `%Y-%m-%d` hardcode this replaced governed EVERY create-mode module,
+    // so absence must reproduce it exactly.
+    let vault = TempDir::new().unwrap();
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{}"
+
+[modules.note]
+mode = "create"
+path = "note.md"
+
+[[modules.note.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+"####,
+        vault.path().to_string_lossy().replace('\\', "/")
+    );
+    let config = Config::from_toml(&toml).unwrap();
+    let module = &config.modules["note"];
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(
+        vault.path().to_path_buf(),
+    ));
+
+    assert!(
+        Transport::for_module(module).is_none(),
+        "a module with no override must keep using the app transport"
+    );
+
+    let mut values = HashMap::new();
+    values.insert("title".to_string(), "hello".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        toss_now(),
+    )
+    .await
+    .unwrap();
+
+    let content = std::fs::read_to_string(vault.path().join(&path)).unwrap();
+    assert_eq!(content, "---\ndate: 2026-07-16\ntitle: hello\n---\n");
+}
+
+#[tokio::test]
+async fn a_captured_field_beats_a_static_frontmatter_key() {
+    // Statics are defaults, not overrides — and a duplicate YAML key would be
+    // invalid regardless.
+    let vault = TempDir::new().unwrap();
+    let toml = format!(
+        r####"
+[vault]
+base_path = "{}"
+
+[modules.t]
+mode = "create"
+path = "t.md"
+
+[modules.t.frontmatter]
+author = "module-default"
+
+[[modules.t.fields]]
+name = "author"
+field_type = "text"
+prompt = "Author"
+"####,
+        vault.path().to_string_lossy().replace('\\', "/")
+    );
+    let config = Config::from_toml(&toml).unwrap();
+    let module = &config.modules["t"];
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(
+        vault.path().to_path_buf(),
+    ));
+
+    let mut values = HashMap::new();
+    values.insert("author".to_string(), "captured".to_string());
+
+    let path = write_create(
+        &transport,
+        module,
+        &values,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        toss_now(),
+    )
+    .await
+    .unwrap();
+
+    let content = std::fs::read_to_string(vault.path().join(&path)).unwrap();
+    assert!(content.contains("author: captured"), "got: {content}");
+    assert!(!content.contains("module-default"), "got: {content}");
+    assert_eq!(content.matches("author:").count(), 1, "got: {content}");
+}

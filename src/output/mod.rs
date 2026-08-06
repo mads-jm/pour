@@ -12,6 +12,11 @@ use unicode_width::UnicodeWidthStr;
 /// Composite field data: field_name → rows of cell values.
 pub type CompositeData = HashMap<String, Vec<Vec<String>>>;
 
+/// Shape of the auto-injected create-mode `date` key when a module does not set
+/// `frontmatter_date_format`. Every module emitted exactly this before the key
+/// existed, and must keep doing so.
+const DEFAULT_FRONTMATTER_DATE_FORMAT: &str = "%Y-%m-%d";
+
 /// Execute a **create** write: generate a new Markdown file with YAML
 /// frontmatter and an optional body, then write it via the transport.
 ///
@@ -55,9 +60,32 @@ pub async fn write_create(
         fm_fields.push(("daily".to_string(), daily, false));
     }
 
-    let date_str = now.format("%Y-%m-%d").to_string();
+    // Per-module date shape. Absent → `%Y-%m-%d`, byte-identical to the
+    // hardcode this replaced, which governed every create-mode module.
+    let date_str = now
+        .format(
+            module
+                .frontmatter_date_format
+                .as_deref()
+                .unwrap_or(DEFAULT_FRONTMATTER_DATE_FORMAT),
+        )
+        .to_string();
+
+    // Static module frontmatter, minus any key the capture already claimed.
+    // Filtering here (rather than in `generate_frontmatter`) keeps the
+    // collision policy in one place: this runs after the `icon` and `daily`
+    // injections above, so it covers those too. The capture wins — a static is
+    // a default, not an override.
+    let statics: Vec<(&str, &toml::Value)> = module
+        .frontmatter
+        .iter()
+        .flatten()
+        .filter(|(key, _)| !fm_fields.iter().any(|(k, _, _)| k == *key))
+        .map(|(key, value)| (key.as_str(), value))
+        .collect();
+
     let frontmatter_block =
-        frontmatter::generate_frontmatter(&fm_fields, &fm_composites, &date_str);
+        frontmatter::generate_frontmatter(&fm_fields, &fm_composites, &date_str, &statics);
 
     let body = body_parts.join("\n\n");
 

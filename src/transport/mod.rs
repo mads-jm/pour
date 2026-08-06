@@ -86,6 +86,25 @@ impl Transport {
         Transport::Fs(FsWriter::new(base_path))
     }
 
+    /// A transport scoped to a module that overrides the vault root, or `None`
+    /// when the module writes to the vault like everything else.
+    ///
+    /// Always filesystem, never API, and that is not a fallback: the Obsidian
+    /// Local REST API can only address notes inside the vault it serves, so a
+    /// module rooted elsewhere has no API to fall back *from*. A caller that
+    /// reports the transport must therefore report this one's mode, not the
+    /// app-level transport's, or it will claim "API" for a write the API never
+    /// saw.
+    ///
+    /// Chosen at write time rather than at [`Transport::connect`] so that the
+    /// app keeps exactly one connected transport: this is a per-write
+    /// redirection of a path, not a second connection.
+    pub fn for_module(module: &crate::config::ModuleConfig) -> Option<Self> {
+        module
+            .root_override()
+            .map(|root| Transport::Fs(FsWriter::new(std::path::PathBuf::from(root))))
+    }
+
     /// Return which transport mode is currently active.
     pub fn mode(&self) -> TransportMode {
         match self {

@@ -79,6 +79,10 @@ pub(super) struct SubmitContext {
     // -- From write_step::run ------------------------------------------------
     /// Vault-relative path of the written note.
     pub vault_path: String,
+    /// The transport the write actually used. Follows `state.transport_mode`
+    /// except for a module that overrides the vault root, which is always
+    /// filesystem — see `Transport::for_module`.
+    pub transport_mode: crate::transport::TransportMode,
 
     // -- From history_step::run ----------------------------------------------
     /// Unique history record id (used in the `Location` header).
@@ -86,9 +90,13 @@ pub(super) struct SubmitContext {
 }
 
 impl SubmitContext {
-    fn new(module_key: String) -> Self {
+    /// `transport_mode` starts at the app-level mode — the truth for every
+    /// module that writes to the vault. `write_step` refines it for a module
+    /// that overrides the root.
+    fn new(module_key: String, transport_mode: crate::transport::TransportMode) -> Self {
         Self {
             module_key,
+            transport_mode,
             field_values: HashMap::new(),
             visible_names: HashSet::new(),
             field_order: Vec::new(),
@@ -173,7 +181,7 @@ async fn submit_inner(
     module_key: String,
     req: axum::http::Request<axum::body::Body>,
 ) -> Response {
-    let mut ctx = SubmitContext::new(module_key.clone());
+    let mut ctx = SubmitContext::new(module_key.clone(), state.transport_mode);
 
     // Step 1: validate (parse body, module lookup, captured_at, visibility,
     // field validation).
@@ -228,7 +236,9 @@ async fn submit_inner(
     );
 
     // -- Build 201 response -----------------------------------------------
-    let transport_mode_str = match state.transport_mode {
+    // ctx, not state: a root-overriding module wrote to disk regardless of
+    // whether the app-level transport is the API.
+    let transport_mode_str = match ctx.transport_mode {
         crate::transport::TransportMode::Api => "API",
         crate::transport::TransportMode::FileSystem => "FileSystem",
     };
