@@ -105,6 +105,14 @@ pub struct FieldPresetPickerState {
 pub struct FormState {
     /// Current value for each field, keyed by field name.
     pub field_values: HashMap<String, String>,
+    /// For `update` modules only: the target note's frontmatter values as they
+    /// were when the form opened, keyed by field name.
+    ///
+    /// Display-only — a `counter` shows `now 64/96 oz` beside its input so the
+    /// user knows what they are adding to. Empty when the read failed or has
+    /// not happened yet, which renders as a placeholder rather than blocking or
+    /// aborting the form (ADR-003: the form never waits on a round-trip).
+    pub current_values: HashMap<String, String>,
     /// Available options for select fields, keyed by field name.
     pub field_options: HashMap<String, Vec<String>>,
     /// Index of the currently active (focused) field within the **visible** field set.
@@ -581,6 +589,7 @@ impl App {
 
         Some(FormState {
             field_values,
+            current_values: HashMap::new(),
             field_options,
             active_field: start_field,
             active_config_idx: initial_config_idx,
@@ -621,6 +630,7 @@ impl App {
         let mode_str = match module.mode {
             WriteMode::Append => "append".to_string(),
             WriteMode::Create => "create".to_string(),
+            WriteMode::Update => "update".to_string(),
         };
 
         let mut settings = vec![
@@ -640,7 +650,11 @@ impl App {
                 label: "Mode".to_string(),
                 key: "mode".to_string(),
                 value: mode_str.clone(),
-                kind: SettingKind::Toggle(vec!["append".to_string(), "create".to_string()]),
+                kind: SettingKind::Toggle(vec![
+                    "append".to_string(),
+                    "create".to_string(),
+                    "update".to_string(),
+                ]),
             },
         ];
 
@@ -1050,6 +1064,14 @@ impl App {
                 && value.trim().parse::<f64>().is_err()
             {
                 errors.push(format!("'{}' must be a valid number", field.prompt));
+            }
+
+            // A counter token must be `N` or `=N`; blank means "no change".
+            if field.field_type == FieldType::Counter
+                && !value.trim().is_empty()
+                && let Err(e) = crate::output::update::parse_counter_token(value)
+            {
+                errors.push(format!("'{}': {e}", field.prompt));
             }
         }
 

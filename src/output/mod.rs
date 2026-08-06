@@ -1,5 +1,8 @@
 pub mod frontmatter;
 pub mod template;
+pub mod update;
+
+pub use update::{UpdateOutcome, write_update};
 
 use crate::config::{FieldTarget, FieldType, ModuleConfig, SubFieldConfig, WriteMode};
 use crate::transport::Transport;
@@ -226,11 +229,7 @@ fn partition_fields<'a>(
 
                 if !non_empty.is_empty() {
                     // composite_array defaults to frontmatter
-                    let target = field_cfg
-                        .target
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or(FieldTarget::Frontmatter);
+                    let target = field_cfg.effective_target();
                     match target {
                         FieldTarget::Frontmatter => {
                             // Emit to both frontmatter (YAML array for Dataview)
@@ -265,13 +264,7 @@ fn partition_fields<'a>(
             raw
         };
 
-        let target = field_cfg.target.as_ref().cloned().unwrap_or_else(|| {
-            if field_cfg.field_type == FieldType::Textarea {
-                FieldTarget::Body
-            } else {
-                FieldTarget::Frontmatter
-            }
-        });
+        let target = field_cfg.effective_target();
 
         match target {
             FieldTarget::Frontmatter => {

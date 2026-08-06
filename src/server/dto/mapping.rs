@@ -26,6 +26,8 @@ pub fn field_type_wire(ft: &FieldType) -> &'static str {
         FieldType::StaticSelect => "static_select",
         FieldType::DynamicSelect => "dynamic_select",
         FieldType::CompositeArray => "composite_array",
+        FieldType::Toggle => "toggle",
+        FieldType::Counter => "counter",
     }
 }
 
@@ -56,6 +58,7 @@ pub fn write_mode_wire(mode: &crate::config::WriteMode) -> &'static str {
     match mode {
         crate::config::WriteMode::Append => "append",
         crate::config::WriteMode::Create => "create",
+        crate::config::WriteMode::Update => "update",
     }
 }
 

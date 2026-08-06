@@ -1339,3 +1339,286 @@ fn insert_ascii_after_emoji_in_mixed_string() {
         assert_eq!(fs.cursor_position, 4);
     }
 }
+
+// ── toggle / counter widgets (habit capture v1) ──
+
+const HABIT_FORM_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.habit]
+mode = "update"
+path = "daily/%Y%m%d.md"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"
+goal = 96
+"####;
+
+fn habit_app() -> App {
+    let config = Config::from_toml(HABIT_FORM_TOML).expect("parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let mut app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/test-habit-history.json")),
+        Presets::empty(),
+        FieldPresets::empty(),
+    );
+    app.selected_module = app.module_keys.iter().position(|k| k == "habit").unwrap();
+    app.form_state = app.init_form("habit");
+    app.screen = pour::app::Screen::Form;
+    app
+}
+
+fn value_of(app: &App, field: &str) -> String {
+    app.form_state.as_ref().unwrap().field_values[field].clone()
+}
+
+#[test]
+fn space_flips_a_toggle_field() {
+    let mut app = habit_app();
+    // active_field 1 == the first real field (0 is the preset row).
+    app.form_state.as_mut().unwrap().active_field = 1;
+
+    handle_key(&mut app, key(KeyCode::Char(' ')));
+    assert_eq!(value_of(&app, "cannabis"), "true");
+
+    handle_key(&mut app, key(KeyCode::Char(' ')));
+    assert_eq!(value_of(&app, "cannabis"), "false");
+}
+
+#[test]
+fn typing_into_a_toggle_does_nothing() {
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 1;
+
+    handle_key(&mut app, key(KeyCode::Char('x')));
+    handle_key(&mut app, key(KeyCode::Char('9')));
+    assert_eq!(
+        value_of(&app, "cannabis"),
+        "",
+        "a toggle has no text buffer to accumulate into"
+    );
+}
+
+#[test]
+fn a_counter_accepts_digits_and_the_set_prefix_only() {
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 2;
+
+    for c in ['=', '1', '6', 'x', ' ', '.', '5'] {
+        handle_key(&mut app, key(KeyCode::Char(c)));
+    }
+    assert_eq!(value_of(&app, "water"), "=16.5");
+}
+
+#[test]
+fn counter_validation_rejects_junk_but_accepts_blank() {
+    let mut app = habit_app();
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert("water".to_string(), "lots".to_string());
+    assert!(
+        App::validate_form(
+            &app.config.modules["habit"],
+            app.form_state.as_ref().unwrap()
+        )
+        .iter()
+        .any(|e| e.contains("Water")),
+        "a junk counter token must fail validation"
+    );
+
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert("water".to_string(), String::new());
+    assert!(
+        App::validate_form(
+            &app.config.modules["habit"],
+            app.form_state.as_ref().unwrap()
+        )
+        .is_empty(),
+        "blank means no change, not invalid"
+    );
+}
+
+#[test]
+fn rendering_an_update_form_without_a_read_shows_a_placeholder() {
+    // A failed or slow read leaves `current_values` empty; the form must still
+    // render (ADR-003 — never block on a round-trip).
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 2;
+
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("terminal");
+    terminal
+        .draw(|frame| pour::tui::form::render(&app, frame))
+        .expect("render must not panic");
+
+    let rendered: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(rendered.contains("now —/96 oz"), "got: {rendered}");
+    assert!(rendered.contains("[ ]"), "toggle renders a checkbox");
+}
+
+#[test]
+fn rendering_an_update_form_after_a_read_shows_current_progress() {
+    let mut app = habit_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        fs.current_values
+            .insert("water".to_string(), "64".to_string());
+        fs.field_values
+            .insert("cannabis".to_string(), "true".to_string());
+    }
+
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("terminal");
+    terminal
+        .draw(|frame| pour::tui::form::render(&app, frame))
+        .expect("render must not panic");
+
+    let rendered: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(rendered.contains("now 64/96 oz"), "got: {rendered}");
+    assert!(rendered.contains("[x]"), "got: {rendered}");
+}
+
+// ── fetch_current_values: seeding from the note (habit capture v1) ──
+
+/// A habit app whose transport points at `dir`, with `note` seeded at today's
+/// daily path (`fetch_current_values` renders the path against the real clock).
+fn habit_app_over(dir: &tempfile::TempDir, note: &str) -> App {
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    std::fs::create_dir_all(dir.path().join("daily")).unwrap();
+    std::fs::write(dir.path().join(format!("daily/{today}.md")), note).unwrap();
+
+    let toml = HABIT_FORM_TOML.replace(
+        "/tmp/vault",
+        &dir.path().to_string_lossy().replace('\\', "\\\\"),
+    );
+    let config = Config::from_toml(&toml).expect("parse");
+    let mut app = App::new(
+        config,
+        Transport::Fs(FsWriter::new(dir.path().to_path_buf())),
+        History::load_from(std::path::PathBuf::from("/tmp/test-habit-history.json")),
+        Presets::empty(),
+        FieldPresets::empty(),
+    );
+    app.selected_module = app.module_keys.iter().position(|k| k == "habit").unwrap();
+    app.form_state = app.init_form("habit");
+    app.screen = pour::app::Screen::Form;
+    app
+}
+
+fn note_today(dir: &tempfile::TempDir) -> String {
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    std::fs::read_to_string(dir.path().join(format!("daily/{today}.md"))).unwrap()
+}
+
+#[tokio::test]
+async fn a_readable_toggle_is_seeded_from_the_note() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = habit_app_over(&dir, "---\ncannabis: true\nwater: 40\n---\n\nbody\n");
+
+    pour::tui::fetch_current_values(&mut app, "habit").await;
+
+    assert_eq!(value_of(&app, "cannabis"), "true");
+    let fs = app.form_state.as_ref().unwrap();
+    assert_eq!(fs.current_values["water"], "40");
+}
+
+#[tokio::test]
+async fn a_toggle_pour_cannot_read_is_left_unseeded_and_survives_the_submit() {
+    // A hand-edited or pre-boolean value must not be coerced: toggles are
+    // always seeded and therefore always re-written, so a default of `false`
+    // here would silently destroy the note's real value on the very next
+    // submit — even one where the user only touched the counter.
+    let note = "---\ncannabis: maybe\nwater: null\n---\n\nbody\n";
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = habit_app_over(&dir, note);
+
+    pour::tui::fetch_current_values(&mut app, "habit").await;
+
+    assert_eq!(
+        value_of(&app, "cannabis"),
+        "",
+        "an unreadable toggle stays blank rather than coercing to false"
+    );
+
+    // Submit exactly as the form would, having touched only the counter.
+    let fs = app.form_state.as_mut().unwrap();
+    fs.field_values
+        .insert("water".to_string(), "16".to_string());
+    let field_values = fs.field_values.clone();
+    pour::output::write_update(
+        &app.transport,
+        &app.config.modules["habit"],
+        &field_values,
+        app.config.vault.date_format.as_deref(),
+        &dir.path().to_string_lossy(),
+        chrono::Local::now(),
+    )
+    .await
+    .expect("the counter still captures");
+
+    assert_eq!(
+        note_today(&dir),
+        note.replace("water: null", "water: 16"),
+        "the toggle the user never touched must be byte-identical"
+    );
+}
+
+#[test]
+fn an_unreadable_toggle_renders_as_unknown_not_unchecked() {
+    let mut app = habit_app();
+    {
+        let fs = app.form_state.as_mut().unwrap();
+        // What `fetch_current_values` leaves behind for `cannabis: maybe`:
+        // present in the note, absent from the form's values.
+        fs.current_values
+            .insert("cannabis".to_string(), "maybe".to_string());
+        fs.field_values
+            .insert("cannabis".to_string(), String::new());
+    }
+
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("terminal");
+    terminal
+        .draw(|frame| pour::tui::form::render(&app, frame))
+        .expect("render must not panic");
+
+    let rendered: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(
+        rendered.contains("[?]"),
+        "an unknown state must not be drawn as unchecked, got: {rendered}"
+    );
+}

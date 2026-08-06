@@ -29,6 +29,17 @@ pub(super) fn handle_char(
         return FormAction::None;
     }
 
+    // A counter takes the same numeric characters plus a leading `=`, which is
+    // the "set, don't add" token from spec §3.2.
+    if field_type == Some(&FieldType::Counter)
+        && !c.is_ascii_digit()
+        && c != '.'
+        && c != '-'
+        && c != '='
+    {
+        return FormAction::None;
+    }
+
     let value = form_state
         .field_values
         .entry(field_name.to_string())

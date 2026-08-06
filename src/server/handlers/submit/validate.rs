@@ -6,7 +6,7 @@
 /// - Body deserialization.
 /// - `captured_at` window validation and resolution (§10).
 /// - Visibility filtering (`show_when`).
-/// - Field-level validation (required, number parseable).
+/// - Field-level validation (required; `number`/`toggle`/`counter` tokens).
 ///
 /// Returns `ValidatedData` on success; returns a ready `Response` on any
 /// failure so the caller can short-circuit immediately.
@@ -155,15 +155,35 @@ pub(super) async fn run(
             continue;
         }
 
-        if field.field_type == FieldType::Number && !value.trim().is_empty() {
-            let ok = value.trim().parse::<i64>().is_ok() || value.trim().parse::<f64>().is_ok();
-            if !ok {
-                field_errors.push(json!({
-                    "field": field.name,
-                    "code": "invalid_number",
-                    "value": value
-                }));
+        if value.trim().is_empty() {
+            continue;
+        }
+
+        // Value-token checks. `toggle`/`counter` are validated here, at the same
+        // layer and in the same shape as everything else, so a malformed token
+        // comes back as a 400 `validation_failed` naming the field rather than
+        // reaching `write_update` and surfacing as a 500 write error
+        // indistinguishable from a genuine I/O failure.
+        let token_error = match field.field_type {
+            FieldType::Number => {
+                let ok = value.trim().parse::<i64>().is_ok() || value.trim().parse::<f64>().is_ok();
+                (!ok).then_some("invalid_number")
             }
+            FieldType::Toggle => crate::output::update::parse_toggle_token(value)
+                .is_err()
+                .then_some("invalid_toggle"),
+            FieldType::Counter => crate::output::update::parse_counter_token(value)
+                .is_err()
+                .then_some("invalid_counter"),
+            _ => None,
+        };
+
+        if let Some(code) = token_error {
+            field_errors.push(json!({
+                "field": field.name,
+                "code": code,
+                "value": value
+            }));
         }
     }
 

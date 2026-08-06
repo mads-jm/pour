@@ -676,3 +676,189 @@ fn no_statics_is_byte_identical_to_before_the_feature() {
         "---\ndate: 2026-01-15\nkind: musing\n---\n"
     );
 }
+
+// ─── Read-only parse + single-key line patch (`update` mode) ─────────────────
+
+use pour::output::frontmatter::{
+    FrontmatterValue, PatchLineError, PatchOutcome, format_number, patch_frontmatter_line,
+    read_frontmatter,
+};
+
+/// A realistic daily note: mixed quoting, a block sequence, an explicit `null`,
+/// a float, a comment, and a thematic break in the body. Everything the patcher
+/// must leave alone lives in here.
+const DAILY_NOTE: &str = "---\n\
+date created: Wednesday, August 5th 2026\n\
+tags:\n\
+  - daily\n\
+  - habits\n\
+# the template owns these two\n\
+cannabis: false\n\
+water: null\n\
+mood: \"content — mostly\"\n\
+sleep: 7.5\n\
+title: 'Thursday'\n\
+---\n\
+\n\
+# 20260805\n\
+\n\
+Some body text with a colon: like this.\n\
+\n\
+---\n\
+\n\
+## Journal\n\
+\n\
+The break above is a thematic break, not frontmatter.\n";
+
+#[test]
+fn read_frontmatter_reads_top_level_scalars() {
+    let map = read_frontmatter(DAILY_NOTE).expect("note has a frontmatter block");
+
+    assert_eq!(map.get("cannabis").map(String::as_str), Some("false"));
+    assert_eq!(map.get("water").map(String::as_str), Some("null"));
+    assert_eq!(map.get("sleep").map(String::as_str), Some("7.5"));
+    // Quotes are stripped, both flavours.
+    assert_eq!(
+        map.get("mood").map(String::as_str),
+        Some("content — mostly")
+    );
+    assert_eq!(map.get("title").map(String::as_str), Some("Thursday"));
+    // A key whose name contains a space is still a key.
+    assert_eq!(
+        map.get("date created").map(String::as_str),
+        Some("Wednesday, August 5th 2026")
+    );
+}
+
+#[test]
+fn read_frontmatter_skips_sequences_and_comments() {
+    let map = read_frontmatter(DAILY_NOTE).expect("note has a frontmatter block");
+
+    // The `tags:` key exists with an empty scalar; its items are not keys.
+    assert_eq!(map.get("tags").map(String::as_str), Some(""));
+    assert!(!map.contains_key("- daily"), "sequence items are not keys");
+    assert!(
+        !map.keys().any(|k| k.starts_with('#')),
+        "comments are not keys: {:?}",
+        map.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn read_frontmatter_ignores_the_body_entirely() {
+    let map = read_frontmatter(DAILY_NOTE).expect("note has a frontmatter block");
+    assert!(
+        !map.contains_key("Some body text with a colon"),
+        "body lines after the closing delimiter are not frontmatter: {map:?}"
+    );
+}
+
+#[test]
+fn read_frontmatter_returns_none_without_a_block() {
+    assert_eq!(read_frontmatter("# Just a note\n\nno frontmatter\n"), None);
+    // A `---` that never closes is not a block.
+    assert_eq!(read_frontmatter("---\nwater: 4\n"), None);
+    // The block must open on line 1, as Obsidian requires.
+    assert_eq!(read_frontmatter("\n---\nwater: 4\n---\n"), None);
+}
+
+#[test]
+fn patch_replaces_one_line_and_nothing_else() {
+    let (patched, outcome) =
+        patch_frontmatter_line(DAILY_NOTE, "water", "16").expect("water is a scalar key");
+
+    assert_eq!(outcome, PatchOutcome::Replaced);
+    // The single strongest guarantee this cycle owes the user: the output is
+    // the input with exactly one line swapped. Key order, quoting style,
+    // comments, the sequence, and the whole body survive byte-for-byte.
+    assert_eq!(patched, DAILY_NOTE.replace("water: null", "water: 16"));
+}
+
+#[test]
+fn patch_inserts_a_missing_key_as_the_last_block_line() {
+    let (patched, outcome) =
+        patch_frontmatter_line(DAILY_NOTE, "steps", "8000").expect("insert is allowed");
+
+    assert_eq!(outcome, PatchOutcome::Inserted);
+    assert_eq!(
+        patched,
+        DAILY_NOTE.replace(
+            "title: 'Thursday'\n---\n",
+            "title: 'Thursday'\nsteps: 8000\n---\n"
+        )
+    );
+}
+
+#[test]
+fn patch_into_an_empty_block_works() {
+    let (patched, outcome) = patch_frontmatter_line("---\n---\n# Note\n", "water", "16").unwrap();
+    assert_eq!(outcome, PatchOutcome::Inserted);
+    assert_eq!(patched, "---\nwater: 16\n---\n# Note\n");
+}
+
+#[test]
+fn patch_preserves_crlf_line_endings() {
+    let crlf = "---\r\ncannabis: false\r\nwater: null\r\n---\r\n\r\nbody\r\n";
+    let (patched, _) = patch_frontmatter_line(crlf, "cannabis", "true").unwrap();
+    assert_eq!(patched, crlf.replace("cannabis: false", "cannabis: true"));
+
+    let (inserted, outcome) = patch_frontmatter_line(crlf, "steps", "10").unwrap();
+    assert_eq!(outcome, PatchOutcome::Inserted);
+    assert_eq!(
+        inserted,
+        crlf.replace("water: null\r\n---", "water: null\r\nsteps: 10\r\n---")
+    );
+}
+
+#[test]
+fn patch_refuses_a_multiline_value_rather_than_orphan_its_lines() {
+    // `tags:` opens a block sequence — replacing its one line would leave the
+    // `  - daily` items dangling under whatever came next.
+    assert_eq!(
+        patch_frontmatter_line(DAILY_NOTE, "tags", "x"),
+        Err(PatchLineError::MultilineValue("tags".to_string()))
+    );
+
+    let block_scalar = "---\nnote: |\n  first\n  second\n---\n";
+    assert_eq!(
+        patch_frontmatter_line(block_scalar, "note", "x"),
+        Err(PatchLineError::MultilineValue("note".to_string()))
+    );
+}
+
+#[test]
+fn patch_errors_when_there_is_no_frontmatter_block() {
+    assert_eq!(
+        patch_frontmatter_line("# Just a note\n", "water", "16"),
+        Err(PatchLineError::NoFrontmatterBlock)
+    );
+}
+
+#[test]
+fn frontmatter_value_renders_yaml_and_json_per_transport() {
+    // Numbers and booleans stay bare in YAML so Obsidian reads them as typed
+    // properties; text goes through the existing quoting rules.
+    assert_eq!(FrontmatterValue::Number(64.0).to_yaml(), "64");
+    assert_eq!(FrontmatterValue::Number(12.5).to_yaml(), "12.5");
+    assert_eq!(FrontmatterValue::Bool(true).to_yaml(), "true");
+    assert_eq!(FrontmatterValue::Text("plain".into()).to_yaml(), "plain");
+    assert_eq!(
+        FrontmatterValue::Text("has: colon".into()).to_yaml(),
+        "\"has: colon\""
+    );
+
+    assert_eq!(FrontmatterValue::Number(64.0).to_json(), "64");
+    assert_eq!(FrontmatterValue::Bool(false).to_json(), "false");
+    assert_eq!(
+        FrontmatterValue::Text("say \"hi\"".into()).to_json(),
+        "\"say \\\"hi\\\"\""
+    );
+}
+
+#[test]
+fn format_number_emits_integral_values_bare() {
+    assert_eq!(format_number(96.0), "96");
+    assert_eq!(format_number(0.0), "0");
+    assert_eq!(format_number(-3.0), "-3");
+    assert_eq!(format_number(12.5), "12.5");
+}

@@ -8,7 +8,7 @@
 config_version = "0.4.0"
 
 # Controls dashboard order. Modules not listed appear alphabetically after.
-module_order = ["me", "todo", "log", "workout", "note", "lyra", "coffee", "journal", "book"]
+module_order = ["me", "habit", "todo", "log", "workout", "note", "lyra", "coffee", "journal", "book"]
 
 # ─── Vault Connection ────────────────────────────────────────────────────────
 [vault]
@@ -33,6 +33,7 @@ linux = "/home/mads/drives/primary/Vault/main"
 # Two modes:
 #   "append" — adds content under a heading in an existing note
 #   "create" — generates a new note file per entry
+#   "update" — mutates frontmatter properties on an existing note
 #
 # Path supports strftime tokens (%Y, %m, %d, %H, %M, %S) and field name
 # interpolation ({{field_name}}), and {{date}}/{{time}} tokens for create-mode paths.
@@ -84,6 +85,33 @@ field_type = "text"
 prompt = "Task"
 required = true
 target = "body"
+
+# ── habit ────────────────────────────────────────────────────────────────────
+# Usage: `pour habit water 16` · `pour habit cannabis` · `pour habit` (form)
+# Mutates frontmatter properties on today's daily note. The TEMPLATE owns these
+# keys and their defaults (`cannabis: false`, `water: null`) — pour only ever
+# flips or accumulates them, and fails loudly if the note doesn't exist yet.
+#
+# mobile_visible = false: the PWA has no toggle/counter widget yet, and a
+# counter without its running total is a form you can't reason about.
+[modules.habit]
+mode = "update"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Habits"
+icon = "🌱"
+mobile_visible = false
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"
+goal = 96
 
 # ── log ──────────────────────────────────────────────────────────────────────
 # Usage: `pour log`

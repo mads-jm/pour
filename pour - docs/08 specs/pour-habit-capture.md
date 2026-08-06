@@ -219,7 +219,7 @@ pub fn patch_frontmatter_line(content: &str, key: &str, value: &str) -> PatchOut
 
 ## Scope & phasing
 
-- [ ] **v1 — the capture loop.** `update` mode (both transports, §2), `toggle` + `counter` with `goal` (§3), one-shot argv (§5), the mads `habit` preset (§6). Docs: [[field-types]] (new types + keys + the creed), System-Architecture-Overview (transport method + write path), README.
+- [x] **v1 — the capture loop.** `update` mode (both transports, §2), `toggle` + `counter` with `goal` (§3), one-shot argv (§5), the mads `habit` preset (§6). Docs: [[field-types]] (new types + keys + the creed), System-Architecture-Overview (transport method + write path), README.
 - [ ] **v1.1 — date targeting.** `rollover` (§4.1) + `--date` (§4.2).
 - [ ] **v2 — periodic limits** (§7): `limit` + `limit_period`, cross-note aggregation, come-back messaging.
 

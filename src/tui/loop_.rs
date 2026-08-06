@@ -71,6 +71,7 @@ pub async fn run_loop(
                     // Fetch dynamic select options for the newly opened form.
                     if let Some(key) = app.module_keys.get(app.selected_module).cloned() {
                         fetch_dynamic_options(app, &key, cache).await;
+                        fetch_current_values(app, &key).await;
                     }
                 }
 
@@ -588,8 +589,13 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
     )
     .await;
 
-    // Execute write based on module mode
+    // Execute write based on module mode.
+    //
+    // `update` alone produces more than a path: the echo lines are the whole
+    // point of a counter capture (spec §3.2), and §2.4's stale-template notice
+    // has to reach the user. Both are folded into the summary message below.
     let date_fmt = app.config.vault.date_format.as_deref();
+    let mut update_lines: Vec<String> = Vec::new();
     let write_result = match module.mode {
         WriteMode::Create => {
             output::write_create(
@@ -617,6 +623,19 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
             )
             .await
         }
+        WriteMode::Update => {
+            let root = module
+                .root_override()
+                .unwrap_or(app.config.vault.effective_base_path())
+                .to_string();
+            output::write_update(transport, module, &field_values, date_fmt, &root, now_local)
+                .await
+                .map(|outcome| {
+                    update_lines.extend(outcome.echoes.iter().cloned());
+                    update_lines.extend(outcome.notices());
+                    outcome.vault_path
+                })
+        }
     };
 
     // Transition to summary screen
@@ -637,7 +656,11 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                     Err(e) => Some(format!(" (Warning: history not recorded: {e})")),
                 };
 
-            let mut summary_message = "Entry saved successfully.".to_string();
+            let mut summary_message = if update_lines.is_empty() {
+                "Entry saved successfully.".to_string()
+            } else {
+                update_lines.join("\n")
+            };
             if let Some(w) = history_warning {
                 summary_message.push_str(&w);
             }
@@ -1024,6 +1047,8 @@ fn handle_add_field(app: &mut App) {
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     };
 
     match Config::add_field_on_disk(&module_key, &new_field) {
@@ -1262,10 +1287,10 @@ fn handle_save_new_module(app: &mut App) {
                 display_name = Some(setting.value.clone());
             }
             "mode" => {
-                mode = if setting.value == "append" {
-                    WriteMode::Append
-                } else {
-                    WriteMode::Create
+                mode = match setting.value.as_str() {
+                    "append" => WriteMode::Append,
+                    "update" => WriteMode::Update,
+                    _ => WriteMode::Create,
                 };
             }
             "path" => path = setting.value.clone(),
@@ -1340,6 +1365,8 @@ fn handle_save_new_module(app: &mut App) {
             icon: None,
             preset_exclude: None,
             list: false,
+            unit: None,
+            goal: None,
         }],
     };
 
@@ -1573,6 +1600,84 @@ pub async fn fetch_dynamic_options(app: &mut App, module_key: &str, cache: &mut 
             fs.field_options.insert(field_name, options);
         }
     }
+}
+
+/// Read the target note's current frontmatter for an `update` module's form.
+///
+/// One read, over the active transport, at form open — the ratified lean for
+/// spec's open question on update-mode TUI shape. Deliberately bounded:
+///
+/// - **No new cache tier.** A stale number is worse than no number here,
+///   because a counter's whole job is to show what you are adding to.
+/// - **Never fatal.** Any failure — note missing, API down, no frontmatter
+///   block — leaves `current_values` empty and the form renders a placeholder.
+///   Capture-first: you can still log without knowing the old value.
+/// - **Toggles are seeded, counters are not.** A toggle's input *is* its
+///   current state (space flips it), so it must start from the note. A
+///   counter's input is a delta, so it starts blank.
+pub async fn fetch_current_values(app: &mut App, module_key: &str) {
+    let Some(module) = app.config.modules.get(module_key) else {
+        return;
+    };
+    if module.mode != WriteMode::Update {
+        return;
+    }
+
+    let date_fmt = app.config.vault.date_format.as_deref();
+    let field_values = match &app.form_state {
+        Some(fs) => fs.field_values.clone(),
+        None => return,
+    };
+    let vault_path = crate::output::template::render_path(
+        &module.path,
+        &field_values,
+        date_fmt,
+        chrono::Local::now(),
+    );
+
+    let module_transport = crate::transport::Transport::for_module(module);
+    let transport = module_transport.as_ref().unwrap_or(&app.transport);
+    let Ok(content) = transport.read_file(&vault_path).await else {
+        return;
+    };
+    let Some(frontmatter) = crate::output::frontmatter::read_frontmatter(&content) else {
+        return;
+    };
+
+    let toggles: Vec<(String, String)> = module
+        .fields
+        .iter()
+        .filter(|f| f.field_type == FieldType::Toggle)
+        .filter_map(|f| {
+            frontmatter
+                .get(&f.name)
+                .and_then(|v| normalise_toggle(v))
+                .map(|v| (f.name.clone(), v))
+        })
+        .collect();
+
+    if let Some(ref mut fs) = app.form_state {
+        fs.current_values = frontmatter.into_iter().collect();
+        for (name, value) in toggles {
+            fs.field_values.insert(name, value);
+        }
+    }
+}
+
+/// The `"true"`/`"false"` a toggle input holds for a frontmatter value — or
+/// `None` when the note holds something that is not a recognised boolean.
+///
+/// Refusing to coerce is the whole point. A seeded toggle is never blank, so
+/// `plan_updates` never skips it: every submit of the form re-writes that key,
+/// including submits where the user only touched a different field. Defaulting
+/// an unreadable value to `false` would therefore turn a hand-edited or
+/// pre-existing value into a silent, permanent `false` on the user's note.
+/// Left unseeded, the field stays blank, the plan skips it, and whatever the
+/// note holds survives until the user deliberately flips the checkbox.
+fn normalise_toggle(raw: &str) -> Option<String> {
+    crate::output::update::parse_toggle_token(raw)
+        .ok()
+        .map(|flag| flag.to_string())
 }
 
 /// Build an `obsidian://open` URI for the given vault and optional file path.

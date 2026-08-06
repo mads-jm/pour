@@ -1590,3 +1590,193 @@ async fn a_lan_client_cannot_inject_a_hook_through_the_submit_body() {
         "body-supplied frontmatter must not reach the note, got: {content}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// update mode — an update module is a module like any other to the server (§5)
+// ---------------------------------------------------------------------------
+
+fn update_config(base_path: &str) -> pour::config::Config {
+    let toml = format!(
+        r#"
+config_version = "0.3.0"
+[vault]
+base_path = "{base_path}"
+
+[modules.habit]
+mode = "update"
+path = "daily/today.md"
+
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"
+goal = 96
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+"#
+    );
+    pour::config::Config::from_toml(&toml).expect("update config must validate")
+}
+
+#[tokio::test]
+async fn submit_update_module_patches_frontmatter() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("daily")).unwrap();
+    let note = "---\ndate: 2026-08-05\nwater: null\n---\n\nbody\n";
+    std::fs::write(dir.path().join("daily/today.md"), note).unwrap();
+
+    let state = make_state(update_config(&fwd(dir.path())), dir.path());
+    let app = make_router(state);
+
+    let resp = app
+        .oneshot(json_request(
+            "habit",
+            Some("test-token"),
+            json!({ "field_values": { "water": "16" } }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("daily/today.md")).unwrap(),
+        note.replace("water: null", "water: 16")
+    );
+}
+
+#[tokio::test]
+async fn submit_rejects_a_malformed_counter_token_as_validation_not_a_write_error() {
+    // A bad value token is invalid input, so it must come back as the same
+    // 400 `validation_failed` shape every other field type gets — not a 500
+    // that reads like the disk failed.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("daily")).unwrap();
+    let note = "---\ndate: 2026-08-05\nwater: null\n---\n\nbody\n";
+    std::fs::write(dir.path().join("daily/today.md"), note).unwrap();
+
+    let state = make_state(update_config(&fwd(dir.path())), dir.path());
+    let app = make_router(state);
+
+    let resp = app
+        .oneshot(json_request(
+            "habit",
+            Some("test-token"),
+            json!({ "field_values": { "water": "banana" } }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp.into_body()).await;
+    assert_eq!(json["error"]["code"], "validation_failed", "got: {json}");
+    let fields = json["error"]["details"]["fields"]
+        .as_array()
+        .unwrap_or_else(|| panic!("expected per-field details, got: {json}"));
+    assert!(
+        fields
+            .iter()
+            .any(|f| f["field"] == "water" && f["code"] == "invalid_counter"),
+        "got: {json}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("daily/today.md")).unwrap(),
+        note,
+        "a rejected submit must never touch the note"
+    );
+}
+
+#[tokio::test]
+async fn submit_rejects_a_malformed_toggle_token() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("daily")).unwrap();
+    let note = "---\ndate: 2026-08-05\ncannabis: false\n---\n\nbody\n";
+    std::fs::write(dir.path().join("daily/today.md"), note).unwrap();
+
+    let state = make_state(update_config(&fwd(dir.path())), dir.path());
+    let app = make_router(state);
+
+    let resp = app
+        .oneshot(json_request(
+            "habit",
+            Some("test-token"),
+            json!({ "field_values": { "cannabis": "sideways" } }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp.into_body()).await;
+    let fields = json["error"]["details"]["fields"]
+        .as_array()
+        .unwrap_or_else(|| panic!("expected per-field details, got: {json}"));
+    assert!(
+        fields
+            .iter()
+            .any(|f| f["field"] == "cannabis" && f["code"] == "invalid_toggle"),
+        "got: {json}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("daily/today.md")).unwrap(),
+        note
+    );
+}
+
+#[tokio::test]
+async fn submit_update_module_on_a_missing_note_is_a_write_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = make_state(update_config(&fwd(dir.path())), dir.path());
+    let app = make_router(state);
+
+    let resp = app
+        .oneshot(json_request(
+            "habit",
+            Some("test-token"),
+            json!({ "field_values": { "water": "16" } }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_error_code(resp.into_body(), "write_error").await;
+    assert!(
+        !dir.path().join("daily").exists(),
+        "the server path must not fabricate the note either"
+    );
+}
+
+#[tokio::test]
+async fn submit_update_module_reports_a_stale_template_as_a_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("daily")).unwrap();
+    std::fs::write(
+        dir.path().join("daily/today.md"),
+        "---\ndate: 2026-08-05\n---\n\nbody\n",
+    )
+    .unwrap();
+
+    let state = make_state(update_config(&fwd(dir.path())), dir.path());
+    let app = make_router(state);
+
+    let resp = app
+        .oneshot(json_request(
+            "habit",
+            Some("test-token"),
+            json!({ "field_values": { "water": "16" } }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp.into_body()).await;
+    let warnings = json["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w["code"] == "frontmatter_update_notice"),
+        "got: {json}"
+    );
+}

@@ -64,6 +64,7 @@ pub(super) fn handle_settings(app: &mut App, key: crossterm::event::KeyEvent) ->
                     let mode_str = match module.mode {
                         crate::config::WriteMode::Append => "append".to_string(),
                         crate::config::WriteMode::Create => "create".to_string(),
+                        crate::config::WriteMode::Update => "update".to_string(),
                     };
                     let mut settings = vec![
                         ConfigSetting {
@@ -85,6 +86,7 @@ pub(super) fn handle_settings(app: &mut App, key: crossterm::event::KeyEvent) ->
                             kind: SettingKind::Toggle(vec![
                                 "append".to_string(),
                                 "create".to_string(),
+                                "update".to_string(),
                             ]),
                         },
                     ];
@@ -267,7 +269,7 @@ fn handle_enter(app: &mut App) -> ConfigureAction {
                                 value: "## Log".to_string(),
                                 kind: SettingKind::Text,
                             });
-                        } else if next == "create" && has_header {
+                        } else if next != "append" && has_header {
                             s.settings.retain(|s| s.key != "append_under_header");
                         }
                     }

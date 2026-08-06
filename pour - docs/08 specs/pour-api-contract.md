@@ -125,6 +125,8 @@ Standard `code` values:
 }
 ```
 
+Per-field `code` values in use: `required`, `invalid_number`, `invalid_toggle` (a `toggle` value that is not a boolean word), `invalid_counter` (a `counter` token that is neither `N` nor `=N`). A malformed value token is always a `400 validation_failed`, never a `500 write_error`.
+
 ## 6. Endpoint Reference
 
 ### 6.1 `GET /api/v1/health` — LOCKED

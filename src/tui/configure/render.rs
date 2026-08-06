@@ -798,6 +798,8 @@ pub(super) fn render_field_list(app: &App, frame: &mut Frame, area: ratatui::lay
             crate::config::FieldType::StaticSelect => "static_select",
             crate::config::FieldType::DynamicSelect => "dynamic_select",
             crate::config::FieldType::CompositeArray => "composite_array",
+            crate::config::FieldType::Toggle => "toggle",
+            crate::config::FieldType::Counter => "counter",
         };
 
         items.push(ListItem::new(Line::from(vec![

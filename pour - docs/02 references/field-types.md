@@ -11,13 +11,26 @@ date modified: Monday, May 4th 2026, 11:17:48 pm
 
 This document covers all field types available in Pour's `config.toml` schema, their config keys, validation rules, default output targets, and TUI rendering behavior.
 
+## The creed: frontmatter habits vs. event notes
+
+> [!quote] Ambient state gets a property. Novel experience gets a note. Never both for the same signal.
+
+Pour has two capture shapes, and the line between them is a lasting rule:
+
+- **Frontmatter habit** — transient, ambient, binary-or-cumulative state of a *day*: partaken or not, ounces so far. It has no story to tell beyond its value, so it lives as a property on a periodic note. The **template owns the key and its default** (`cannabis: false`, `water: null`); pour only ever *mutates* it, via `mode = "update"` with `toggle`/`counter` fields.
+- **Event note** — anything with novelty or nuance: a coffee has a bean, a ratio, a taste worth remembering. It gets its own note via `create` mode.
+
+Corollary: if a signal could be *derived* from event notes (coffee count from coffee notes), **derive it — never mirror it into frontmatter.** Two sources of truth drift by week one. A frontmatter habit is only for signals that have no event notes.
+
+See [[pour-habit-capture]] for the full spec.
+
 ## Module Config Keys
 
 Every module defined in `[modules.<name>]` supports these keys:
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `mode` | string | yes | `"create"` (new file) or `"append"` (add to existing file) |
+| `mode` | string | yes | `"create"` (new file), `"append"` (add to existing file), or `"update"` (mutate frontmatter on an existing file) |
 | `path` | string | yes | Vault-relative path template. Supports strftime tokens (`%Y`, `%m`, `%d`) and field placeholders (`{{field_name}}`). |
 | `display_name` | string | no | Human-readable label shown on the dashboard. Defaults to the module key. |
 | `append_under_header` | string | conditional | Required for `append` mode. Markdown heading to insert content under. |
@@ -33,7 +46,7 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `name` | string | yes | Field identifier, used as the YAML frontmatter key |
-| `field_type` | string | yes | One of the six types below |
+| `field_type` | string | yes | One of the eight types below |
 | `prompt` | string | yes | Label shown in the TUI form |
 | `required` | bool | no | If `true`, submit is blocked when the field is empty |
 | `default` | string | no | Pre-filled value on form init |
@@ -50,6 +63,8 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See __Conditional Visibility__ below. |
 | `icon` | string | no | Optional icon displayed next to the field prompt in the TUI form (e.g. `"🫘"`). Purely cosmetic — not written to output. |
 | `preset_exclude` | bool | no | When `true`, this field is excluded from preset capture and application. Useful for notes/textarea fields whose values change every entry and shouldn't be part of a saved preset. Defaults to `false`. |
+| `unit` | string | no | Only valid on `counter`. Display-only suffix (e.g. `"oz"`) shown in the TUI and the one-shot echo. **Never written to YAML.** |
+| `goal` | number | no | Only valid on `counter`. Reach-target rendered as `64/96`. **Config-only — pour never writes a goal into the vault.** Obsidian-side progress rendering (Bases/Dataview) mirrors it in its own query. |
 | `list` | bool | no | When `true`, values containing `", "` are split on that delimiter and emitted as a YAML sequence in frontmatter (e.g. `"a, b"` → `- a\n- b`). When `wikilink = true` is also set, each split item is individually wrapped in `[[...]]`. Defaults to `false` — value is treated as a literal string and properly escaped. Valid on `text`, `static_select`, and `dynamic_select`. |
 
 ## Output Target Defaults
@@ -62,8 +77,11 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `dynamic_select` | frontmatter |
 | `textarea` | body |
 | `composite_array` | frontmatter |
+| `toggle` | frontmatter |
+| `counter` | frontmatter |
 
 Any field can override its default via `target = "frontmatter"` or `target = "body"`.
+`update`-mode modules are the exception: they write frontmatter and nothing else, so a body-targeted field there is a config error rather than a silently dropped value.
 
 ---
 
@@ -338,6 +356,50 @@ bag_weight_g: 250
 
 Then `post_create_command` fires `templater:run`, which can add body content (brew log table, tasting notes section, metadata) via an Obsidian Templater template.
 
+## `toggle`
+
+A boolean property. Valid in **any** write mode — a general primitive, not a habit-only type.
+
+```toml
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+```
+
+__TUI__: Renders as `[x]` / `[ ]`; **space** flips it. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
+__One-shot__: `pour habit cannabis` sets `true`; `pour habit cannabis false` (or `off`) clears it. Also accepts `on`/`yes`/`1` and `no`/`0`.
+__Output__: A bare YAML boolean — `cannabis: true`, never `"true"`.
+
+## `counter`
+
+A number that **accumulates**. Valid in any write mode, but only meaningful over time on an `update` module.
+
+```toml
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"        # display only, never written to YAML
+goal = 96          # reach-target; progress renders as 64/96 oz
+```
+
+__Semantics__ (`update` mode):
+
+- `pour habit water 16` → read the current value, **add** 16, write.
+- `pour habit water =160` → **set** it. The fat-finger correction.
+- A missing key, an empty value, and an explicit `null`/`~` all read as `0`, so a template's `water: null` ("untouched today") stays meaningfully distinct from an explicit `0` in the note.
+- A non-numeric current value (`water: lots`) is an **error**, not a silent reset — incrementing it would destroy what is there.
+- Values parse as `f64`; integral results emit bare (`64`, not `64.0`).
+- A **blank** counter on a submitted form means "no change", not "set to zero".
+
+__TUI__: Inline input filtered to digits, `.`, `-`, and `=`. On an `update` module the row also shows the note's current state — `now 64/96 oz` — read once when the form opens. A failed or slow read renders `now —/96 oz` rather than blocking the form.
+__Echo__: every write echoes the resulting state, `water: 64/96 oz`, which is simultaneously the confirmation, the correction prompt, and the progress display.
+__Output__: A bare YAML number.
+
+> [!note] Reserved for v2
+> `limit` and `limit_period` are reserved on `counter` for periodic stay-under targets (the inverse of `goal`). They are **not implemented** — nothing reads them today.
+
 ## `composite_array`
 
 Tabular data entry with multiple columns (sub-fields). Renders as a YAML array of objects in frontmatter or a Markdown table in body.
@@ -425,7 +487,7 @@ These keys are set on the module itself, not on individual fields:
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `mode` | string | yes | `"create"` (new file per entry) or `"append"` (add to existing note) |
+| `mode` | string | yes | `"create"` (new file per entry), `"append"` (add to existing note), or `"update"` (mutate frontmatter keys on an existing note — see [[#`update` mode]]) |
 | `path` | string | yes | Vault-relative output path. Supports strftime tokens: `%Y`, `%m`, `%d`, `%H`, `%M`, `%S` |
 | `fields` | array | yes | At least one field definition |
 | `display_name` | string | no | Human-readable name shown in the dashboard (defaults to module key) |
@@ -442,6 +504,51 @@ These keys are set on the module itself, not on individual fields:
 | `frontmatter_date_format` | string | no | strftime format for the auto-injected create-mode `date` key. Absent → `%Y-%m-%d`. Per-module only; there is no global equivalent. Create mode only. |
 | `post_write_shell` | string | no | Shell command run after a successful write. Only the tokens in [[#`post_write_shell`]] may be interpolated; anything else is rejected at load. |
 | `post_write_shell_on_serve` | boolean | no | Whether `post_write_shell` also fires for captures submitted over the LAN (`pour serve`). **Defaults to `false`.** Requires `post_write_shell`. |
+
+## `update` mode
+
+`update` resolves `path` (strftime-templated, like `append`) to an **existing** note and merges only the frontmatter keys named by the module's fields. The body is never touched, key order and quoting survive byte-for-byte, and no key outside the field list is rewritten.
+
+```toml
+[modules.habit]
+mode = "update"
+path = "06 - Periodic/00 - Daily/%Y%m%d.md"
+display_name = "Habits"
+icon = "🌱"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+```
+
+__Transports.__ Over the API, one `PATCH /vault/{path}` per key with `Operation: replace`, `Target-Type: frontmatter`, `Target: <key>` — Obsidian's own metadata layer does the mutation, so pour never re-emits YAML. Over the filesystem it is a guarded surgical edit: capture mtime → read → replace exactly one line → re-verify mtime → atomic rename. The stat comes **before** the read deliberately, so a concurrent save that lands while pour is reading is caught as well. A mismatch aborts **without writing**. An API too old to serve the PATCH degrades to the filesystem path rather than failing the capture.
+
+__Multi-key writes are not atomic.__ The patch operation is single-key on both transports, so a module with two live fields writes two keys in sequence. Every *value* error (a bad token, a non-numeric current value) is raised before the first byte is written; only a transport failure — a concurrent save landing between the two patches, or I/O — can strike mid-write. When one does, the keys that already landed stay landed and the error names them, so a retry is an informed choice rather than a blind double-count.
+
+__Missing note.__ Pour **never fabricates a daily note** — the template owns that shape. Over the API it fires the `daily-notes` command and retries the read once; over the filesystem it fails loudly with an actionable message.
+
+__Missing key.__ If the note exists but the key doesn't (a stale template), the key is inserted into the existing frontmatter block, the capture succeeds, and a one-line notice tells you the template needs updating. Capture-first: refusing to log because a template drifted is exactly the friction pour exists to kill.
+
+__A note with no frontmatter block at all__ is an error on both transports. Pour mutates properties; it does not restructure notes.
+
+__Keys rejected on `update` modules__, because they belong to another mode and silently ignoring them would be a trap: `append_under_header`, `append_template`, `append_shallow`, `daily_link`, `frontmatter_date_format`, `[modules.<n>.frontmatter]`, plus any field that is `composite_array`, `list = true`, or targets the body.
+
+### One-shot capture
+
+```
+pour <module> <field> [value]      # no TUI, write, echo, exit 0
+```
+
+```
+$ pour habit water 16
+water: 64/96 oz · ✓ 20260805.md
+
+$ pour habit cannabis
+cannabis: true · ✓ 20260805.md
+```
+
+`pour <module>` with no field argument opens the TUI form exactly as before. Unknown module, unknown field, or a bad value token exits non-zero with an actionable message *before* the vault is touched. v1 wires the grammar for `toggle`/`counter` fields on `update` modules only; text-bearing one-shots (`pour me "thought"`) are deferred.
 
 ## Per-module root (`base_path`)
 

@@ -6,7 +6,7 @@ pub mod summary;
 
 // Binary entry points from loop_ — exposed so main.rs can call them without
 // importing the whole loop_ module into the public API.
-pub use loop_::{fetch_dynamic_options, run_loop};
+pub use loop_::{fetch_current_values, fetch_dynamic_options, run_loop};
 
 use crate::app::{App, Screen};
 use ratatui::Frame;

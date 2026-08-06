@@ -359,3 +359,217 @@ fn create_file_accepts_safe_relative_path() {
     );
     assert!(dir.path().join("notes/coffee.md").exists());
 }
+
+// ─── Frontmatter patch: the guarded surgical edit (spec §2.2) ───────────────
+
+use pour::output::frontmatter::FrontmatterValue;
+use pour::transport::{TransportPatchError, classify_patch_status};
+
+const NOTE: &str = "---\ncannabis: false\nwater: null\nmood: \"ok\"\n---\n\n# 20260805\n\nbody\n";
+
+fn seeded_note(dir: &tempfile::TempDir, rel: &str) -> FsWriter {
+    let writer = FsWriter::new(dir.path().to_path_buf());
+    writer.create_file(rel, NOTE).expect("seed note");
+    writer
+}
+
+#[test]
+fn patch_frontmatter_replaces_an_existing_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "daily/20260805.md");
+
+    writer
+        .patch_frontmatter(
+            "daily/20260805.md",
+            "water",
+            &FrontmatterValue::Number(16.0),
+        )
+        .expect("patch should succeed");
+
+    let after = std::fs::read_to_string(dir.path().join("daily/20260805.md")).unwrap();
+    assert_eq!(after, NOTE.replace("water: null", "water: 16"));
+}
+
+#[test]
+fn patch_frontmatter_inserts_a_missing_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "note.md");
+
+    writer
+        .patch_frontmatter("note.md", "steps", &FrontmatterValue::Number(8000.0))
+        .expect("a stale template must not block the capture");
+
+    let after = std::fs::read_to_string(dir.path().join("note.md")).unwrap();
+    assert_eq!(
+        after,
+        NOTE.replace("mood: \"ok\"\n---", "mood: \"ok\"\nsteps: 8000\n---")
+    );
+}
+
+#[test]
+fn patch_frontmatter_leaves_the_body_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "note.md");
+
+    writer
+        .patch_frontmatter("note.md", "cannabis", &FrontmatterValue::Bool(true))
+        .unwrap();
+
+    let after = std::fs::read_to_string(dir.path().join("note.md")).unwrap();
+    assert!(
+        after.ends_with("---\n\n# 20260805\n\nbody\n"),
+        "got: {after:?}"
+    );
+}
+
+#[test]
+fn patch_frontmatter_on_a_missing_note_is_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = FsWriter::new(dir.path().to_path_buf());
+
+    let err = writer
+        .patch_frontmatter("nope.md", "water", &FrontmatterValue::Number(1.0))
+        .expect_err("pour never fabricates the note");
+    assert!(matches!(err, TransportPatchError::NotFound), "got {err:?}");
+}
+
+#[test]
+fn patch_frontmatter_on_a_note_without_frontmatter_errors_without_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = FsWriter::new(dir.path().to_path_buf());
+    writer
+        .create_file("plain.md", "# No frontmatter\n")
+        .unwrap();
+
+    let err = writer
+        .patch_frontmatter("plain.md", "water", &FrontmatterValue::Number(1.0))
+        .expect_err("no block to patch");
+    assert!(matches!(err, TransportPatchError::Other(_)), "got {err:?}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("plain.md")).unwrap(),
+        "# No frontmatter\n"
+    );
+}
+
+/// Simulate a concurrent writer: replace the file's content and push its mtime
+/// forward explicitly, so the test does not depend on filesystem timestamp
+/// resolution.
+fn external_write(path: &std::path::Path, content: &str, mtime: std::time::SystemTime) {
+    std::fs::write(path, content).unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    f.set_modified(mtime).unwrap();
+}
+
+#[test]
+fn a_write_that_lands_between_the_baseline_stat_and_the_read_aborts() {
+    // The race the guard exists for, reproduced exactly: pour stats the file,
+    // Obsidian saves it, *then* pour reads. The bytes the edit is computed from
+    // are already the concurrent writer's, so the re-stat before the write must
+    // catch the difference against the pre-read baseline and abort.
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "note.md");
+    let path = dir.path().join("note.md");
+
+    let baseline = std::fs::metadata(&path).and_then(|m| m.modified()).unwrap();
+
+    const OBSIDIAN_WROTE: &str =
+        "---\ncannabis: true\nwater: 40\nmood: \"ok\"\n---\n\n# 20260805\n\nbody\n";
+    external_write(
+        &path,
+        OBSIDIAN_WROTE,
+        baseline + std::time::Duration::from_secs(5),
+    );
+
+    let err = writer
+        .patch_frontmatter_since(
+            "note.md",
+            baseline,
+            "water",
+            &FrontmatterValue::Number(16.0),
+        )
+        .expect_err("a file that moved after the baseline must abort the patch");
+
+    assert!(
+        matches!(err, TransportPatchError::Conflict(_)),
+        "got {err:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        OBSIDIAN_WROTE,
+        "the concurrent writer's bytes must survive untouched"
+    );
+    assert!(
+        !dir.path().join("note.tmp").exists(),
+        "no orphan temp file may survive an aborted write"
+    );
+}
+
+#[test]
+fn guarded_write_aborts_without_writing_when_the_mtime_moved() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "note.md");
+
+    // A deliberately stale baseline stands in for "another process wrote this
+    // file between our stat and our write".
+    let stale = std::time::SystemTime::UNIX_EPOCH;
+    let err = writer
+        .patch_frontmatter_since("note.md", stale, "water", &FrontmatterValue::Number(1.0))
+        .expect_err("mtime mismatch must abort");
+
+    assert!(
+        matches!(err, TransportPatchError::Conflict(_)),
+        "got {err:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("note.md")).unwrap(),
+        NOTE,
+        "an aborted guarded write must leave the file byte-identical"
+    );
+    assert!(
+        !dir.path().join("note.tmp").exists(),
+        "no orphan temp file may survive an aborted write"
+    );
+}
+
+#[test]
+fn guarded_write_succeeds_when_the_mtime_matches() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = seeded_note(&dir, "note.md");
+
+    let mtime = std::fs::metadata(dir.path().join("note.md"))
+        .and_then(|m| m.modified())
+        .unwrap();
+
+    writer
+        .patch_frontmatter_since("note.md", mtime, "water", &FrontmatterValue::Number(16.0))
+        .expect("an unchanged file must accept the write");
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("note.md")).unwrap(),
+        NOTE.replace("water: null", "water: 16")
+    );
+}
+
+#[test]
+fn classify_patch_status_degrades_old_plugins_but_not_missing_notes() {
+    // A Local REST API older than v3.0 rejects `Target-Type: frontmatter`
+    // outright — that is a degrade signal, not a capture failure (§2.1).
+    for status in [400u16, 405, 415, 501] {
+        assert!(
+            matches!(
+                classify_patch_status(status, "unsupported"),
+                TransportPatchError::Unsupported(_)
+            ),
+            "HTTP {status} should degrade to the filesystem"
+        );
+    }
+    // A missing note is §2.3's problem and must stay distinguishable.
+    assert!(matches!(
+        classify_patch_status(404, ""),
+        TransportPatchError::NotFound
+    ));
+    assert!(matches!(
+        classify_patch_status(500, "boom"),
+        TransportPatchError::Other(_)
+    ));
+}

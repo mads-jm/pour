@@ -38,3 +38,25 @@ async fn check_connection_returns_false_when_no_server() {
     let connected = client.check_connection().await;
     assert!(!connected, "should return false when server is unreachable");
 }
+
+#[tokio::test]
+async fn patch_frontmatter_refuses_a_key_that_could_inject_a_header() {
+    use pour::output::frontmatter::FrontmatterValue;
+    use pour::transport::TransportPatchError;
+
+    let client = pour::transport::api::ApiClient::new(19878, "k".to_string()).unwrap();
+
+    // The key becomes the `Target` header value. CR/LF must never reach the
+    // wire; a non-ASCII key cannot be carried at all. Both degrade to the
+    // filesystem rather than failing the capture.
+    for key in ["water\r\nX-Evil: 1", "水"] {
+        let err = client
+            .patch_frontmatter("note.md", key, &FrontmatterValue::Number(1.0))
+            .await
+            .expect_err("must not be sent");
+        assert!(
+            matches!(err, TransportPatchError::Unsupported(_)),
+            "key {key:?} gave {err:?}"
+        );
+    }
+}

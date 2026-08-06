@@ -1116,7 +1116,8 @@ fn toggle_mode_setting_adds_append_header_row() {
         let idx = state.settings.iter().position(|s| s.key == "mode").unwrap();
         state.active_field = idx;
     }
-    // Cycle "create" → "append"
+    // Cycle "create" → "update" → "append" (the cycler is append/create/update).
+    handle_key(&mut app, key(KeyCode::Enter));
     handle_key(&mut app, key(KeyCode::Enter));
 
     let state = app.configure_state.as_ref().unwrap();

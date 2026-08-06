@@ -36,6 +36,56 @@ impl std::fmt::Display for TransportReadError {
 
 impl std::error::Error for TransportReadError {}
 
+/// Typed error for [`Transport::patch_frontmatter`].
+///
+/// The variant that matters most is `Unsupported`: it is the signal that the
+/// *capture* is still fine and should be retried over the filesystem, rather
+/// than an error to show the user (spec §2.1).
+#[derive(Debug)]
+pub enum TransportPatchError {
+    /// The target note does not exist. Pour never fabricates it (spec §2.3).
+    NotFound,
+    /// This backend cannot serve a frontmatter patch — a Local REST API older
+    /// than v3.0 that does not understand `Target-Type: frontmatter`, or one
+    /// that has gone away mid-capture. Callers degrade to the filesystem path.
+    Unsupported(String),
+    /// The file changed on disk between the read and the write. **Nothing was
+    /// written.**
+    Conflict(String),
+    /// Any other failure (permissions, I/O, malformed frontmatter).
+    Other(String),
+}
+
+impl std::fmt::Display for TransportPatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransportPatchError::NotFound => write!(f, "file not found"),
+            TransportPatchError::Unsupported(msg) => {
+                write!(f, "frontmatter patch unsupported: {msg}")
+            }
+            TransportPatchError::Conflict(msg) => write!(f, "aborted, nothing written: {msg}"),
+            TransportPatchError::Other(msg) => write!(f, "patch error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for TransportPatchError {}
+
+/// Classify a non-2xx response to the frontmatter PATCH.
+///
+/// `400`/`405`/`415`/`501` all mean "this plugin does not understand the
+/// request shape" — which is exactly how a pre-v3.0 Local REST API answers a
+/// `Target-Type: frontmatter` PATCH — so they degrade rather than fail. `404`
+/// is the note itself missing, which §2.3 handles separately and must not be
+/// confused with an old plugin.
+pub fn classify_patch_status(status: u16, body: &str) -> TransportPatchError {
+    match status {
+        404 => TransportPatchError::NotFound,
+        400 | 405 | 415 | 501 => TransportPatchError::Unsupported(format!("HTTP {status}: {body}")),
+        _ => TransportPatchError::Other(format!("API patch_frontmatter failed ({status}): {body}")),
+    }
+}
+
 /// A single entry returned by directory listing — either a file or a subdirectory.
 #[derive(Debug, Clone)]
 pub struct VaultEntry {
@@ -185,6 +235,34 @@ impl Transport {
         match self {
             Transport::Api(client) => client.read_file(vault_path).await,
             Transport::Fs(writer) => writer.read_file(vault_path),
+        }
+    }
+
+    /// Replace (or insert) a single frontmatter key on an existing note.
+    ///
+    /// The one mutation primitive behind `update` mode. Both backends edit
+    /// exactly one key and leave the rest of the file — including the body —
+    /// alone:
+    ///
+    /// - **API**: `PATCH /vault/{path}` with `Operation: replace`,
+    ///   `Target-Type: frontmatter`, `Target: <key>`; Obsidian's own metadata
+    ///   layer does the mutation, so pour never re-emits YAML.
+    /// - **Filesystem**: read → capture mtime → line-level edit → re-verify
+    ///   mtime → [`crate::util::atomic_replace`]. A mismatch aborts *without
+    ///   writing* (spec §2.2).
+    ///
+    /// Returns [`TransportPatchError::Unsupported`] when the API cannot serve
+    /// the operation; the caller is expected to retry over the filesystem
+    /// rather than surface it (spec §2.1).
+    pub async fn patch_frontmatter(
+        &self,
+        vault_path: &str,
+        key: &str,
+        value: &crate::output::frontmatter::FrontmatterValue,
+    ) -> std::result::Result<(), TransportPatchError> {
+        match self {
+            Transport::Api(client) => client.patch_frontmatter(vault_path, key, value).await,
+            Transport::Fs(writer) => writer.patch_frontmatter(vault_path, key, value),
         }
     }
 

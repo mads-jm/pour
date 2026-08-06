@@ -190,12 +190,18 @@ impl ModuleConfig {
     }
 }
 
-/// Whether a module appends to an existing note or creates a new one.
+/// Whether a module appends to an existing note, creates a new one, or
+/// mutates frontmatter keys on an existing one.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum WriteMode {
     Append,
     Create,
+    /// Merge the module's fields into the frontmatter of an **existing** note
+    /// resolved from `path`. The body is never touched and no key outside the
+    /// module's field list is rewritten. Pour never creates the note itself —
+    /// the template owns its shape.
+    Update,
 }
 
 /// Conditional visibility rule for a field.
@@ -266,6 +272,30 @@ pub struct FieldConfig {
     /// literal string — not split).
     #[serde(default)]
     pub list: bool,
+    /// Display-only unit suffix for `counter` fields (e.g. `"oz"`). Rendered in
+    /// the TUI and in the one-shot echo; **never** written to YAML.
+    #[serde(default)]
+    pub unit: Option<String>,
+    /// Reach-target for `counter` fields, rendered as `64/96`. Config-only —
+    /// pour never writes a goal into the vault (spec §3.2).
+    #[serde(default)]
+    pub goal: Option<f64>,
+}
+
+impl FieldConfig {
+    /// Where this field's value is written, after applying the per-type default.
+    ///
+    /// Explicit `target` wins; otherwise `textarea` goes to the body and every
+    /// other type goes to frontmatter.
+    pub fn effective_target(&self) -> FieldTarget {
+        self.target.clone().unwrap_or({
+            if self.field_type == FieldType::Textarea {
+                FieldTarget::Body
+            } else {
+                FieldTarget::Frontmatter
+            }
+        })
+    }
 }
 
 /// The kind of input widget for a field.
@@ -278,6 +308,12 @@ pub enum FieldType {
     StaticSelect,
     DynamicSelect,
     CompositeArray,
+    /// A boolean property. Space flips it in the TUI; the one-shot grammar
+    /// treats a bare field name as `true` and `false`/`off` as `false`.
+    Toggle,
+    /// An accumulating number. `N` increments the note's current value, `=N`
+    /// sets it. Missing or `null` reads as `0`.
+    Counter,
 }
 
 /// Allowed sub-field types within a `composite_array` field.
@@ -817,6 +853,7 @@ impl Config {
                 let mode_str = match mode_update {
                     WriteMode::Append => "append",
                     WriteMode::Create => "create",
+                    WriteMode::Update => "update",
                 };
                 module["mode"] = toml_edit::value(mode_str);
             }
@@ -937,6 +974,8 @@ impl Config {
                     FieldType::StaticSelect => "static_select",
                     FieldType::DynamicSelect => "dynamic_select",
                     FieldType::CompositeArray => "composite_array",
+                    FieldType::Toggle => "toggle",
+                    FieldType::Counter => "counter",
                 };
                 field["field_type"] = toml_edit::value(type_str);
             }
@@ -1251,6 +1290,8 @@ impl Config {
                 FieldType::StaticSelect => "static_select",
                 FieldType::DynamicSelect => "dynamic_select",
                 FieldType::CompositeArray => "composite_array",
+                FieldType::Toggle => "toggle",
+                FieldType::Counter => "counter",
             };
 
             new_table["name"] = toml_edit::value(field.name.as_str());
@@ -1515,6 +1556,7 @@ impl Config {
             let mode_str = match module.mode {
                 WriteMode::Append => "append",
                 WriteMode::Create => "create",
+                WriteMode::Update => "update",
             };
             module_table["mode"] = toml_edit::value(mode_str);
             module_table["path"] = toml_edit::value(module.path.as_str());
@@ -1560,6 +1602,8 @@ impl Config {
                     FieldType::StaticSelect => "static_select",
                     FieldType::DynamicSelect => "dynamic_select",
                     FieldType::CompositeArray => "composite_array",
+                    FieldType::Toggle => "toggle",
+                    FieldType::Counter => "counter",
                 };
 
                 ft["name"] = toml_edit::value(field.name.as_str());
@@ -1680,7 +1724,7 @@ impl Config {
     ///
     /// Checks performed:
     /// - For `create` mode modules: the parent directory of `module.path` must exist.
-    /// - For `append` mode modules: the file at `module.path` must exist.
+    /// - For `append` and `update` mode modules: the file at `module.path` must exist.
     /// - For `dynamic_select` fields with a `source`: the source directory must exist.
     ///
     /// Paths containing `{{` (template variables) are skipped entirely — they
@@ -1705,8 +1749,9 @@ impl Config {
                             ));
                         }
                     }
-                    WriteMode::Append => {
-                        // For append mode, the target file must exist.
+                    // Append and update both mutate a note that must already
+                    // exist — pour never creates it (spec §2.3).
+                    WriteMode::Append | WriteMode::Update => {
                         if !full_path.exists() {
                             warnings.push(format!(
                                 "module '{}': path '{}' — file not found",
@@ -2601,6 +2646,27 @@ impl Config {
                 ));
             }
 
+            // Update mode owns neither of the other modes' machinery: it has no
+            // body to template into and no new file to stamp. Rejecting these
+            // keys here (rather than ignoring them) mirrors the
+            // `frontmatter`-on-non-create rule directly above — a silently
+            // dropped key is a trap. Scoped to update modules only, so no
+            // existing append/create config changes meaning.
+            if module.mode == WriteMode::Update {
+                for (key, present) in [
+                    ("append_under_header", module.append_under_header.is_some()),
+                    ("append_template", module.append_template.is_some()),
+                    ("append_shallow", module.append_shallow.is_some()),
+                    ("daily_link", module.daily_link.is_some()),
+                ] {
+                    if present {
+                        errors.push(format!(
+                            "module '{name}': '{key}' is not valid on update mode modules"
+                        ));
+                    }
+                }
+            }
+
             // post_write_shell: reject unknown interpolation tokens at load
             // time. Stripping them (as `render_path` does for paths) would be a
             // security footgun — `{{title}}` silently becoming an empty string
@@ -2649,6 +2715,48 @@ impl Config {
                         "module '{name}', field '{}': 'list = true' is only valid on text, static_select, or dynamic_select",
                         field.name
                     ));
+                }
+
+                // `unit` and `goal` are counter vocabulary. On any other type
+                // they would be silently inert.
+                if field.field_type != FieldType::Counter {
+                    for (key, present) in [
+                        ("unit", field.unit.is_some()),
+                        ("goal", field.goal.is_some()),
+                    ] {
+                        if present {
+                            errors.push(format!(
+                                "module '{name}', field '{}': '{key}' is only valid on counter fields",
+                                field.name
+                            ));
+                        }
+                    }
+                }
+
+                // Update mode writes frontmatter scalars and nothing else, so a
+                // field routed to the body would capture into the void, and a
+                // composite has no single-key line to patch.
+                if module.mode == WriteMode::Update {
+                    if field.effective_target() == FieldTarget::Body {
+                        errors.push(format!(
+                            "module '{name}', field '{}': update mode writes frontmatter only — this field targets the body",
+                            field.name
+                        ));
+                    }
+                    if field.field_type == FieldType::CompositeArray {
+                        errors.push(format!(
+                            "module '{name}', field '{}': composite_array is not valid on update mode modules",
+                            field.name
+                        ));
+                    }
+                    // A YAML sequence is a multi-line value, and the line-level
+                    // patcher refuses those by design.
+                    if field.list {
+                        errors.push(format!(
+                            "module '{name}', field '{}': 'list = true' is not valid on update mode modules",
+                            field.name
+                        ));
+                    }
                 }
 
                 // static_select must have non-empty options

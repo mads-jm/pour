@@ -22,6 +22,8 @@ pub fn build_field_settings(field: &FieldConfig) -> Vec<ConfigSetting> {
         FieldType::StaticSelect => "static_select",
         FieldType::DynamicSelect => "dynamic_select",
         FieldType::CompositeArray => "composite_array",
+        FieldType::Toggle => "toggle",
+        FieldType::Counter => "counter",
     };
 
     let target_str = match &field.target {
@@ -54,6 +56,8 @@ pub fn build_field_settings(field: &FieldConfig) -> Vec<ConfigSetting> {
                 "static_select".to_string(),
                 "dynamic_select".to_string(),
                 "composite_array".to_string(),
+                "toggle".to_string(),
+                "counter".to_string(),
             ]),
         },
         ConfigSetting {
@@ -298,7 +302,11 @@ pub fn init_new_module_configure(_config: &Config) -> ConfigureState {
             label: "Mode".to_string(),
             key: "mode".to_string(),
             value: "create".to_string(),
-            kind: SettingKind::Toggle(vec!["append".to_string(), "create".to_string()]),
+            kind: SettingKind::Toggle(vec![
+                "append".to_string(),
+                "create".to_string(),
+                "update".to_string(),
+            ]),
         },
         ConfigSetting {
             label: "Path".to_string(),

@@ -28,6 +28,8 @@ fn unconditional(name: &str) -> FieldConfig {
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     }
 }
 
@@ -56,6 +58,8 @@ fn with_equals(name: &str, controlling_field: &str, equals: &str) -> FieldConfig
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     }
 }
 
@@ -84,6 +88,8 @@ fn with_one_of(name: &str, controlling_field: &str, values: &[&str]) -> FieldCon
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     }
 }
 

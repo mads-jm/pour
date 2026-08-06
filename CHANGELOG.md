@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added — habit capture v1 (frontmatter mutation primitives)
+
+Spec: `pour - docs/08 specs/pour-habit-capture.md` §§2, 3, 5, 6. Four general primitives; **no habit-specific code** — the `habit` module is a plain config block.
+
+- **`mode = "update"`** — a third write mode that merges frontmatter keys into an *existing* note resolved from a strftime `path`. The body is never touched, key order and quoting survive byte-for-byte, and no key outside the module's field list is rewritten. Pour never creates the note: over the API it fires the `daily-notes` command and retries the read once; over the filesystem it fails loudly. A note that exists but lacks the key gets it inserted plus a "your template is stale" notice — capture-first.
+- **`toggle` and `counter` field types** — both default to `target = "frontmatter"` and are valid in any write mode. `toggle` is a bool (space flips it in the TUI). `counter` accumulates: `16` adds to the current value, `=16` sets it; a missing or `null` key reads as `0`, values parse as `f64`, and integral results emit bare. New `counter`-only keys `unit` (display-only) and `goal` (config-only reach-target, never written to the vault). `limit`/`limit_period` stay reserved and unimplemented.
+- **`Transport::patch_frontmatter`** — one mutation primitive, two backends. API: `PATCH /vault/{path}` with `Operation: replace`, `Target-Type: frontmatter`, `Target: <key>`, `Create-Target-If-Missing: true` — pour's first PATCH request. Filesystem: a guarded surgical edit (capture mtime → read → replace exactly one line → re-verify mtime → `atomic_replace`) that aborts **without writing** on a mismatch — the stat precedes the read so a concurrent save landing *during* the read is caught too. A plugin too old to serve the PATCH degrades to the filesystem path instead of failing the capture. Multi-key updates are sequential and not atomic; a mid-write failure names the keys that already landed.
+- **`output::frontmatter::read_frontmatter` / `patch_frontmatter_line`** — a read-only parser and a single-key line-level patcher, both pure and unit-tested. Deliberately not a YAML round-trip: parsing is safe, re-emitting is what destroys formatting. A key whose value spans multiple lines is refused rather than orphaned.
+- **One-shot argv capture** — `pour <module> <field> [value]` writes without entering the TUI, echoes the resulting state (`water: 64/96 oz · ✓ 20260805.md`), and exits 0. Unknown module, unknown field, or a bad value token exits non-zero *before* the vault is touched. `pour <module>` with no field argument opens the TUI form exactly as before — **zero behavior change for existing modules**. Wired for `toggle`/`counter` fields on `update` modules only.
+- **TUI widgets** — `toggle` renders `[x]`/`[ ]`; `counter` shows the note's current state alongside its input (`now 64/96 oz`), read once over the active transport at form open. A failed or slow read renders a placeholder rather than blocking or aborting the form (ADR-003). A toggle whose note value is not a boolean word is left unseeded, renders `[?]`, and is skipped on submit — pour does not coerce an unreadable value to `false` and then write that guess back.
+- **Server-side `toggle`/`counter` validation** — a malformed value token submitted over the API comes back as a `400 validation_failed` with a `field`/`code` pair (`invalid_toggle`, `invalid_counter`), the same shape every other field type gets, instead of a `500 write_error`.
+- **`habit` module in `resources/mads_config.toml`** — seed only, not mirrored into the live stowed config. `mobile_visible = false`: the PWA has no toggle/counter widget yet.
+- **76 new tests**, densest around the one-way door: byte-for-byte preservation over a realistic daily note, a concurrent write landing between the baseline stat and the read aborting with the file untouched, multi-key writes landing in order and reporting partial application on failure, an unreadable toggle surviving a submit, API→filesystem degradation, missing-note and stale-template handling, and every new config validation rule.
+
+### Changed
+
+- Config validation rejects keys that another mode owns, rather than ignoring them: `unit`/`goal` off a `counter`; `append_under_header`/`append_template`/`append_shallow`/`daily_link`/`frontmatter_date_format`/`[modules.<n>.frontmatter]` on an `update` module; and `composite_array`, `list = true`, or a body target on an `update` module's fields.
+- The configure editor's mode cycler gains `update` and its field-type cycler gains `toggle`/`counter`. Without this, auto-save silently rewrote an `update` module as `create` and a `counter` field as `text`.
+- `check_paths` warns on a missing target note for `update` modules, as it already did for `append`.
+
 ## [1.0.0] — 2026-04-29 — The Freeze
 
 ### Fixed — v1 hardening (closes the v1.0.0 pre-release assessment Open Bugs list)

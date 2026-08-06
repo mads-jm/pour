@@ -134,6 +134,27 @@ async fn main() {
     // Connect transport (auto-fallback from API to filesystem)
     let transport = pour::transport::Transport::connect(&config).await;
 
+    // One-shot argv capture: `pour <module> <field> [value]` writes and exits
+    // without ever entering the TUI (spec §5). `pour <module>` alone parses to
+    // `None` and falls through to the fast path below, unchanged.
+    match pour::oneshot::parse(&args, &config) {
+        Err(e) => {
+            eprintln!("pour: {e}");
+            process::exit(1);
+        }
+        Ok(Some(shot)) => match pour::oneshot::run(&config, &transport, &shot).await {
+            Ok(line) => {
+                println!("{line}");
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("pour: {e}");
+                process::exit(1);
+            }
+        },
+        Ok(None) => {}
+    }
+
     // Load capture history for dashboard stats
     let history = History::load();
 
@@ -170,6 +191,7 @@ async fn main() {
 
         // Fetch dynamic select options for this module
         pour::tui::fetch_dynamic_options(&mut app, module_name, &mut cache).await;
+        pour::tui::fetch_current_values(&mut app, module_name).await;
     }
 
     // Install panic hook that restores terminal before printing panic.

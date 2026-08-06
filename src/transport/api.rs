@@ -1,4 +1,5 @@
-use crate::transport::TransportReadError;
+use crate::output::frontmatter::FrontmatterValue;
+use crate::transport::{TransportPatchError, TransportReadError, classify_patch_status};
 use anyhow::{Context, Result};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::Client;
@@ -343,6 +344,71 @@ impl ApiClient {
         resp.text()
             .await
             .map_err(|e| TransportReadError::Other(e.to_string()))
+    }
+
+    /// Replace (or insert) a single frontmatter key via the Local REST API.
+    ///
+    /// This is pour's **first** PATCH request — every other API write is a
+    /// read-splice-write PUT (see ADR-004). It is safe here for the reason
+    /// ADR-004 was not: the mutation is a single named property handled by
+    /// Obsidian's own metadata layer, not a positional splice into markdown
+    /// whose result pour cannot predict.
+    ///
+    /// `Create-Target-If-Missing: true` covers spec §2.4 — a note whose
+    /// template predates the key still accepts the capture, matching what the
+    /// filesystem path does by appending the line.
+    ///
+    /// Never returns `Unsupported` for a reason the filesystem path could not
+    /// also hit; that is the contract callers rely on to degrade (§2.1).
+    pub async fn patch_frontmatter(
+        &self,
+        vault_path: &str,
+        key: &str,
+        value: &FrontmatterValue,
+    ) -> std::result::Result<(), TransportPatchError> {
+        // The frontmatter key travels as an HTTP header value, so this check is
+        // load-bearing twice over. It keeps CR/LF (and every other control
+        // byte) out of the request — header injection from a config key is not
+        // a hole worth leaving open — and it catches non-ASCII keys the header
+        // cannot carry at all. Both cases *degrade* rather than fail: the
+        // filesystem patcher handles any key the note can hold.
+        if !key.bytes().all(|b| (0x20..0x7f).contains(&b)) {
+            return Err(TransportPatchError::Unsupported(format!(
+                "frontmatter key {key:?} cannot be carried in the API's Target header"
+            )));
+        }
+
+        let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
+
+        let resp = self
+            .client
+            .patch(&url)
+            .bearer_auth(&self.api_key)
+            .header("Operation", "replace")
+            .header("Target-Type", "frontmatter")
+            .header("Target", key)
+            .header("Create-Target-If-Missing", "true")
+            .header("Content-Type", "application/json")
+            .body(value.to_json())
+            .send()
+            .await
+            .map_err(|e| {
+                // An API that has gone away mid-capture is indistinguishable,
+                // from here, from one that was never there — and the answer is
+                // the same either way: write it to disk.
+                if e.is_connect() || e.is_timeout() {
+                    TransportPatchError::Unsupported(format!("API unreachable: {e}"))
+                } else {
+                    TransportPatchError::Other(e.to_string())
+                }
+            })?;
+
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = resp.text().await.unwrap_or_default();
+        Err(classify_patch_status(status.as_u16(), &body))
     }
 
     /// Execute an Obsidian command by its ID.

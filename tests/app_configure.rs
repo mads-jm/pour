@@ -305,6 +305,7 @@ fn make_form_state(
 ) -> pour::app::FormState {
     pour::app::FormState {
         field_values,
+        current_values: HashMap::new(),
         field_options: HashMap::new(),
         active_field: 0,
         active_config_idx: Some(0),

@@ -34,10 +34,10 @@ pub fn build_module_updates(settings: &[ConfigSetting]) -> ModuleUpdates {
                 });
             }
             "mode" => {
-                mode = Some(if setting.value == "append" {
-                    WriteMode::Append
-                } else {
-                    WriteMode::Create
+                mode = Some(match setting.value.as_str() {
+                    "append" => WriteMode::Append,
+                    "update" => WriteMode::Update,
+                    _ => WriteMode::Create,
                 });
             }
             "append_under_header" => {
@@ -201,6 +201,8 @@ pub fn build_field_updates(settings: &[ConfigSetting]) -> FieldUpdates {
                     "static_select" => FieldType::StaticSelect,
                     "dynamic_select" => FieldType::DynamicSelect,
                     "composite_array" => FieldType::CompositeArray,
+                    "toggle" => FieldType::Toggle,
+                    "counter" => FieldType::Counter,
                     _ => FieldType::Text,
                 });
             }

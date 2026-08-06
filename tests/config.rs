@@ -1,5 +1,7 @@
 use pour::config::Config;
-use pour::config::{FieldTarget, FieldType, SubFieldType, TemplateFieldType, WriteMode};
+use pour::config::{
+    ConfigError, FieldTarget, FieldType, SubFieldType, TemplateFieldType, WriteMode,
+};
 
 /// A representative config string that exercises every struct and enum variant.
 const SAMPLE_TOML: &str = r#####"
@@ -2405,4 +2407,257 @@ fn shipped_mads_config_is_valid() {
     let fm = lyra.frontmatter.as_ref().expect("static frontmatter");
     assert_eq!(fm["tags"].as_array().map(Vec::len), Some(2));
     assert_eq!(fm["author"].as_str(), Some("mads"));
+}
+
+// ─── `update` mode, `toggle`, `counter` (habit capture v1) ───────────────────
+
+/// Build a one-module config, substituting the module block wholesale.
+fn habit_config(module_block: &str) -> Result<Config, pour::config::ConfigError> {
+    Config::from_toml(&format!(
+        "[vault]\nbase_path = \"/tmp/vault\"\n\n{module_block}"
+    ))
+}
+
+const HABIT_MODULE: &str = r####"
+[modules.habit]
+mode = "update"
+path = "daily/%Y%m%d.md"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"
+goal = 96
+"####;
+
+#[test]
+fn update_mode_with_toggle_and_counter_parses() {
+    let config = habit_config(HABIT_MODULE).expect("the habit shape must validate");
+    let habit = &config.modules["habit"];
+
+    assert_eq!(habit.mode, WriteMode::Update);
+    assert_eq!(habit.fields[0].field_type, FieldType::Toggle);
+    assert_eq!(habit.fields[1].field_type, FieldType::Counter);
+    assert_eq!(habit.fields[1].unit.as_deref(), Some("oz"));
+    // A TOML integer must land in the f64 `goal`, not fail to deserialise.
+    assert_eq!(habit.fields[1].goal, Some(96.0));
+}
+
+#[test]
+fn toggle_and_counter_default_to_frontmatter() {
+    let config = habit_config(HABIT_MODULE).unwrap();
+    for field in &config.modules["habit"].fields {
+        assert_eq!(
+            field.effective_target(),
+            FieldTarget::Frontmatter,
+            "{} must default to frontmatter",
+            field.name
+        );
+    }
+}
+
+#[test]
+fn toggle_and_counter_are_valid_in_any_write_mode() {
+    // General primitives, not habit-only: a create module may declare them too.
+    let config = habit_config(
+        r####"
+[modules.log]
+mode = "create"
+path = "Log/%Y%m%d.md"
+
+[[modules.log.fields]]
+name = "done"
+field_type = "toggle"
+prompt = "Done?"
+
+[[modules.log.fields]]
+name = "reps"
+field_type = "counter"
+prompt = "Reps"
+unit = "x"
+"####,
+    );
+    assert!(config.is_ok(), "got {:?}", config.err());
+}
+
+#[test]
+fn unit_and_goal_are_rejected_off_counter_fields() {
+    for extra in ["unit = \"oz\"", "goal = 96"] {
+        let result = habit_config(&format!(
+            r####"
+[modules.habit]
+mode = "update"
+path = "daily/%Y%m%d.md"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+{extra}
+"####
+        ));
+        assert!(
+            matches!(result, Err(ConfigError::ValidationError(_))),
+            "'{extra}' on a toggle must be rejected, got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn list_is_rejected_on_toggle_and_counter() {
+    for (name, field_type) in [("cannabis", "toggle"), ("water", "counter")] {
+        let result = habit_config(&format!(
+            r####"
+[modules.log]
+mode = "create"
+path = "Log/%Y%m%d.md"
+
+[[modules.log.fields]]
+name = "{name}"
+field_type = "{field_type}"
+prompt = "P"
+list = true
+"####
+        ));
+        assert!(
+            matches!(result, Err(ConfigError::ValidationError(_))),
+            "list on a {field_type} must be rejected, got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn append_only_and_create_only_keys_are_rejected_on_update_modules() {
+    for extra in [
+        "append_under_header = \"## Log\"",
+        "append_template = \"{{title}}\"",
+        "append_shallow = true",
+        "daily_link = true",
+        "frontmatter_date_format = \"%Y-%m-%d\"",
+    ] {
+        let result = habit_config(&format!(
+            r####"
+[modules.habit]
+mode = "update"
+path = "daily/%Y%m%d.md"
+{extra}
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+"####
+        ));
+        assert!(
+            matches!(result, Err(ConfigError::ValidationError(_))),
+            "'{extra}' on an update module must be rejected, got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn static_frontmatter_is_rejected_on_update_modules() {
+    let result = habit_config(
+        r####"
+[modules.habit]
+mode = "update"
+path = "daily/%Y%m%d.md"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+
+[modules.habit.frontmatter]
+author = "mads"
+"####,
+    );
+    assert!(
+        matches!(result, Err(ConfigError::ValidationError(_))),
+        "got {result:?}"
+    );
+}
+
+#[test]
+fn update_modules_reject_fields_that_would_capture_into_the_void() {
+    // Body-targeted, textarea (body by default), composite_array, and list all
+    // have no single frontmatter line to patch.
+    for field_block in [
+        "name = \"n\"\nfield_type = \"text\"\nprompt = \"P\"\ntarget = \"body\"",
+        "name = \"n\"\nfield_type = \"textarea\"\nprompt = \"P\"",
+        "name = \"n\"\nfield_type = \"composite_array\"\nprompt = \"P\"\nsub_fields = [{ name = \"a\", field_type = \"text\", prompt = \"A\" }]",
+        "name = \"n\"\nfield_type = \"text\"\nprompt = \"P\"\nlist = true",
+    ] {
+        let result = habit_config(&format!(
+            "[modules.habit]\nmode = \"update\"\npath = \"daily/%Y%m%d.md\"\n\n[[modules.habit.fields]]\n{field_block}\n"
+        ));
+        assert!(
+            matches!(result, Err(ConfigError::ValidationError(_))),
+            "field must be rejected on an update module:\n{field_block}\ngot {result:?}"
+        );
+    }
+}
+
+#[test]
+fn update_modules_are_checked_for_an_existing_note_like_append() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = habit_config(
+        r####"
+[modules.habit]
+mode = "update"
+path = "daily/today.md"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+"####,
+    )
+    .unwrap();
+
+    let warnings = config.check_paths(dir.path());
+    assert!(
+        warnings.iter().any(|w| w.contains("file not found")),
+        "update mode must warn on a missing target note, got {warnings:?}"
+    );
+}
+
+#[test]
+fn shipped_mads_config_has_the_habit_preset() {
+    let _lock = SECRETS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let config = Config::from_toml(include_str!("../resources/mads_config.toml"))
+        .expect("resources/mads_config.toml must validate");
+
+    let habit = &config.modules["habit"];
+    assert_eq!(habit.mode, WriteMode::Update);
+    assert!(
+        habit.path.contains("%Y%m%d"),
+        "the habit module targets the daily note"
+    );
+    assert!(
+        !habit.is_mobile_visible(),
+        "the PWA has no toggle/counter widget yet"
+    );
+
+    let water = habit
+        .fields
+        .iter()
+        .find(|f| f.name == "water")
+        .expect("water field");
+    assert_eq!(water.field_type, FieldType::Counter);
+    assert_eq!(water.unit.as_deref(), Some("oz"));
+    assert_eq!(water.goal, Some(96.0));
+
+    let cannabis = habit
+        .fields
+        .iter()
+        .find(|f| f.name == "cannabis")
+        .expect("cannabis field");
+    assert_eq!(cannabis.field_type, FieldType::Toggle);
 }

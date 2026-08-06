@@ -120,12 +120,13 @@ pour todo
 
 ### Modes
 
-Each module uses one of two modes:
+Each module uses one of three modes:
 
 | Mode | Behavior |
 |------|----------|
 | `append` | Appends content under a header in an existing note (e.g. a daily note) |
 | `create` | Creates a new file per entry with YAML frontmatter |
+| `update` | Mutates frontmatter properties on an existing note. Body untouched; only the module's own keys are rewritten. Pour never creates the note — your template owns it. |
 
 ### Field Types
 
@@ -135,8 +136,48 @@ Each module uses one of two modes:
 - `static_select` - fixed options list
 - `dynamic_select` - options pulled from your vault (see Transport below)
 - `composite_array` - repeatable set of sub-fields (e.g. brew recipe stages)
+- `toggle` - a boolean property; space flips it in the form
+- `counter` - a number that accumulates; `16` adds, `=16` sets
 
 Fields go to YAML frontmatter by default. Override with `target = "body"` or `target = "frontmatter"`.
+
+### Habits: one-line capture
+
+`update` mode plus `toggle`/`counter` fields plus the one-shot argv grammar turns an ambient daily property into a single shell line:
+
+```toml
+[modules.habit]
+mode = "update"
+path = "Daily/%Y%m%d.md"
+icon = "🌱"
+
+[[modules.habit.fields]]
+name = "cannabis"
+field_type = "toggle"
+prompt = "Partaken?"
+
+[[modules.habit.fields]]
+name = "water"
+field_type = "counter"
+prompt = "Water"
+unit = "oz"          # display only, never written to YAML
+goal = 96            # reach-target; renders as 64/96 oz
+```
+
+```bash
+$ pour habit water 16
+water: 64/96 oz · ✓ 20260805.md
+
+$ pour habit cannabis
+cannabis: true · ✓ 20260805.md
+
+$ pour habit cannabis false     # the correction path
+cannabis: false · ✓ 20260805.md
+
+$ pour habit                    # no field arg → the usual TUI form
+```
+
+Your daily-note template owns the keys and their defaults (`cannabis: false`, `water: null`); pour only mutates them. A missing key is added with a "your template is stale" notice rather than blocking the capture; a missing *note* fails loudly — pour never fabricates one.
 
 ### Path Interpolation
 

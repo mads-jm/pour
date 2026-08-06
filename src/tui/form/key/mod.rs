@@ -325,6 +325,18 @@ pub(super) fn dispatch(
 
         // ── Char ─────────────────────────────────────────────────────────────
         KeyCode::Char(c) => {
+            // A toggle has no text buffer: space flips it, everything else is
+            // inert. Handled before the search/text branches so a toggle can
+            // never accumulate typed characters.
+            if active_field_type == Some(FieldType::Toggle) {
+                if c == ' '
+                    && let Some(ref fname) = active_field_name
+                    && let Some(form_state) = app.form_state.as_mut()
+                {
+                    flip_toggle(form_state, fname);
+                }
+                return FormAction::None;
+            }
             if (is_dynamic_allow_create || is_static_allow_create)
                 && let Some(ref fname) = active_field_name
             {
@@ -472,6 +484,24 @@ pub(super) fn dispatch(
 
         _ => FormAction::None,
     }
+}
+
+// ── Toggle helper ─────────────────────────────────────────────────────────────
+
+/// Flip a `toggle` field between `"true"` and `"false"`.
+///
+/// Anything that is not exactly `"true"` counts as false, so a note whose
+/// property holds junk flips to a clean `true` rather than staying stuck.
+pub(super) fn flip_toggle(form_state: &mut FormState, field_name: &str) {
+    let entry = form_state
+        .field_values
+        .entry(field_name.to_string())
+        .or_default();
+    *entry = if entry.trim().eq_ignore_ascii_case("true") {
+        "false".to_string()
+    } else {
+        "true".to_string()
+    };
 }
 
 // ── Callout cycling helper ────────────────────────────────────────────────────

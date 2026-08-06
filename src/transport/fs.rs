@@ -1,6 +1,8 @@
-use crate::transport::TransportReadError;
+use crate::output::frontmatter::{FrontmatterValue, patch_frontmatter_line};
+use crate::transport::{TransportPatchError, TransportReadError};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use super::VaultEntry;
 
@@ -366,6 +368,117 @@ impl FsWriter {
         Ok(names)
     }
 
+    /// Replace (or insert) a single frontmatter key on an existing note.
+    ///
+    /// The guarded surgical edit of spec §2.2, and the only write path pour has
+    /// that mutates bytes the user already owns. Three mitigations, all
+    /// load-bearing:
+    ///
+    /// 1. **mtime guard** — the file is stat'd *before* it is read and re-stat'd
+    ///    immediately before the write; any change in between aborts with
+    ///    `Conflict` and writes nothing.
+    /// 2. **line-level edit** — [`patch_frontmatter_line`] never re-emits YAML,
+    ///    so key order, quoting, comments, and the entire body survive
+    ///    byte-for-byte.
+    /// 3. **atomic replace** — the note is swapped in with a rename, so a
+    ///    reader never sees a partial file.
+    pub fn patch_frontmatter(
+        &self,
+        relative_path: &str,
+        key: &str,
+        value: &FrontmatterValue,
+    ) -> std::result::Result<(), TransportPatchError> {
+        let full_path = self
+            .resolve_path_validated(relative_path)
+            .map_err(|e| TransportPatchError::Other(e.to_string()))?;
+
+        // Stat *first*, deliberately: the baseline has to predate the bytes the
+        // edit is computed from. Capturing it after the read would shrink the
+        // protected window to exclude the read itself — a concurrent writer
+        // landing between read and stat would set the baseline to its own
+        // post-write value, the re-stat would match, and pour would overwrite
+        // that writer using content read before their change. Stat → read →
+        // compute → re-stat encloses the read, so any interleaved write is seen.
+        let baseline = file_mtime(&full_path)?;
+        self.patch_frontmatter_since(relative_path, baseline, key, value)
+    }
+
+    /// [`FsWriter::patch_frontmatter`] with the guard's baseline supplied by the
+    /// caller instead of stat'd here.
+    ///
+    /// Split out so the race the guard exists for is directly testable: a test
+    /// can capture the baseline, let an "external writer" modify the file, and
+    /// then call this — which reproduces exactly the interleaving where the
+    /// external write lands between pour's stat and pour's read. Through
+    /// `patch_frontmatter` alone that window is microseconds wide and cannot be
+    /// hit deterministically.
+    pub fn patch_frontmatter_since(
+        &self,
+        relative_path: &str,
+        baseline_mtime: SystemTime,
+        key: &str,
+        value: &FrontmatterValue,
+    ) -> std::result::Result<(), TransportPatchError> {
+        let full_path = self
+            .resolve_path_validated(relative_path)
+            .map_err(|e| TransportPatchError::Other(e.to_string()))?;
+
+        let content = std::fs::read_to_string(&full_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                TransportPatchError::NotFound
+            } else {
+                TransportPatchError::Other(format!(
+                    "FS: failed to read file {}: {e}",
+                    full_path.display()
+                ))
+            }
+        })?;
+
+        let (patched, _outcome) = patch_frontmatter_line(&content, key, &value.to_yaml())
+            .map_err(|e| TransportPatchError::Other(format!("{}: {e}", full_path.display())))?;
+
+        self.guarded_atomic_write(relative_path, baseline_mtime, &patched)
+    }
+
+    /// Write `content` over `relative_path`, but only if its mtime still equals
+    /// `expected_mtime`.
+    fn guarded_atomic_write(
+        &self,
+        relative_path: &str,
+        expected_mtime: SystemTime,
+        content: &str,
+    ) -> std::result::Result<(), TransportPatchError> {
+        let full_path = self
+            .resolve_path_validated(relative_path)
+            .map_err(|e| TransportPatchError::Other(e.to_string()))?;
+
+        let current = file_mtime(&full_path)?;
+        if current != expected_mtime {
+            return Err(TransportPatchError::Conflict(format!(
+                "{} changed on disk since it was read",
+                full_path.display()
+            )));
+        }
+
+        let tmp_path = full_path.with_extension("tmp");
+        std::fs::write(&tmp_path, content).map_err(|e| {
+            // A partially-written tmp file is not allowed to survive the
+            // failure, same as in the replace branch below.
+            let _ = std::fs::remove_file(&tmp_path);
+            TransportPatchError::Other(format!(
+                "FS: failed to write temp file {}: {e}",
+                tmp_path.display()
+            ))
+        })?;
+        crate::util::atomic_replace(&tmp_path, &full_path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            TransportPatchError::Other(format!(
+                "FS: failed to replace {}: {e}",
+                full_path.display()
+            ))
+        })
+    }
+
     /// Read a single file at `relative_path` and return its UTF-8 content.
     ///
     /// Returns a typed `TransportReadError` so callers can distinguish
@@ -393,4 +506,17 @@ impl FsWriter {
             }
         })
     }
+}
+
+/// The modification time of `path`, as the mtime guard's comparison token.
+fn file_mtime(path: &std::path::Path) -> std::result::Result<SystemTime, TransportPatchError> {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                TransportPatchError::NotFound
+            } else {
+                TransportPatchError::Other(format!("FS: failed to stat {}: {e}", path.display()))
+            }
+        })
 }

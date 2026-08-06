@@ -143,6 +143,8 @@ fn dynamic_field(name: &str, source: &str, allow_create: bool) -> FieldConfig {
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     }
 }
 
@@ -346,6 +348,8 @@ async fn transport_error_does_not_block_and_returns_empty() {
         icon: None,
         preset_exclude: None,
         list: false,
+        unit: None,
+        goal: None,
     };
     let module = make_module_with_field(field);
 

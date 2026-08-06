@@ -230,6 +230,37 @@ pub(super) fn render_fields(
                     label
                 }
             }
+            FieldType::Toggle => {
+                // The value *is* the state — seeded from the note at form open
+                // for update modules — so the checkbox is the whole widget.
+                if value.trim().eq_ignore_ascii_case("true") {
+                    "[x]".to_string()
+                } else if value.trim().is_empty()
+                    && form_state.current_values.contains_key(&field.name)
+                {
+                    // The note holds this key, but not as a boolean pour can
+                    // read, so it was deliberately left unseeded. An unchecked
+                    // box would claim a state we do not know; `[?]` says so, and
+                    // the field stays out of the write until the user flips it.
+                    "[?]".to_string()
+                } else {
+                    "[ ]".to_string()
+                }
+            }
+            FieldType::Counter => {
+                // The input is a delta (`16`, `=160`); the note's current value
+                // rides alongside it so the user knows what they are adding to.
+                let typed = if value.is_empty() {
+                    if is_active {
+                        " ".to_string()
+                    } else {
+                        "<empty>".to_string()
+                    }
+                } else {
+                    value.to_string()
+                };
+                format!("{typed}   now {}", counter_progress(field, form_state))
+            }
             _ => {
                 if value.is_empty() {
                     if is_active {
@@ -337,7 +368,10 @@ pub(super) fn render_fields(
         && !on_preset_row
         && let Some(field) = active_config_field
     {
-        let is_text_input = matches!(field.field_type, FieldType::Text | FieldType::Number);
+        let is_text_input = matches!(
+            field.field_type,
+            FieldType::Text | FieldType::Number | FieldType::Counter
+        );
         if is_text_input {
             // prefix: "▸ " (2 cols) + prompt (display width) + required_marker (1) + ": " (2)
             let prefix_len = 2 + UnicodeWidthStr::width(field.prompt.as_str()) + 1 + 2;
@@ -391,6 +425,45 @@ pub(super) fn render_fields(
         if let Some(picker) = &form_state.field_preset_picker {
             super::composite::render_field_preset_picker(frame, area, picker);
         }
+    }
+}
+
+/// The `now …` half of a counter row: `64/96 oz`, or `—` before the read lands.
+///
+/// A failed or slow read is not an error state here — it renders as an em dash
+/// and the form stays usable, which is the read-at-open bound ADR-003 requires.
+pub(crate) fn counter_progress(
+    field: &crate::config::FieldConfig,
+    form_state: &crate::app::FormState,
+) -> String {
+    use crate::output::frontmatter::format_number;
+
+    let current = form_state
+        .current_values
+        .get(&field.name)
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty() && !v.eq_ignore_ascii_case("null") && *v != "~")
+        .and_then(|v| v.parse::<f64>().ok());
+
+    let value = match current {
+        Some(n) => format_number(n),
+        None if form_state.current_values.contains_key(&field.name) => "0".to_string(),
+        None => "—".to_string(),
+    };
+
+    let rendered = match field.goal {
+        Some(goal) => format!("{value}/{}", format_number(goal)),
+        None => value,
+    };
+
+    match field
+        .unit
+        .as_deref()
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+    {
+        Some(unit) => format!("{rendered} {unit}"),
+        None => rendered,
     }
 }
 

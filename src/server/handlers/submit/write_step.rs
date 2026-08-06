@@ -59,6 +59,34 @@ pub(super) async fn run(ctx: &mut SubmitContext, state: &AppState) -> Result<(),
             )
             .await
         }
+        // An update module is a module like any other to the server (spec §5).
+        // The §2.4 stale-template notice rides back on the 201 as a warning,
+        // matching every other best-effort signal in this pipeline.
+        WriteMode::Update => {
+            let root = module
+                .root_override()
+                .unwrap_or(state.config.vault.effective_base_path())
+                .to_string();
+            crate::output::write_update(
+                transport,
+                module,
+                &ctx.field_values,
+                date_fmt,
+                &root,
+                ctx.now_local,
+            )
+            .await
+            .map(|outcome| {
+                for notice in outcome.notices() {
+                    ctx.warnings.push(SubmitWarningDto {
+                        code: "frontmatter_update_notice",
+                        field: None,
+                        message: notice,
+                    });
+                }
+                outcome.vault_path
+            })
+        }
     };
 
     match write_result {
