@@ -537,7 +537,22 @@ fn build_show_when_inline_table(sw: &ShowWhen) -> toml_edit::InlineTable {
 
 impl Config {
     /// The config schema version this build of Pour understands.
-    pub const CURRENT_CONFIG_VERSION: &'static str = "1.0.0";
+    ///
+    /// **Independent of `Cargo.toml`'s version.** These are two separate tracks
+    /// and they are expected to disagree: the app is at 1.x, the config schema
+    /// is at 0.x. This constant tracked the schema in lockstep (0.2.0, then
+    /// 0.3.0) until `d245ad9` "v1.0.0 :: The Freeze" bumped it to `1.0.0`
+    /// alongside the crate version, which conflated the two. No config has ever
+    /// declared 1.0.0; `resources/config_archive/` records the real line —
+    /// `mads_config_v2.toml` is 0.2.0, `v3` is 0.3.0, and the shipped configs
+    /// are now 0.4.0.
+    ///
+    /// The schema stays on 0.x deliberately. Under semver, 0.x makes minor the
+    /// breaking axis, and that matches reality here: a new `WriteMode` or
+    /// `FieldType` variant is a hard parse error on any older binary, so almost
+    /// every schema addition breaks old readers. A 1.x track would promise
+    /// minor-level backward compatibility the schema cannot keep.
+    pub const CURRENT_CONFIG_VERSION: &'static str = "0.4.0";
 
     /// Atomically write `content` to `path`.
     ///
@@ -2512,8 +2527,29 @@ impl Config {
     }
 
     /// Validate the parsed config against business rules.
-    /// Validate `config_version`: must be a parseable `major.minor.patch` semver string
-    /// with a major version this build of Pour supports.
+    /// Validate `config_version`: must be a parseable `major.minor.patch` semver
+    /// string naming a schema this build of Pour understands.
+    ///
+    /// A config *newer* than the build is rejected with a "update Pour" message.
+    /// Which segment carries that meaning depends on the major, exactly as
+    /// semver defines it:
+    ///
+    /// - **major 0** — minor is the breaking axis, so a higher *minor* is
+    ///   rejected. Schema 0.4.0 refuses a 0.5.0 config.
+    /// - **major >= 1** — major is the breaking axis, so only a higher *major*
+    ///   is rejected and minor bumps are assumed additive.
+    ///
+    /// Without the 0.x rule the guard is inert: every schema bump so far has
+    /// been a minor one, and comparing majors alone would not fire until a
+    /// config declared 1.0.0. That matters because unknown *keys* are silently
+    /// ignored (there is no `deny_unknown_fields`), so an older binary reading a
+    /// newer config drops things like `post_write_shell` and `goal` without a
+    /// word. A hook that quietly never runs is the failure this guard exists to
+    /// turn into a message. Unknown enum *values* already fail loudly on their
+    /// own at parse time.
+    ///
+    /// An older config is always accepted — that is the migration path, not an
+    /// error.
     fn validate_config_version(version: &str, errors: &mut Vec<String>) {
         if version.is_empty() {
             errors.push("config_version must not be an empty string".to_string());
@@ -2555,17 +2591,29 @@ impl Config {
             }
         }
 
-        // Parse the current major version from CURRENT_CONFIG_VERSION.
-        let current_major = Self::CURRENT_CONFIG_VERSION
-            .split('.')
-            .next()
-            .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(0);
+        let minor = parts[1].parse::<u32>().unwrap_or(0);
 
-        if major > current_major {
+        // Parse major and minor from CURRENT_CONFIG_VERSION.
+        let mut current = Self::CURRENT_CONFIG_VERSION
+            .split('.')
+            .map(|s| s.parse::<u32>().unwrap_or(0));
+        let current_major = current.next().unwrap_or(0);
+        let current_minor = current.next().unwrap_or(0);
+
+        // While major is 0, semver puts breaking changes on the minor segment,
+        // so that is what decides "newer than this build". From 1.0.0 on, major
+        // takes over and minor bumps are treated as additive.
+        let too_new = if major != current_major {
+            major > current_major
+        } else {
+            current_major == 0 && minor > current_minor
+        };
+
+        if too_new {
             errors.push(format!(
-                "Config version {version} is not supported by this version of Pour. \
-                Please update Pour or downgrade your config."
+                "Config version {version} is not supported by this version of Pour \
+                (schema {current}). Please update Pour or downgrade your config.",
+                current = Self::CURRENT_CONFIG_VERSION
             ));
         }
     }

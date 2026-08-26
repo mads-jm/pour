@@ -1569,6 +1569,132 @@ fn config_version_unsupported_major_is_rejected() {
     );
 }
 
+// --- config_version: the 0.x minor rule ---
+//
+// The schema track is 0.x on purpose, and semver puts breaking changes on the
+// minor segment while major is 0. A guard that compares only majors never fires
+// there, which matters because unknown *keys* are silently ignored — an older
+// binary reading a newer config drops `post_write_shell` or `goal` without a
+// word. These pin the rule against `Config::CURRENT_CONFIG_VERSION` itself, so
+// they keep holding when the schema is bumped.
+
+/// Split `CURRENT_CONFIG_VERSION` into (major, minor).
+fn current_schema() -> (u32, u32) {
+    let mut it = Config::CURRENT_CONFIG_VERSION
+        .split('.')
+        .map(|s| s.parse::<u32>().unwrap());
+    (it.next().unwrap(), it.next().unwrap())
+}
+
+#[test]
+fn config_version_matching_the_current_schema_is_accepted() {
+    let toml = format!(
+        "config_version = \"{}\"\n{MINIMAL_TOML_NO_VERSION}",
+        Config::CURRENT_CONFIG_VERSION
+    );
+    Config::from_toml(&toml).expect("the schema this build ships must validate");
+}
+
+#[test]
+fn config_version_older_minor_is_accepted() {
+    let (major, minor) = current_schema();
+    if minor == 0 {
+        return; // nothing older on this track to test
+    }
+    let toml = format!(
+        "config_version = \"{major}.{}.0\"\n{MINIMAL_TOML_NO_VERSION}",
+        minor - 1
+    );
+    Config::from_toml(&toml).expect("an older config must still load — that is the migration path");
+}
+
+#[test]
+fn config_version_newer_minor_is_rejected_while_major_is_zero() {
+    let (major, minor) = current_schema();
+    assert_eq!(major, 0, "this rule only applies while the schema is 0.x");
+
+    let newer = format!("{major}.{}.0", minor + 1);
+    let toml = format!("config_version = \"{newer}\"\n{MINIMAL_TOML_NO_VERSION}");
+    let result = Config::from_toml(&toml);
+
+    assert!(
+        result.is_err(),
+        "a 0.x config with a higher minor is newer than this build and must be refused"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains(&newer) && msg.contains("not supported"),
+        "the error must name the offending version, got: {msg}"
+    );
+    assert!(
+        msg.contains(Config::CURRENT_CONFIG_VERSION),
+        "the error must name the schema this build understands, got: {msg}"
+    );
+}
+
+#[test]
+fn config_version_newer_patch_is_accepted() {
+    let (major, minor) = current_schema();
+    let toml = format!("config_version = \"{major}.{minor}.99\"\n{MINIMAL_TOML_NO_VERSION}");
+    Config::from_toml(&toml)
+        .expect("a patch bump carries no schema change and must not be refused");
+}
+
+#[test]
+fn config_version_higher_major_is_still_rejected() {
+    let (major, _) = current_schema();
+    let toml = format!(
+        "config_version = \"{}.0.0\"\n{MINIMAL_TOML_NO_VERSION}",
+        major + 1
+    );
+    let result = Config::from_toml(&toml);
+    assert!(
+        result.is_err(),
+        "a higher major is newer than this build on any track"
+    );
+}
+
+#[test]
+fn config_version_missing_key_defaults_below_current_and_loads() {
+    // No `config_version` resolves to 0.1.0, which must never trip the guard —
+    // an unversioned config is old, not new.
+    let config =
+        Config::from_toml(MINIMAL_TOML_NO_VERSION).expect("an unversioned config must load");
+    assert_eq!(config.config_version.as_deref(), Some("0.1.0"));
+}
+
+#[test]
+fn config_version_constant_is_not_the_crate_version() {
+    // These are separate tracks. They were conflated once, at "v1.0.0 :: The
+    // Freeze", which left the guard inert for every release after it.
+    assert_ne!(
+        Config::CURRENT_CONFIG_VERSION,
+        env!("CARGO_PKG_VERSION"),
+        "the config schema version must not be pinned to the crate version"
+    );
+}
+
+#[test]
+fn shipped_configs_declare_the_current_schema() {
+    for (label, body) in [
+        (
+            "default_config.toml",
+            include_str!("../resources/default_config.toml"),
+        ),
+        (
+            "mads_config.toml",
+            include_str!("../resources/mads_config.toml"),
+        ),
+    ] {
+        let config = Config::from_toml(body).unwrap_or_else(|e| panic!("{label} must parse: {e}"));
+        assert_eq!(
+            config.config_version.as_deref(),
+            Some(Config::CURRENT_CONFIG_VERSION),
+            "{label} must declare the schema version this build ships"
+        );
+    }
+}
+
 #[test]
 fn config_version_empty_string_is_rejected() {
     let toml = format!("config_version = \"\"\n{MINIMAL_TOML_NO_VERSION}");
