@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-08-26 — Module Roots, Write Hooks & Habit Capture
+
+### Added — module roots & write hooks
+
+Spec: `pour - docs/08 specs/pour-roots-and-hooks.md`. Six optional config keys, every one absent-means-prior-behavior — no existing config changes meaning.
+
+- **`base_path` on a module** (plus `[modules.<n>.platform]` for per-OS overrides) — a per-module root that supersedes `[vault].base_path`, so a module can capture *outside* the vault entirely. Absolute paths only; `~` is never expanded. A module with a root override always writes over the **filesystem** transport, because the Obsidian API can only reach the vault it serves — and both write call sites report the transport they actually used rather than the app-level one.
+- **`[modules.<n>.frontmatter]`** — static frontmatter merged in after the captured fields, alphabetically, skipping any key the capture already claimed. Scalars and flat arrays only, the two shapes with a YAML rendering.
+- **`frontmatter_date_format`** — per-module shape for the auto-injected `date` key. Emitted unquoted, so a format containing `": "` yields invalid YAML; a config-file-only footgun, accepted deliberately.
+- **`post_write_shell`** — a shell command run after a successful write, awaited with a 30s timeout, best-effort. Substitution is an exhaustive allowlist of Pour-generated tokens; an unknown token is rejected **at load**, not silently passed through. LAN-submitted captures do not fire it unless `post_write_shell_on_serve = true`.
+- **`{{slug}}` / `{{slug_or_time}}` path tokens** — registered as specials via `template.rs::slug_from_title`, which mirrors the editor-side Templater slug regex exactly so filenames match hand-templated notes. They must be specials: unknown placeholders are stripped, so an unregistered `{{slug}}` would render to nothing.
+
 ### Added — habit capture v1 (frontmatter mutation primitives)
 
 Spec: `pour - docs/08 specs/pour-habit-capture.md` §§2, 3, 5, 6. Four general primitives; **no habit-specific code** — the `habit` module is a plain config block.
@@ -27,6 +39,12 @@ Spec: `pour - docs/08 specs/pour-habit-capture.md` §§2, 3, 5, 6. Four general 
 - Config validation rejects keys that another mode owns, rather than ignoring them: `unit`/`goal` off a `counter`; `append_under_header`/`append_template`/`append_shallow`/`daily_link`/`frontmatter_date_format`/`[modules.<n>.frontmatter]` on an `update` module; and `composite_array`, `list = true`, or a body target on an `update` module's fields.
 - The configure editor's mode cycler gains `update` and its field-type cycler gains `toggle`/`counter`. Without this, auto-save silently rewrote an `update` module as `create` and a `counter` field as `text`.
 - `check_paths` warns on a missing target note for `update` modules, as it already did for `append`.
+
+### Fixed
+
+- **Config writes no longer destroy a symlink.** Every atomic write ended in `std::fs::rename`, which swaps a *directory entry* — so writing onto a `~/.pour/config.toml` symlinked out of a dotfiles repo replaced the link with a regular file and left the tracked copy stale, stranding the edit outside version control. `transport/atomic.rs::resolve_write_target` now follows a symlink at the path (chains included) before the temp file is placed, and all six writers route through it: `Config::write_atomic`, `JsonStore::save`, `history_summary::write_summary`, and both `fs.rs` write paths. Regular files, paths that do not exist yet, and dangling links are returned untouched; a symlinked *parent* directory never needed handling, since both the temp file and the rename target already resolve through it. Placing the temp file beside the resolved target also fixes a latent `EXDEV` failure when a link crosses a filesystem boundary.
+- **`Config::CURRENT_CONFIG_VERSION` is back on the config-schema track** — `1.0.0` → `0.4.0`, matching what every shipped config declares. It tracked the schema in lockstep (0.2.0, then 0.3.0) until `d245ad9` "v1.0.0 :: The Freeze" bumped it alongside the crate version, conflating two independent numbers. No config has ever declared 1.0.0. The two tracks are expected to disagree, and a test now pins them apart.
+- **The `config_version` guard actually fires.** It compared majors only, so with the schema on 0.x and the constant on 1.x it could not reject anything below major 2 — inert for every release since The Freeze. While major is 0, semver puts breaking changes on the *minor* segment, so that is now what decides "newer than this build"; from 1.0.0 on, major takes over and minor bumps are treated as additive. This matters because unknown *keys* are silently ignored (there is no `deny_unknown_fields`), so an older binary reading a newer config drops things like `post_write_shell` and `goal` without a word. Unknown enum *values* already failed loudly on their own.
 
 ## [1.0.0] — 2026-04-29 — The Freeze
 
