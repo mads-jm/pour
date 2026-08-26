@@ -250,15 +250,17 @@ impl FsWriter {
             }
         }
 
-        // Atomic write: write to a sibling temp file, then rename.
-        let tmp_path = full_path.with_extension("tmp");
+        // Atomic write: write to a temp file beside the real target, then
+        // rename. A symlinked note is followed so the link survives the write.
+        let target = crate::util::resolve_write_target(&full_path);
+        let tmp_path = target.with_extension("tmp");
         std::fs::write(&tmp_path, &result)
             .with_context(|| format!("FS: failed to write temp file {}", tmp_path.display()))?;
-        crate::util::atomic_replace(&tmp_path, &full_path).with_context(|| {
+        crate::util::atomic_replace(&tmp_path, &target).with_context(|| {
             format!(
                 "FS: failed to replace {} with {}",
                 tmp_path.display(),
-                full_path.display()
+                target.display()
             )
         })?;
 
@@ -460,7 +462,8 @@ impl FsWriter {
             )));
         }
 
-        let tmp_path = full_path.with_extension("tmp");
+        let target = crate::util::resolve_write_target(&full_path);
+        let tmp_path = target.with_extension("tmp");
         std::fs::write(&tmp_path, content).map_err(|e| {
             // A partially-written tmp file is not allowed to survive the
             // failure, same as in the replace branch below.
@@ -470,12 +473,9 @@ impl FsWriter {
                 tmp_path.display()
             ))
         })?;
-        crate::util::atomic_replace(&tmp_path, &full_path).map_err(|e| {
+        crate::util::atomic_replace(&tmp_path, &target).map_err(|e| {
             let _ = std::fs::remove_file(&tmp_path);
-            TransportPatchError::Other(format!(
-                "FS: failed to replace {}: {e}",
-                full_path.display()
-            ))
+            TransportPatchError::Other(format!("FS: failed to replace {}: {e}", target.display()))
         })
     }
 

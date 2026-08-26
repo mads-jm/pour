@@ -140,9 +140,10 @@ pub(crate) fn write_summary(path: &Path, summary: &HistorySummary) -> Result<()>
         std::fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(summary)?;
-    let tmp_path = path.with_extension("tmp");
+    let target = crate::util::resolve_write_target(path);
+    let tmp_path = target.with_extension("tmp");
     std::fs::write(&tmp_path, &json)?;
-    crate::util::atomic_replace(&tmp_path, path)?;
+    crate::util::atomic_replace(&tmp_path, &target)?;
     Ok(())
 }
 

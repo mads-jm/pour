@@ -193,3 +193,170 @@ fn windows_atomic_replace_no_gap() {
         "dst was absent during atomic_replace — atomicity gap detected"
     );
 }
+
+// ---------------------------------------------------------------------------
+// resolve_write_target
+// ---------------------------------------------------------------------------
+// rename(2) swaps a directory entry, so renaming onto a symlink replaces the
+// link with a regular file and leaves the real target stale. resolve_write_target
+// is what keeps a stowed config from being destroyed by its own editor.
+// ---------------------------------------------------------------------------
+
+use pour::util::resolve_write_target;
+
+#[test]
+fn resolve_target_regular_file_is_unchanged() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("config.toml");
+    fs::write(&file, b"data").unwrap();
+
+    assert_eq!(
+        resolve_write_target(&file),
+        file,
+        "a regular file must be returned verbatim, with no canonicalization"
+    );
+}
+
+#[test]
+fn resolve_target_missing_path_is_unchanged() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("not-created-yet.toml");
+
+    assert_eq!(
+        resolve_write_target(&file),
+        file,
+        "a first write to a path that does not exist yet must not be redirected"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_target_follows_symlink_to_real_file() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let home = dir.path().join("home");
+    fs::create_dir(&repo).unwrap();
+    fs::create_dir(&home).unwrap();
+
+    let real = repo.join("config.toml");
+    let link = home.join("config.toml");
+    fs::write(&real, b"tracked").unwrap();
+    symlink(&real, &link).unwrap();
+
+    assert_eq!(
+        resolve_write_target(&link),
+        real.canonicalize().unwrap(),
+        "a symlink must resolve to the file it points at"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_target_follows_symlink_chain() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempdir().unwrap();
+    let real = dir.path().join("real.toml");
+    let hop = dir.path().join("hop.toml");
+    let link = dir.path().join("link.toml");
+    fs::write(&real, b"tracked").unwrap();
+    symlink(&real, &hop).unwrap();
+    symlink(&hop, &link).unwrap();
+
+    assert_eq!(
+        resolve_write_target(&link),
+        real.canonicalize().unwrap(),
+        "a chain of symlinks must resolve all the way to the real file"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_target_dangling_symlink_is_unchanged() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempdir().unwrap();
+    let link = dir.path().join("broken.toml");
+    symlink(dir.path().join("gone.toml"), &link).unwrap();
+
+    assert_eq!(
+        resolve_write_target(&link),
+        link,
+        "a dangling link has no target worth preserving; write over the link"
+    );
+}
+
+// The composition that matters: resolve first, then rename onto the resolved
+// target. This is the stow layout — ~/.pour/config.toml -> dotfiles/config.toml.
+#[cfg(unix)]
+#[test]
+fn resolve_then_replace_preserves_the_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let home = dir.path().join("home");
+    fs::create_dir(&repo).unwrap();
+    fs::create_dir(&home).unwrap();
+
+    let real = repo.join("config.toml");
+    let link = home.join("config.toml");
+    fs::write(&real, b"old").unwrap();
+    symlink(&real, &link).unwrap();
+
+    let target = resolve_write_target(&link);
+    let tmp = target.with_extension("toml.tmp");
+    fs::write(&tmp, b"new").unwrap();
+    atomic_replace(&tmp, &target).unwrap();
+
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the link must still be a link after the write"
+    );
+    assert_eq!(
+        fs::read(&real).unwrap(),
+        b"new",
+        "the tracked file must hold the new content"
+    );
+    assert_eq!(
+        fs::read(&link).unwrap(),
+        b"new",
+        "reading through the link must see the new content"
+    );
+}
+
+// Regression pin: the old implementation put the temp file beside the *link*
+// and renamed onto the link, which destroyed it. Assert that shape is gone.
+#[cfg(unix)]
+#[test]
+fn replacing_the_link_directly_destroys_it() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempdir().unwrap();
+    let real = dir.path().join("real.toml");
+    let link = dir.path().join("link.toml");
+    fs::write(&real, b"old").unwrap();
+    symlink(&real, &link).unwrap();
+
+    let tmp = dir.path().join("link.toml.tmp");
+    fs::write(&tmp, b"new").unwrap();
+    atomic_replace(&tmp, &link).unwrap();
+
+    assert!(
+        !fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "documents why resolve_write_target exists: renaming onto a link eats it"
+    );
+    assert_eq!(
+        fs::read(&real).unwrap(),
+        b"old",
+        "and the real file is left stale"
+    );
+}

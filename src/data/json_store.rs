@@ -87,8 +87,11 @@ where
     ///
     /// Behavior:
     /// 1. If a parent directory exists in the path, it is `create_dir_all`'d.
-    /// 2. The serialized JSON is written to `<path>.tmp` first.
-    /// 3. The tmp file is atomically renamed onto `path` via
+    /// 2. A symlink at `path` is followed to the real file via
+    ///    [`crate::transport::atomic::resolve_write_target`], so a store linked
+    ///    out of a dotfiles repo keeps its link.
+    /// 3. The serialized JSON is written to `<target>.tmp` first, then
+    ///    atomically renamed onto the target via
     ///    [`crate::transport::atomic::atomic_replace`].
     /// 4. On any failure during the rename, the tmp file is best-effort
     ///    removed so successive failures don't accumulate orphans.
@@ -100,10 +103,11 @@ where
         let serialized = serde_json::to_string_pretty(value)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        let tmp_path = self.path.with_extension("tmp");
+        let target = crate::transport::atomic::resolve_write_target(&self.path);
+        let tmp_path = target.with_extension("tmp");
         std::fs::write(&tmp_path, serialized)?;
 
-        if let Err(e) = crate::transport::atomic::atomic_replace(&tmp_path, &self.path) {
+        if let Err(e) = crate::transport::atomic::atomic_replace(&tmp_path, &target) {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(e);
         }

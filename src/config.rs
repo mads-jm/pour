@@ -541,14 +541,18 @@ impl Config {
 
     /// Atomically write `content` to `path`.
     ///
-    /// Writes to a sibling `.toml.tmp` file first, then renames it over `path`.
-    /// If the rename fails the orphan temp file is removed before returning the
-    /// error — the single sanctioned write path for all config files so that
-    /// orphan cleanup is universal rather than per-callsite.
+    /// If `path` is a symlink the write follows it to the real file first (see
+    /// [`crate::util::resolve_write_target`]) — a config stowed out of a
+    /// dotfiles repo must keep its link. The temp file is then written beside
+    /// that target and renamed over it. If the rename fails the orphan temp
+    /// file is removed before returning the error — the single sanctioned write
+    /// path for all config files so that orphan cleanup is universal rather
+    /// than per-callsite.
     pub(crate) fn write_atomic(path: &Path, content: &str) -> Result<(), ConfigError> {
-        let tmp_path = path.with_extension("toml.tmp");
+        let target = crate::util::resolve_write_target(path);
+        let tmp_path = target.with_extension("toml.tmp");
         std::fs::write(&tmp_path, content).map_err(ConfigError::WriteError)?;
-        if let Err(e) = crate::util::atomic_replace(&tmp_path, path) {
+        if let Err(e) = crate::util::atomic_replace(&tmp_path, &target) {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(ConfigError::WriteError(e));
         }
