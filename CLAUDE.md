@@ -36,10 +36,13 @@ For populating dropdowns (e.g., bean list): API query -> disk scan -> `~/.pour/c
 
 - **Append** (`pour me`): Appends under a header in an existing daily note (API) or creates a standalone atomic note with timestamped filename (filesystem fallback)
 - **Create** (`pour coffee`): Generates a new file with YAML frontmatter
+- **Update** (`pour habit`): Rewrites named frontmatter keys on a note that already exists (API `PATCH` with `Target-Type: frontmatter`, or a guarded single-line filesystem edit: stat before read, never re-emit YAML, atomic replace). Never creates the note. One-shot form skips the TUI: `pour <module> <field> [value]`.
+
+Which mode a signal belongs in is a design rule, not a preference. See `pour - docs/01 concepts/Pour-Types.md`.
 
 ### Field-to-Output Mapping
 
-Fields go to YAML frontmatter by default (`text`, `number`, `static_select`, `dynamic_select`). `textarea` fields go to the Markdown body. Each field can override via `target = "frontmatter"` or `target = "body"`. See `pour - docs/02 references/field-types.md` for the full field type reference.
+Fields go to YAML frontmatter by default (`text`, `number`, `static_select`, `dynamic_select`). `textarea` fields go to the Markdown body. `toggle` and `counter` are frontmatter-only and exist for `update` mode. Each field can override via `target = "frontmatter"` or `target = "body"`. See `pour - docs/02 references/field-types.md` for the full field type reference.
 
 ### Config-Driven Design
 

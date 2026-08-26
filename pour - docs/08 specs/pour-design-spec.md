@@ -115,6 +115,8 @@ __`preset_exclude`__ — a boolean field-level config key (`Option<bool>`, defau
 
 Append vs. create modes, and how fields map to frontmatter/body.
 
+*[Deviation: a third mode, `update`, shipped 2026-08-06 (habit-capture v1). It rewrites the frontmatter keys a module names on a note that already exists and touches nothing else, on both transports. The three modes are now three kinds of pour; [[Pour-Types]] says which kind a signal gets, [[pour-habit-capture]] has the mechanism and its guard rails. Two frontmatter-only field types came with it, `toggle` and `counter`, plus a one-shot argv grammar (`pour <module> <field> [value]`) that skips the TUI for them.]*
+
 ### __3.6 Mobile Visibility (`mobile_visible`)__
 
 *[Deviation: not in original spec. Added in Step B of the mobile/PWA initiative alongside `/api/v1/config` to support per-module opt-out from the phone interface.]*

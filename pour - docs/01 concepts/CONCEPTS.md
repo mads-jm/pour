@@ -13,6 +13,7 @@ Atomic concept notes — durable, reusable knowledge about the patterns, mental 
 
 - [[The-3-Tier-Data-Fallback]] — How [[field-types|`dynamic_select`]] populates without perceived latency: transport → cache → empty/freetext. The read side of the dynamic-data pipeline.
 - [[Inline-Note-Creation]] — The write side of the same pipeline: novel values entered into [[field-types|`dynamic_select`]] fields auto-create stub or template-driven notes in the vault before the parent capture is written.
+- [[Pour-Types]] — The three kinds of pour, one per write mode: entry (`append`), event (`create`), ambient state (`update`). Carries the creed that decides which kind a signal gets, and why the field name must equal the frontmatter key.
 
 ## Foundational Concept Anchors
 
@@ -20,10 +21,10 @@ Some core Pour concepts live in [[ARCHITECTURE|ADRs]] or [[SPECS|specs]] rather 
 
 - [[ADR-001-Hybrid-Transport-Layer]] — API-first writes with [[reqwest]] to the [[obsidian-local-rest-api|Obsidian Local REST API]], falling back to `std::fs`. The transport layer is the boundary every other subsystem treats as a black box.
 - [[ADR-005-PWA-Companion]] — The phone-pocket companion to the terminal capture surface. Same engine, different shell.
-- [[pour-design-spec]] — Source of truth for the capture loop, dashboard, summary view, append vs. create modes, and field → output mapping.
+- [[pour-design-spec]] — Source of truth for the capture loop, dashboard, summary view, the three write modes (see [[Pour-Types]]), and field → output mapping.
 - [[pour-preset-hierarchy]] — Hierarchical drilldown picker concept (`preset_axes`), as distinct from the legacy linear preset cycler.
 - [[pour-api-contract]] — Wire-shape contract that the [[ADR-005-PWA-Companion|PWA companion]] and any future client speaks.
-- [[field-types]] — The vocabulary of capture: `text`, `number`, `static_select`, `dynamic_select`, `textarea`, `composite_array`, plus modifiers like `wikilink`, `allow_create`, `show_when`, `preset_exclude`, `list`.
+- [[field-types]] — The vocabulary of capture: `text`, `number`, `static_select`, `dynamic_select`, `textarea`, `composite_array`, `toggle`, `counter`, plus modifiers like `wikilink`, `allow_create`, `show_when`, `preset_exclude`, `list`.
 
 ## Concept Seeds
 

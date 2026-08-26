@@ -5,7 +5,7 @@ tags:
   - habits
   - frontmatter
 date created: Wednesday, August 5th 2026
-date modified: Wednesday, August 5th 2026
+date modified: Thursday, August 6th 2026
 ---
 
 # Pour habit capture — frontmatter mutation primitives — Spec
@@ -74,6 +74,10 @@ The scary scenario — pour rewriting a file Obsidian holds open in an editor �
 3. **Verify** mtime is unchanged since the read; abort loudly on mismatch.
 4. **`atomic_replace`** — the temp-file-and-rename path that already exists in `src/transport/fs.rs`.
 
+*[Deviation: **the stat comes before the read, not after.** As drafted, step 1 reads and then notes the mtime, which leaves a window where an edit landing between the read and the stat goes undetected by the very check meant to catch it. The Inspector blocked on this in round 1. Shipped order: stat, read, edit, re-stat, replace, in `FsWriter::patch_frontmatter_since`, with a deterministic race test that pushes the mtime forward between the baseline and the read. The guard is a mitigation, not a lock; a sub-millisecond window survives by design.]*
+
+*[Deviation: **a multi-key update is not atomic across keys.** The patch operation is single-key on both transports, so a two-field submit is two independent writes. Every value-level error is raised while planning, before the first write; a transport failure mid-sequence returns an error naming the keys that already landed. Batching the fs path was declined for v1 because it would diverge the two transports. Candidate for v1.1.]*
+
 So the invariant — *the fs fallback always works* — is **kept**, not broken. [[the_pour_manifesto|"Plaintext is Forever"]] and [[pour_without_obsidian]] both demand it: a module class that only functions with a plugin alive would betray the portability story.
 
 **Reading**, by contrast, needs a real (read-only) frontmatter parser: `counter` increments and progress display must interpret existing values. Parsing is safe — it's *re-emitting* that destroys formatting, and we never re-emit.
@@ -91,6 +95,8 @@ So the invariant — *the fs fallback always works* — is **kept**, not broken.
 
 Template drift: the note exists but the key isn't in it. **Write the key into the frontmatter block anyway and surface a one-line notice.** Capture-first: refusing to log because the template was stale is administrative friction of exactly the kind the manifesto kills. The notice tells the user their template needs the key added.
 
+*[Deviation: **a note with no frontmatter block at all fails loudly on both transports.** Neither this section nor §2.3 covers it. §2.4 argues capture-first, §2.3 argues pour never restructures a note; the Architect took §2.3's side so that behavior is uniform across transports. Five-line change if the other reading wins.]*
+
 ## 3. New field types: `toggle` and `counter`
 
 ```rust
@@ -103,6 +109,8 @@ Both default `target = "frontmatter"`; both are valid in any write mode (a `crea
 ### 3.1 `toggle`
 
 A bool. TUI: space flips it. One-shot (§5): bare field name sets `true`; explicit `false`/`off` sets false (the correction path).
+
+*[Deviation: **a value pour cannot read is left alone, and the form shows `[?]`.** Round 1 coerced anything unparseable (`cannabis: maybe`) to `false` and re-persisted it on submit, which silently rewrote a byte the user owned. Shipped: `normalise_toggle` returns `None` for such values, the planner skips the key, and the renderer shows a third state rather than an empty box that asserts a `false` pour does not know.]*
 
 ### 3.2 `counter`
 
@@ -165,6 +173,10 @@ cannabis: true · ✓ 20260805.md
 - Generalizes beyond `update` modules in principle, but **v1 wires it for `toggle`/`counter` fields only** — text-bearing one-shots (`pour me "thought"`) raise quoting/required-field questions that deserve their own spec pass.
 - The `serve`/PWA surface flows through the normal submit handler; an `update`-mode module is a module like any other to the server. One-shot is a CLI affordance, not a new API.
 
+*[Deviation: the grammar lives in `src/oneshot.rs`, not `main.rs`, so the parse layer is testable from the integration suite. `pour <module>` with no field argument parses to `None` and falls through to the TUI unchanged. The server side gained `invalid_toggle` / `invalid_counter` wire codes in `validate.rs`, reusing the same parsers the writer uses so the two cannot drift; see [[pour-api-contract]].]*
+
+*[Deviation: an `update` module **rejects at config load** any field that would be silently inert on it: `composite_array`, `list = true`, body-targeted fields, and `daily_link`. Better a validation error than a key that never writes.]*
+
 ## 6. The `habit` module (mads preset)
 
 A plain config block — no new concepts beyond the primitives above:
@@ -191,6 +203,8 @@ goal = 96
 ```
 
 The daily-note template owns the keys and defaults (`cannabis: false`, `water: null`). Same seed-not-mirror caveat as every personal preset ([[pour-roots-and-hooks|roots-and-hooks follow-ups]]): lands in `resources/mads_config.toml`, hand-added to the live stowed config.
+
+*[Deviation: **the field name is the frontmatter key**; pour does not map one to the other. The daily template tracked `water_oz` at the time, and the first live run wrote a stray `water: 15` beside it. Rule now recorded in [[Pour-Types]]: match the template, or change the template. Settled by changing the template — it tracks `water:` as of 2026-08-06, and the module's field is `water` to match. The preset also sets `mobile_visible = false`; the PWA has no toggle/counter widgets yet.]*
 
 ## 7. v2 — periodic limits
 
@@ -219,7 +233,7 @@ pub fn patch_frontmatter_line(content: &str, key: &str, value: &str) -> PatchOut
 
 ## Scope & phasing
 
-- [x] **v1 — the capture loop.** `update` mode (both transports, §2), `toggle` + `counter` with `goal` (§3), one-shot argv (§5), the mads `habit` preset (§6). Docs: [[field-types]] (new types + keys + the creed), System-Architecture-Overview (transport method + write path), README.
+- [x] **v1 — the capture loop.** `update` mode (both transports, §2), `toggle` + `counter` with `goal` (§3), one-shot argv (§5), the mads `habit` preset (§6). Docs: [[field-types]] (new types + keys + the creed), System-Architecture-Overview (transport method + write path), README. *[Shipped 2026-08-06, cycle `habit-capture-v1`: one Inspector blocker and three majors in round 1, APPROVE in round 2, 1051 tests. Smoke-tested live the same day; the API-path §2.3 create-and-retry is still unexercised.]*
 - [ ] **v1.1 — date targeting.** `rollover` (§4.1) + `--date` (§4.2).
 - [ ] **v2 — periodic limits** (§7): `limit` + `limit_period`, cross-note aggregation, come-back messaging.
 

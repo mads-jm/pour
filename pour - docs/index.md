@@ -81,7 +81,7 @@ cargo fmt                # format
 
 Pour writes to Obsidian via a [[ADR-001-Hybrid-Transport-Layer|__hybrid transport layer__]]:
 1. __API__ — HTTPS via [[reqwest]] to [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs)
-2. __File System__ — Direct `std::fs` fallback if API unavailable. In append mode, this fallback materialises as an [[Atomic-Note-Fallback|atomic timestamped note]] rather than a destructive in-place write.
+2. __File System__ — Direct `std::fs` fallback if API unavailable. In append mode, this fallback materialises as an [[Atomic-Note-Fallback|atomic timestamped note]] rather than a destructive in-place write. Update mode is the one place pour edits a note in place, on either transport, behind a stat-before-read guard and an atomic replace. See [[Pour-Types]].
 
 ### Dynamic Data Fetching ([[The-3-Tier-Data-Fallback|3-tier fallback]])
 

@@ -107,6 +107,9 @@ field_type = "toggle"
 prompt = "Partaken?"
 
 [[modules.habit.fields]]
+# The frontmatter key, verbatim — `update` mode has no name/key indirection
+# (src/output/update.rs), and it never creates a key the note is missing. This
+# must stay identical to the daily template's property.
 name = "water"
 field_type = "counter"
 prompt = "Water"
