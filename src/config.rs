@@ -104,6 +104,10 @@ pub struct ModuleConfig {
     /// Empty/absent → no picker; the legacy Left/Right cycler stays active.
     #[serde(default)]
     pub preset_axes: Vec<String>,
+    /// Optional read-only "priors" review panel declaration. When absent, a
+    /// zero-config default is derived at resolve time (see `src/priors`).
+    #[serde(default)]
+    pub priors: Option<PriorsConfig>,
 }
 
 impl ModuleConfig {
@@ -134,6 +138,103 @@ pub struct ShowWhen {
     pub equals: Option<String>,
     /// Show this field when the controlling field's value is any of these strings.
     pub one_of: Option<Vec<String>>,
+}
+
+/// The `[modules.<key>.priors]` block: a config-declared, read-only review
+/// panel definition. All keys are optional; absence of the whole block yields a
+/// zero-config default derived at resolve time.
+///
+/// The vocabulary here is deliberately the *full* L1+L2 grammar (bare-string vs
+/// object forms, reserved `mode`/`agg` names) so later phases are pure
+/// additions. L1 supports only a subset; `Config::validate` rejects the L2-only
+/// forms (`mode = overlap/window`) with a clear error.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PriorsConfig {
+    /// Ordered list (most → least specific) of keys defining "similar". Widen by
+    /// dropping the tail key when a tier yields no matches (the new-bag cascade).
+    #[serde(default)]
+    pub match_on: Vec<MatchOn>,
+    /// How to order matches. `"<field> desc"` / `"<field> asc"` (L1),
+    /// `"recent"`, or `"none"`. Absent → treated as `recent`.
+    #[serde(default)]
+    pub rank_by: Option<String>,
+    /// Which frontmatter fields render as columns and get summarized.
+    #[serde(default)]
+    pub show: Vec<ShowField>,
+    /// Maximum rows to display (default 5, applied at resolve time).
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+/// A single `match_on` entry: bare string (equality, or wikilink when the
+/// referenced field declares `wikilink = true`) or object form (explicit mode).
+///
+/// The object form's `mode`/`days` are L2 vocabulary reserved up front; L1
+/// validation rejects `overlap`/`window` with a clear error.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum MatchOn {
+    /// Bare string → equality (or wikilink if the field is `wikilink = true`).
+    Field(String),
+    /// Object form → explicit match mode.
+    Object {
+        field: String,
+        /// `equality` (default), `wikilink`, `overlap` (L2), `window` (L2).
+        mode: Option<String>,
+        /// Window size in days for `mode = "window"` (L2).
+        days: Option<u32>,
+    },
+}
+
+impl MatchOn {
+    /// The frontmatter field name this entry matches on.
+    pub fn field(&self) -> &str {
+        match self {
+            MatchOn::Field(f) => f,
+            MatchOn::Object { field, .. } => field,
+        }
+    }
+
+    /// The declared mode string, if the object form set one.
+    pub fn mode(&self) -> Option<&str> {
+        match self {
+            MatchOn::Field(_) => None,
+            MatchOn::Object { mode, .. } => mode.as_deref(),
+        }
+    }
+}
+
+/// A single `show` entry: bare string (default aggregation for the field's
+/// type) or object form (`{ field, agg }`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ShowField {
+    /// Bare string → column with the default aggregation (`median` for numbers).
+    Field(String),
+    /// Object form → explicit aggregation override.
+    Object {
+        field: String,
+        /// `median` (default), `mean`, `max`, `min`, `latest`.
+        agg: Option<String>,
+    },
+}
+
+impl ShowField {
+    /// The frontmatter field name this column shows.
+    pub fn field(&self) -> &str {
+        match self {
+            ShowField::Field(f) => f,
+            ShowField::Object { field, .. } => field,
+        }
+    }
+
+    /// The declared aggregation override, if any.
+    pub fn agg(&self) -> Option<&str> {
+        match self {
+            ShowField::Field(_) => None,
+            ShowField::Object { agg, .. } => agg.as_deref(),
+        }
+    }
 }
 
 /// A single field within a module form.
@@ -2279,6 +2380,116 @@ impl Config {
         }
     }
 
+    /// Validate a module's `[priors]` block (§10 L1 grammar).
+    ///
+    /// - `match_on` / `rank_by` / `show` field names must reference fields that
+    ///   exist on the module.
+    /// - `match_on` object-form `mode` must be `equality`/`wikilink`; the L2-only
+    ///   `overlap`/`window` modes are rejected with a clear error.
+    /// - `rank_by` must be `"recent"`, `"none"`, or `"<field> desc|asc"`; the
+    ///   deferred `max`/`min` single-extreme forms are rejected.
+    /// - `agg` overrides must be in the L1-supported set.
+    /// - `limit`, when present, must be non-zero.
+    fn validate_priors(
+        module_name: &str,
+        module: &ModuleConfig,
+        priors: &PriorsConfig,
+        errors: &mut Vec<String>,
+    ) {
+        let field_names: std::collections::HashSet<&str> =
+            module.fields.iter().map(|f| f.name.as_str()).collect();
+
+        // match_on field references + mode grammar.
+        for m in &priors.match_on {
+            let field = m.field();
+            if !field_names.contains(field) {
+                errors.push(format!(
+                    "module '{module_name}': priors.match_on references unknown field '{field}'"
+                ));
+            }
+            if let Some(mode) = m.mode() {
+                match mode {
+                    "equality" | "wikilink" => {}
+                    "overlap" | "window" => {
+                        errors.push(format!(
+                            "module '{module_name}': priors.match_on mode '{mode}' on field '{field}' is not supported in L1"
+                        ));
+                    }
+                    other => {
+                        errors.push(format!(
+                            "module '{module_name}': priors.match_on mode '{other}' on field '{field}' is invalid (expected 'equality' or 'wikilink')"
+                        ));
+                    }
+                }
+            }
+        }
+
+        // rank_by grammar.
+        if let Some(rank_by) = priors.rank_by.as_deref() {
+            let trimmed = rank_by.trim();
+            match trimmed {
+                "recent" | "none" => {}
+                _ => {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    match parts.as_slice() {
+                        [field, dir] => {
+                            if !field_names.contains(*field) {
+                                errors.push(format!(
+                                    "module '{module_name}': priors.rank_by references unknown field '{field}'"
+                                ));
+                            }
+                            match *dir {
+                                "desc" | "asc" => {}
+                                "max" | "min" => {
+                                    errors.push(format!(
+                                        "module '{module_name}': priors.rank_by direction '{dir}' is not supported in L1 (use 'desc' or 'asc')"
+                                    ));
+                                }
+                                other => {
+                                    errors.push(format!(
+                                        "module '{module_name}': priors.rank_by direction '{other}' is invalid (expected 'desc' or 'asc')"
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {
+                            errors.push(format!(
+                                "module '{module_name}': priors.rank_by '{trimmed}' is invalid (expected 'recent', 'none', or '<field> desc|asc')"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // show field references + agg vocabulary.
+        for s in &priors.show {
+            let field = s.field();
+            if !field_names.contains(field) {
+                errors.push(format!(
+                    "module '{module_name}': priors.show references unknown field '{field}'"
+                ));
+            }
+            if let Some(agg) = s.agg() {
+                match agg {
+                    "median" | "mean" | "max" | "min" | "latest" => {}
+                    other => {
+                        errors.push(format!(
+                            "module '{module_name}': priors.show agg '{other}' on field '{field}' is invalid (expected median, mean, max, min, or latest)"
+                        ));
+                    }
+                }
+            }
+        }
+
+        // limit must be non-zero when set.
+        if priors.limit == Some(0) {
+            errors.push(format!(
+                "module '{module_name}': priors.limit must be greater than 0"
+            ));
+        }
+    }
+
     /// Check that a path is vault-relative and safe.
     ///
     /// Rejects absolute paths (Unix or Windows), drive-qualified paths,
@@ -2617,6 +2828,12 @@ impl Config {
 
             // Cross-field show_when reference validation (per module)
             Self::validate_show_when_refs(name, &module.fields, &mut errors);
+
+            // Priors panel validation (field references, rank_by grammar, agg
+            // vocabulary, and rejection of L2-only match modes).
+            if let Some(ref priors) = module.priors {
+                Self::validate_priors(name, module, priors, &mut errors);
+            }
         }
 
         // Validate templates

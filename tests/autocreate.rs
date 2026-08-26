@@ -113,6 +113,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         append_shallow: None,
         mobile_visible: None,
         preset_axes: Vec::new(),
+        priors: None,
     }
 }
 

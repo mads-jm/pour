@@ -64,6 +64,33 @@ impl DirectoryEntry {
     }
 }
 
+/// A single hit from `POST /search/`. `result` is the JsonLogic evaluation
+/// output and is ignored — only the filename is used.
+#[derive(Deserialize)]
+struct SearchHit {
+    filename: String,
+}
+
+/// A note returned with `Accept: application/vnd.olrapi.note+json`.
+///
+/// Only the fields the priors path needs are modelled; extra fields (content,
+/// tags, path) are ignored by serde.
+#[derive(Deserialize)]
+pub struct NoteJson {
+    /// Parsed frontmatter as a JSON object.
+    #[serde(default)]
+    pub frontmatter: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub stat: NoteStat,
+}
+
+/// Filesystem metadata for a note. `mtime` is in milliseconds.
+#[derive(Deserialize, Default)]
+pub struct NoteStat {
+    #[serde(default)]
+    pub mtime: i64,
+}
+
 impl ApiClient {
     /// Create a new API client targeting the given port with the given key.
     ///
@@ -343,6 +370,68 @@ impl ApiClient {
         resp.text()
             .await
             .map_err(|e| TransportReadError::Other(e.to_string()))
+    }
+
+    /// Run a JsonLogic structured search via `POST /search/`.
+    ///
+    /// The predicate rides as a JSON body with
+    /// `Content-Type: application/vnd.olrapi.jsonlogic+json`. Returns the
+    /// vault-relative filenames of matching notes. The API responds with
+    /// `[{filename, result}]`; only `filename` is used here (the frontmatter is
+    /// fetched separately via [`read_note_json`](Self::read_note_json), since
+    /// `/search/`'s `result` reflects the JsonLogic evaluation, not the note's
+    /// frontmatter).
+    pub async fn search_jsonlogic(&self, predicate: &serde_json::Value) -> Result<Vec<String>> {
+        let url = format!("{}/search/", self.base_url);
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/vnd.olrapi.jsonlogic+json")
+            .json(predicate)
+            .send()
+            .await
+            .context("API: failed to send search request")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("API search failed ({}): {}", status, body);
+        }
+
+        let results: Vec<SearchHit> = resp
+            .json()
+            .await
+            .context("API: failed to parse search results JSON")?;
+
+        Ok(results.into_iter().map(|h| h.filename).collect())
+    }
+
+    /// Read a note as parsed JSON (`Accept: application/vnd.olrapi.note+json`).
+    ///
+    /// Returns the note's frontmatter object and modified time (`stat.mtime`,
+    /// milliseconds). Used by the priors `/search/` fast path to obtain
+    /// pre-parsed frontmatter without running Pour's own frontmatter reader.
+    pub async fn read_note_json(&self, vault_path: &str) -> Result<NoteJson> {
+        let url = format!("{}/vault/{}", self.base_url, encode_vault_path(vault_path));
+
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .header("Accept", "application/vnd.olrapi.note+json")
+            .send()
+            .await
+            .context("API: failed to send read_note_json request")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("API read_note_json failed ({}): {}", status, body);
+        }
+
+        resp.json().await.context("API: failed to parse note+json")
     }
 
     /// Execute an Obsidian command by its ID.
