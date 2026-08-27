@@ -5,6 +5,10 @@
 //! a directory entry — so writing onto the link replaced it with a regular
 //! file, stranded the edit outside version control, and left the tracked file
 //! stale. These tests drive the real public editing API over that layout.
+//!
+//! Unix-only: the symlink layout under test needs `std::os::unix`, and gating
+//! the whole file keeps the shared helpers from reading as dead on Windows.
+#![cfg(unix)]
 
 use pour::config::Config;
 use std::sync::Mutex;
@@ -30,7 +34,6 @@ options = ["Ethiopia", "Colombia"]
 
 /// Build the stow layout in a tempdir: a tracked `repo/config.toml` and a
 /// `home/config.toml` symlink pointing at it. Points `POUR_CONFIG` at the link.
-#[cfg(unix)]
 fn stowed_config() -> (
     tempfile::TempDir,
     std::path::PathBuf,
@@ -59,7 +62,6 @@ fn stowed_config() -> (
 }
 
 /// The reported bug: adding a bean origin through the TUI broke the symlink.
-#[cfg(unix)]
 #[test]
 fn appending_an_option_keeps_the_symlink_and_updates_the_tracked_file() {
     let (_dir, tracked, link, _guard) = stowed_config();
@@ -99,7 +101,6 @@ fn appending_an_option_keeps_the_symlink_and_updates_the_tracked_file() {
 
 /// Repeated edits must not degrade the link — the second write goes through the
 /// same resolution as the first.
-#[cfg(unix)]
 #[test]
 fn successive_edits_keep_the_symlink() {
     let (_dir, tracked, link, _guard) = stowed_config();
@@ -124,7 +125,6 @@ fn successive_edits_keep_the_symlink() {
 
 /// No orphan `config.toml.tmp` may be left next to the link. The temp file
 /// belongs beside the resolved target, and the rename consumes it.
-#[cfg(unix)]
 #[test]
 fn no_temp_file_is_orphaned_beside_the_link_or_the_target() {
     let (_dir, tracked, link, _guard) = stowed_config();
