@@ -1391,6 +1391,9 @@ async fn submit_history_written_to_pour_home_not_real_home() {
 
 /// A create-mode module whose hook drops a `marker` file into `base_path`.
 /// `hook_body` supplies (or omits) `post_write_shell_on_serve`.
+///
+/// Only the unix-gated hook tests call this; the hook bodies are `sh` dialect.
+#[cfg(unix)]
 fn hook_config(base_path: &str, hook_body: &str) -> pour::config::Config {
     let toml = format!(
         r#"

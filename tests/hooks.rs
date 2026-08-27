@@ -8,7 +8,10 @@
 //! are built on, plus execution semantics.
 
 use chrono::{Local, TimeZone};
-use pour::hooks::{ALLOWED_TOKENS, HookContext, render, run, unknown_tokens};
+use pour::hooks::{ALLOWED_TOKENS, HookContext, render, unknown_tokens};
+// `run` is only exercised by the unix-gated execution tests below.
+#[cfg(unix)]
+use pour::hooks::run;
 
 /// Fixed local timestamp: 2026-07-16 14:32:55.
 fn fixed_now() -> chrono::DateTime<Local> {
