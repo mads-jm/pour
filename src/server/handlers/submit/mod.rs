@@ -1,3 +1,9 @@
+// Every step returns `Result<_, axum::response::Response>` so a failure
+// is the finished HTTP reply, ready to return from the handler. Clippy
+// flags the Err as large; boxing it would only move the cost to the hot
+// path and gain nothing on a request that is already over.
+#![allow(clippy::result_large_err)]
+
 /// Handler for `POST /api/v1/submit/{module}` (§6.4).
 ///
 /// The keystone endpoint. Pipeline:

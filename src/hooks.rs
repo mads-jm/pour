@@ -34,7 +34,6 @@
 
 use crate::output::template::slug_tokens;
 use chrono::{DateTime, Local};
-use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -108,14 +107,17 @@ impl HookContext {
     ///
     /// `title` is the capture's `title` field value (empty when the module has
     /// no such field), and is only ever read through
-    /// [`slug_tokens`][crate::output::template::slug_tokens] — it never reaches
-    /// the command as typed text.
+    /// [`slug_tokens`] — it never reaches the command as typed text.
     pub fn new(base_path: &str, rel_path: &str, title: &str, now: DateTime<Local>) -> Self {
         let (slug, slug_or_time) = slug_tokens(title, now);
-        let abs_path = Path::new(base_path)
-            .join(rel_path.replace('\\', "/"))
-            .to_string_lossy()
-            .into_owned();
+        // Joined by hand rather than `Path::join`, which would emit a
+        // backslash on Windows. `rel_path` is already normalized to `/`, and
+        // every shell pour targets accepts a mixed-separator absolute path.
+        let abs_path = format!(
+            "{}/{}",
+            base_path.trim_end_matches(['/', '\\']),
+            rel_path.replace('\\', "/")
+        );
 
         Self {
             base_path: base_path.to_string(),
