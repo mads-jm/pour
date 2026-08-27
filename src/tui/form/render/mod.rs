@@ -126,9 +126,29 @@ pub fn render(app: &App, frame: &mut Frame) {
         spans.extend([
             Span::styled("↑↓/Tab", Style::default().fg(Color::Yellow)),
             Span::raw(" navigate  "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(" interact  "),
         ]);
+
+        // What the *active field* responds to, rather than a generic "Enter
+        // interact" that is wrong on half of them. On a toggle Enter advances
+        // and space is the only key that flips it; on a counter a bare number
+        // adds and a leading `=` sets. Both shipped in habit capture v1 with no
+        // hint at all, and a key you have to guess is a key nobody finds.
+        match active_field_cfg.map(|f| &f.field_type) {
+            Some(crate::config::FieldType::Toggle) => spans.extend([
+                Span::styled("space", Style::default().fg(Color::Yellow)),
+                Span::raw(" flip  "),
+            ]),
+            Some(crate::config::FieldType::Counter) => spans.extend([
+                Span::styled("0-9", Style::default().fg(Color::Yellow)),
+                Span::raw(" add  "),
+                Span::styled("=", Style::default().fg(Color::Yellow)),
+                Span::raw(" set  "),
+            ]),
+            _ => spans.extend([
+                Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                Span::raw(" interact  "),
+            ]),
+        }
         if show_title_hint {
             spans.push(Span::styled("t", Style::default().fg(Color::Yellow)));
             spans.push(Span::raw(" title  "));

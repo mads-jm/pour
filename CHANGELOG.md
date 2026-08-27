@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **The form footer now names the key the active field actually responds to.** It always read `Enter interact`, which is wrong on a `toggle`: Enter advances to the next field, and space is the only key that flips it. Nothing on screen said "space", so `pour habit` looked like it could display the note's state but not change it. A focused toggle now shows `space flip`; a focused counter shows `0-9 add` and `= set`, since a bare number accumulates and an `=`-prefixed one overwrites, and that distinction was invisible too. Every other field type keeps `Enter interact`. Behavior is unchanged, and both keys were already documented in `field-types.md` — the reference was right, the interface just never said so.
+
 ## [1.1.0] — 2026-08-26 — Module Roots, Write Hooks & Habit Capture
 
 ### Added — module roots & write hooks

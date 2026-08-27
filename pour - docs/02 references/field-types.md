@@ -367,7 +367,7 @@ field_type = "toggle"
 prompt = "Partaken?"
 ```
 
-__TUI__: Renders as `[x]` / `[ ]`; **space** flips it. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
+__TUI__: Renders as `[x]` / `[ ]`; **space** flips it, and the footer says so (`space flip`) whenever the row is focused. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
 __One-shot__: `pour habit cannabis` sets `true`; `pour habit cannabis false` (or `off`) clears it. Also accepts `on`/`yes`/`1` and `no`/`0`.
 __Output__: A bare YAML boolean — `cannabis: true`, never `"true"`.
 
@@ -393,7 +393,7 @@ __Semantics__ (`update` mode):
 - Values parse as `f64`; integral results emit bare (`64`, not `64.0`).
 - A **blank** counter on a submitted form means "no change", not "set to zero".
 
-__TUI__: Inline input filtered to digits, `.`, `-`, and `=`. On an `update` module the row also shows the note's current state — `now 64/96 oz` — read once when the form opens. A failed or slow read renders `now —/96 oz` rather than blocking the form.
+__TUI__: Inline input filtered to digits, `.`, `-`, and `=`. The footer spells out which is which (`0-9 add`, `= set`) whenever the row is focused, since a bare number and an `=`-prefixed one do opposite things. On an `update` module the row also shows the note's current state — `now 64/96 oz` — read once when the form opens. A failed or slow read renders `now —/96 oz` rather than blocking the form.
 __Echo__: every write echoes the resulting state, `water: 64/96 oz`, which is simultaneously the confirmation, the correction prompt, and the progress display.
 __Output__: A bare YAML number.
 

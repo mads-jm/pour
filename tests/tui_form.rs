@@ -1622,3 +1622,83 @@ fn an_unreadable_toggle_renders_as_unknown_not_unchecked() {
         "an unknown state must not be drawn as unchecked, got: {rendered}"
     );
 }
+
+// ── footer hints name the key the active field actually responds to ──
+//
+// The generic "Enter interact" is wrong on a toggle: Enter advances, and space
+// is the only key that flips it. A counter's `=` prefix ("set, don't add") is
+// invisible until someone tells you. Both shipped in habit capture v1 with no
+// hint, which is how `pour habit` turned into "I cannot log cannabis."
+
+fn footer_of(app: &App) -> String {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("terminal");
+    terminal
+        .draw(|frame| pour::tui::form::render(app, frame))
+        .expect("render must not panic");
+    terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect()
+}
+
+#[test]
+fn a_focused_toggle_hints_space_not_enter() {
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 1; // cannabis
+
+    let footer = footer_of(&app);
+    assert!(
+        footer.contains("space flip"),
+        "a toggle must name the key that flips it, got: {footer}"
+    );
+    assert!(
+        !footer.contains("Enter interact"),
+        "Enter advances on a toggle; claiming it interacts sends the user nowhere"
+    );
+}
+
+#[test]
+fn a_focused_counter_hints_the_set_prefix() {
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 2; // water
+
+    let footer = footer_of(&app);
+    assert!(
+        footer.contains("0-9 add"),
+        "a bare number accumulates, got: {footer}"
+    );
+    assert!(
+        footer.contains("= set"),
+        "the `=` prefix sets instead of adding and is otherwise undiscoverable, got: {footer}"
+    );
+}
+
+#[test]
+fn other_field_types_keep_the_generic_interact_hint() {
+    let mut app = make_app();
+    app.form_state.as_mut().unwrap().active_field = 1; // title, a text field
+
+    let footer = footer_of(&app);
+    assert!(
+        footer.contains("Enter interact"),
+        "only toggle and counter override the generic hint, got: {footer}"
+    );
+}
+
+#[test]
+fn the_submit_button_keeps_the_generic_interact_hint() {
+    // active_field_cfg is None on the submit row; the match must fall through
+    // rather than dropping the hint entirely.
+    let mut app = habit_app();
+    app.form_state.as_mut().unwrap().active_field = 3; // submit button
+
+    let footer = footer_of(&app);
+    assert!(
+        footer.contains("Enter interact"),
+        "the submit button is still an Enter target, got: {footer}"
+    );
+}
