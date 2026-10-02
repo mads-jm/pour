@@ -105,7 +105,17 @@ pub(super) fn active_field_config_fields<'a>(
 ///
 /// Returns a `FormAction` signalling what the wiring layer should do next.
 pub fn handle_key(app: &mut App, key: crossterm::event::KeyEvent) -> FormAction {
-    use crossterm::event::KeyCode;
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    // Ctrl+R toggles the read-only priors panel collapse/expand. Intercepted
+    // before any field handling so it works regardless of the focused field.
+    // Purely a view toggle — never affects submit or field values.
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+        if let Some(ref mut fs) = app.form_state {
+            fs.priors_collapsed = !fs.priors_collapsed;
+        }
+        return FormAction::None;
+    }
 
     let module_key = match app.module_keys.get(app.selected_module) {
         Some(k) => k.clone(),

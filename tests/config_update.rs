@@ -860,6 +860,7 @@ fn make_simple_module(mode: WriteMode, path: &str) -> ModuleConfig {
         frontmatter_date_format: None,
         post_write_shell: None,
         post_write_shell_on_serve: None,
+        priors: None,
         fields: vec![FieldConfig {
             name: "note".to_string(),
             field_type: FieldType::Text,

@@ -242,6 +242,7 @@ When L1 ships, the manual `days_off_roast` field in `resources/mads_config.toml`
 - `pour - docs/02 references/field-types.md` — field type reference (will gain `lookup` when L1 ships).
 - `pour - docs/08 specs/pour-api-contract.md` §7 (field types), §15 (intentional omissions — this leaves §15).
 - `pour - docs/08 specs/pour-pwa-roadmap.md` — Phase 4+ candidate for PWA support (L2 above).
+- [[pour-review-priors]] — shares this spec's frontmatter-read, wikilink-resolution, and trigger-model plumbing; the Priors panel should slot *behind* lookup-fields on the roadmap.
 
 ## 14. Change Log
 

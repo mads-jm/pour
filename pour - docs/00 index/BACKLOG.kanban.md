@@ -36,6 +36,8 @@ tags:
 
 # Scoping
 
+- [ ] Priors / review panel **L2** — `overlap`/`window` match modes, select/tag `mode` summaries, `me`/`note` recent-N + `#tag` overlap, PWA panel + `POST /api/v1/priors/{module}`. Spec: [[pour-review-priors]] §10 (L2).
+
 # Ready
 
 # In Progress
@@ -45,6 +47,7 @@ tags:
 # Done
 
 - [x] Text area double newline in blockquote output
+- [x] Priors / review panel **L1** (coffee, TUI) — config-declared read-back of best prior captures at capture time; shared frontmatter reader + wikilink stripper foundation. Spec: [[pour-review-priors]] (shipped). Story: [[priors_at_the_pour]]. ADR: [[ADR-007-Frontmatter-Reader]].
 
 %% kanban:settings
 
