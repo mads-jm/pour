@@ -17,7 +17,7 @@
 //! (`obsidian-local-rest-api-openapi.yaml`, `/search/` examples) documents the
 //! frontmatter accessor as `{"var": "frontmatter.<key>"}` with `{"==": [...]}`
 //! for equality. This is confirmed from that authoritative source, so it is not
-//! guessed. The single function [`match_var`] centralises the accessor shape:
+//! guessed. The single function `match_var` centralises the accessor shape:
 //! if a future API revision changes it, that one function is the only edit.
 
 use serde_json::{Value, json};
