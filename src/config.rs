@@ -20,6 +20,21 @@ pub struct Config {
     /// predating versioning; treated as `"0.1.0"` for backward compatibility.
     #[serde(default = "default_config_version")]
     pub config_version: Option<String>,
+    /// `[sound]`, the completion tone. Absent means off.
+    #[serde(default)]
+    pub sound: SoundConfig,
+}
+
+/// `[sound]` settings. A table rather than a top-level key: a bare
+/// `sound_on_save = true` appended to the end of `config.toml` would land
+/// inside whatever table came last and be silently ignored.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SoundConfig {
+    /// Play one short synthesized tone when a TUI capture saves (the summary
+    /// reads `▽ saved`). Default `false`: pour opens no audio device at all.
+    /// One-shot capture and `pour serve` never play it.
+    #[serde(default)]
+    pub on_save: bool,
 }
 
 /// Vault connection settings.

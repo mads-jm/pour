@@ -5,6 +5,7 @@ use crate::config::{
 use crate::data::field_presets::FieldPresets;
 use crate::data::history::History;
 use crate::data::presets::Presets;
+use crate::sound::Chime;
 use crate::transport::{Transport, TransportMode, VaultEntry};
 use crate::visibility::visible_field_indices;
 use std::collections::{HashMap, HashSet};
@@ -448,6 +449,9 @@ pub struct App {
     /// Ephemeral warning toast displayed at the bottom of every TUI screen.
     /// Cleared automatically when `expires_at` has passed.
     pub status_message: Option<StatusMessage>,
+    /// The completion sound. Played by `handle_submit` only when
+    /// `[sound] on_save` is on; tests replace it with a fake player.
+    pub chime: Chime,
 }
 
 impl App {
@@ -481,6 +485,7 @@ impl App {
             field_presets,
             deferred_stderr: Vec::new(),
             status_message: None,
+            chime: Chime::device(),
         }
     }
 
@@ -492,12 +497,17 @@ impl App {
         });
     }
 
-    /// Clear `status_message` if it has expired. Called each event-loop tick.
+    /// Clear `status_message` if it has expired, then raise a toast for a
+    /// completion sound that failed to play, if one has. Called each
+    /// event-loop tick.
     pub fn tick_status(&mut self) {
         if let Some(ref msg) = self.status_message
             && Instant::now() >= msg.expires_at
         {
             self.status_message = None;
+        }
+        if let Some(failure) = self.chime.take_failure() {
+            self.set_status_warning(format!("sound: {failure}"));
         }
     }
 

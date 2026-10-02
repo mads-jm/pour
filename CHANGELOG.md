@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+- **Completion sound, off by default.** `[sound] on_save = true` plays one short synthesized tone when a TUI capture saves, at the moment the summary reads `▽ saved`. It covers `create`, `append`, and `update`. A `post_write_shell` or history warning does not suppress it, and `! error` plays nothing. The tone is a 500 ms sine at E5 with a 5 ms attack and an exponential decay to exact silence, generated in-process. No audio file ships. Playback runs on its own thread, so the summary takes keys at once, and quitting mid-tone cuts it off. If no output device is available, the capture still saves and a one-line status toast gives the reason. One-shot capture and `pour serve` stay silent. With the key absent or `false`, pour opens no audio device. `config_version` stays at `0.4.0` because an older binary that ignores the key just stays silent.
+- **New dependency: `cpal`** (plus `alsa` on Linux, the version cpal already pulls in). **On Linux the binary now links `libasound.so.2` and will not start without it, sound on or off.** Desktop distros ship it, but a minimal server image may not. Building from source needs `libasound2-dev` and `pkg-config`. CI and release install the headers on Linux runners.
+
 ### Fixed
 
 - **The form footer now names the key the active field actually responds to.** It always read `Enter interact`, which is wrong on a `toggle`: Enter advances to the next field, and space is the only key that flips it. Nothing on screen said "space", so `pour habit` looked like it could display the note's state but not change it. A focused toggle now shows `space flip`; a focused counter shows `0-9 add` and `= set`, since a bare number accumulates and an `=`-prefixed one overwrites, and that distinction was invisible too. Every other field type keeps `Enter interact`. Behavior is unchanged, and both keys were already documented in `field-types.md` — the reference was right, the interface just never said so.

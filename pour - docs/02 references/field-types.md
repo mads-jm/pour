@@ -668,6 +668,16 @@ title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |
 | `[vault].date_format` | string | strftime format string used to expand the `{{date}}` placeholder in module `path` and `append_template` values. Defaults to `"%Y%m%d"` when absent. Example: `"%Y-%m-%d"` produces `2026-04-21`. |
 | `module_order` | string[] | Optional dashboard display ordering. Modules not listed appear alphabetically after listed ones |
+| `[sound].on_save` | boolean | Play one short synthesized tone when a TUI capture saves (the summary reads `▽ saved`). Default `false`, and when off pour opens no audio device. Never plays on `! error`, for one-shot capture, or for `pour serve`. If playback fails (no output device, an SSH session), a one-line status toast says so and the capture is unaffected. |
+
+### `[sound]` Example
+
+```toml
+[sound]
+on_save = true
+```
+
+It's a table rather than a bare key because of where TOML puts things. A top-level `sound_on_save = true` appended to the end of `config.toml` would land inside whichever table came last and be silently ignored. A `[sound]` table can go anywhere in the file.
 
 ### `date_format` Example
 

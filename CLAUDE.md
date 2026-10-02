@@ -55,6 +55,7 @@ The app has no hardcoded knowledge of specific modules. All modules, fields, pat
 - `serde` + `toml` + `toml_edit` + `serde_json` (serialization)
 - `reqwest` + `tokio` (async HTTP)
 - `chrono` (timestamps/date formatting in file paths)
+- `cpal` (audio output for the opt-in completion sound; links ALSA/libasound on Linux)
 
 ## Testing
 

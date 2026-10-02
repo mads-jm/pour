@@ -67,6 +67,8 @@ The strongest expression of the product. The `▽` anchors the command lockup. D
 
 The brand mark signals completed flow. Dropping it on error is intentional — the funnel failed, the pattern breaks, the red styling does the rest.
 
+Sound: one short synthesized tone on `▽ saved`, off by default (`[sound] on_save = true`). Nothing else in pour makes a sound. The tone does the green header's job of confirming a finished capture, which is why it sits alongside "not playful" rather than against it. `! error` stays silent.
+
 Body labels are terse and lowercase:
 
 ```ts

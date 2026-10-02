@@ -2787,3 +2787,67 @@ fn shipped_mads_config_has_the_habit_preset() {
         .expect("cannabis field");
     assert_eq!(cannabis.field_type, FieldType::Toggle);
 }
+
+// ── [sound] ──────────────────────────────────────────────────────────────────
+
+/// A minimal valid config with `extra` spliced in ahead of `[vault]`, where a
+/// new top-level table can sit without capturing anything after it.
+fn config_with_sound(extra: &str) -> String {
+    format!(
+        r####"{extra}
+[vault]
+base_path = "/tmp/vault"
+
+[modules.quick]
+mode = "create"
+path = "quick.md"
+
+[[modules.quick.fields]]
+name = "note"
+field_type = "text"
+prompt = "Note"
+"####
+    )
+}
+
+#[test]
+fn sound_is_off_when_the_table_is_absent() {
+    let config = Config::from_toml(&config_with_sound("")).expect("should parse");
+    assert!(!config.sound.on_save);
+}
+
+#[test]
+fn sound_is_off_when_the_table_is_empty() {
+    let config = Config::from_toml(&config_with_sound("[sound]")).expect("should parse");
+    assert!(!config.sound.on_save);
+}
+
+#[test]
+fn sound_on_save_true_parses() {
+    let config =
+        Config::from_toml(&config_with_sound("[sound]\non_save = true")).expect("should parse");
+    assert!(config.sound.on_save);
+}
+
+#[test]
+fn sound_on_save_rejects_a_non_boolean() {
+    let result = Config::from_toml(&config_with_sound("[sound]\non_save = \"yes\""));
+    assert!(result.is_err(), "a string is not a boolean: {result:?}");
+}
+
+#[test]
+fn shipped_configs_leave_sound_off() {
+    for (name, toml) in [
+        (
+            "default_config.toml",
+            include_str!("../resources/default_config.toml"),
+        ),
+        (
+            "mads_config.toml",
+            include_str!("../resources/mads_config.toml"),
+        ),
+    ] {
+        let config = Config::from_toml(toml).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(!config.sound.on_save, "{name} must not turn sound on");
+    }
+}

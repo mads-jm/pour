@@ -37,6 +37,9 @@ api_port = 27124                                    # optional, default 27124
 api_key = "..."                                     # prefer secrets.toml
 date_format = "%Y%m%d"                              # strftime for {{date}} token
 
+[sound]                                             # optional
+on_save = true                                      # tone on a saved TUI capture; default false
+
 [modules.<name>]                                    # one per `pour <name>` command
 # ... (see Modules section)
 

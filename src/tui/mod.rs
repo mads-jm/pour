@@ -5,8 +5,9 @@ pub(crate) mod loop_; // main TUI event loop — re-export the two binary entry 
 pub mod summary;
 
 // Binary entry points from loop_ — exposed so main.rs can call them without
-// importing the whole loop_ module into the public API.
-pub use loop_::{fetch_current_values, fetch_dynamic_options, run_loop};
+// importing the whole loop_ module into the public API. `handle_submit` is
+// exposed for tests/tui_submit.rs.
+pub use loop_::{fetch_current_values, fetch_dynamic_options, handle_submit, run_loop};
 
 use crate::app::{App, Screen};
 use ratatui::Frame;

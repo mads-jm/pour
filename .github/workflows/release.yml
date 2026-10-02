@@ -33,6 +33,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: install ALSA headers
+        # cpal links libasound on Linux; alsa-sys finds it through pkg-config.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
@@ -99,6 +103,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: install ALSA headers
+        # cpal links libasound on Linux; alsa-sys finds it through pkg-config.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - name: build
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: package

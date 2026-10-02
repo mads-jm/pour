@@ -48,6 +48,8 @@ Upon submitting a form, the app does *not* immediately exit. It transitions to a
 - A success message with the destination file path.
 - Options: `[Enter]` Main Menu, `[A]` Pour Another → .., `[Q]` Quit, `[O]` Open file in `$EDITOR`. *[Deviation: `[O]` not implemented in v1 — summary supports Enter, A, and Q only.]*
 
+*[Deviation: not in the original vision. An opt-in tone (`[sound] on_save = true`) plays when the summary shows a success. It is off by default, silent on failure, and TUI-only. See `src/sound.rs` and the Summary section of [[Design-Language]].]*
+
 ## __3. Architecture & Data Layer__
 
 ### __3.1 Hybrid Transport Layer__
@@ -191,6 +193,7 @@ Files annotated as oversized at v1.0.0 (`src/app.rs`, `src/config.rs`, `src/tui/
 - __Time:__ [[chrono]] (for file formatting and timestamps)
 - __URL encoding:__ `percent-encoding` — encodes vault paths containing spaces in REST API request URLs
 - __Shell open:__ `open` — cross-platform crate for opening a file or URL in the system default handler (used for "Open in Obsidian" via `obsidian://` URI)
+- __Audio:__ `cpal`, which plays the opt-in completion tone. On Linux it links ALSA (`libasound.so.2`), and the binary needs that library to start.
 
 ## __6. Scope — v0.1__
 

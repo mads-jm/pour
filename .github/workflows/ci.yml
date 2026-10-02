@@ -55,6 +55,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: clippy-${{ matrix.os }}
+      - name: install ALSA headers
+        # cpal links libasound on Linux; alsa-sys finds it through pkg-config.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
   # ─── Tests ─────────────────────────────────────────────────────────────────
@@ -73,6 +77,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test-${{ matrix.os }}
+      - name: install ALSA headers
+        # cpal links libasound on Linux; alsa-sys finds it through pkg-config.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - run: cargo test --all-features --locked
 
   # ─── Rustdoc ───────────────────────────────────────────────────────────────
@@ -90,6 +98,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: doc
+      - name: install ALSA headers
+        # cpal links libasound on Linux; alsa-sys finds it through pkg-config.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - run: cargo doc --no-deps --all-features
 
   # ─── File size budget ──────────────────────────────────────────────────────

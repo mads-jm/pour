@@ -51,7 +51,9 @@ cargo build --release
 # Binary is at target/release/pour
 ```
 
-Requires Rust 2024 edition. No other system dependencies — Obsidian Local REST API is optional.
+Requires Rust 2024 edition. Obsidian Local REST API is optional.
+
+**Linux needs ALSA.** Pour links `libasound.so.2` for the [completion sound](#completion-sound-sound), so the binary won't start without it, even with sound turned off. Desktop distros ship it. A minimal server or container image may not: install `libasound2` (Debian/Ubuntu; `libasound2t64` on 24.04+), `alsa-lib` (Fedora, Arch). Building from source also needs the headers and `pkg-config`: `libasound2-dev` on Debian/Ubuntu, `alsa-lib-devel` on Fedora. Windows and macOS need nothing extra.
 
 ## Quick Start
 
@@ -241,6 +243,17 @@ post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_
 Runs from `base_path` through the OS shell. Best-effort: the note is written first, so a failing hook warns and never loses the capture.
 
 > **This is arbitrary command execution from your config.** Only `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, and `{{slug_or_time}}` interpolate — all Pour-generated. `{{field_name}}` is **rejected at load**, not stripped: captured text must never reach a shell string. A hook that auto-commits and pushes also makes a bad capture public history.
+
+### Completion Sound (`[sound]`)
+
+A short synthesized tone when a capture saves in the TUI:
+
+```toml
+[sound]
+on_save = true   # default false, and when off pour opens no audio device
+```
+
+It plays when the summary reads `▽ saved`, in every write mode, and never on `! error`. One-shot capture (`pour habit water 16`) and `pour serve` stay silent. With no output device available (an SSH session, say), the capture still saves and a one-line toast says why there was no sound.
 
 ### Conditional Fields (`show_when`)
 
@@ -432,6 +445,7 @@ mobile_visible = false
 | Filesystem paths | `dirs` — locates the home directory for `~/.pour/` |
 | Errors | `anyhow` — error propagation in non-trivial Result chains |
 | Shell open | `open` — opens notes in Obsidian via the `o` key on the summary screen |
+| Audio | `cpal` — plays the completion sound; links ALSA on Linux. `alsa` (Linux only) keeps alsa-lib's diagnostics off the TUI's terminal |
 
 ## Development
 

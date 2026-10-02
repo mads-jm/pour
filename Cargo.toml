@@ -11,6 +11,7 @@ path = "src/main.rs"
 anyhow = "1"
 axum = { version = "0.7", default-features = false, features = ["http1", "json", "tokio", "query"] }
 chrono = { version = "0.4", features = ["serde"] }
+cpal = "0.18"
 crossterm = "0.28"
 dirs = "6"
 local-ip-address = "0.6"
@@ -32,6 +33,11 @@ toml = "0.8"
 toml_edit = "0.22"
 unicode-width = "0.1"
 uuid = { version = "1", features = ["v4"] }
+
+# alsa-lib's diagnostics go to stderr unless a handler is installed; the TUI
+# owns stderr. Same version cpal pulls in, so this adds no second copy.
+[target.'cfg(target_os = "linux")'.dependencies]
+alsa = "0.11"
 
 [dev-dependencies]
 tempfile = "3"
