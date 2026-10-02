@@ -871,6 +871,172 @@ async fn write_append_callout_override_in_template() {
     );
 }
 
+// ── Multi-paragraph bodies stay inside the callout ──────────────────────────
+
+/// The multi-paragraph body from the original bug report.
+const BRIDGE_BODY: &str =
+    "Para one line A.\nPara one line B.\n\nPara two after blank.\n\nPara three.";
+
+/// Every body line as it must land: each one quoted, blank lines as `> `.
+const BRIDGE_LINES: [&str; 6] = [
+    "> Para one line A.",
+    "> Para one line B.",
+    "> ",
+    "> Para two after blank.",
+    "> ",
+    "> Para three.",
+];
+
+/// Append-mode module shaped like the shipped `me` module: the callout comes
+/// from `callout_type` and the body sits on a `> {{body}}` template line.
+fn append_bridge_config(base_path: &str) -> Config {
+    let toml = format!(
+        r#####"
+[vault]
+base_path = "{base_path}"
+
+[modules.me]
+mode = "append"
+path = "Journal/daily.md"
+append_under_header = "## Log"
+append_template = "#### T\n> [!{{{{callout}}}}] {{{{title}}}}\n> {{{{body}}}}"
+callout_type = "note"
+
+[[modules.me.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+
+[[modules.me.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+"#####
+    );
+    Config::from_toml(&toml).expect("test config should parse")
+}
+
+/// Write `body` through the template path (`write_append`, `Transport::Fs`)
+/// and return the daily note's content.
+async fn append_bridge_body(body: &str) -> String {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = append_bridge_config(&base);
+
+    let journal_dir = tmp.path().join("Journal");
+    std::fs::create_dir_all(&journal_dir).unwrap();
+    std::fs::write(journal_dir.join("daily.md"), "# Daily\n\n## Log\n").unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+    let fields: HashMap<String, String> = [
+        ("title".to_string(), "Morning".to_string()),
+        ("body".to_string(), body.to_string()),
+    ]
+    .into();
+
+    write_append(
+        &transport,
+        &config.modules["me"],
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        Local::now(),
+    )
+    .await
+    .expect("write_append should succeed");
+
+    std::fs::read_to_string(journal_dir.join("daily.md")).unwrap()
+}
+
+/// Write `body` through the field-level path (create-mode textarea with
+/// `callout = "tip"`) and return the note's content.
+async fn create_callout_body(body: &str) -> String {
+    let tmp = TempDir::new().unwrap();
+    let base = tmp.path().to_str().unwrap().replace('\\', "/");
+    let config = callout_field_config(&base);
+    std::fs::create_dir_all(tmp.path().join("Test")).unwrap();
+
+    let transport = Transport::Fs(pour::transport::fs::FsWriter::new(tmp.path().to_path_buf()));
+    let fields: HashMap<String, String> = [
+        ("title".to_string(), "My Title".to_string()),
+        ("notes".to_string(), body.to_string()),
+    ]
+    .into();
+
+    write_create(
+        &transport,
+        &config.modules["test"],
+        &fields,
+        &CompositeData::new(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        Local::now(),
+    )
+    .await
+    .expect("write_create should succeed");
+
+    std::fs::read_to_string(tmp.path().join("Test/note.md")).unwrap()
+}
+
+/// The quoted body lines of a note: every `>` line except the callout opener.
+fn quoted_body_lines(content: &str) -> Vec<&str> {
+    content
+        .lines()
+        .filter(|l| l.starts_with('>') && !l.starts_with("> [!"))
+        .collect()
+}
+
+#[tokio::test]
+async fn write_append_keeps_a_multi_paragraph_body_inside_the_callout() {
+    let content = append_bridge_body(BRIDGE_BODY).await;
+
+    let expected = format!("#### T\n> [!note] Morning\n{}", BRIDGE_LINES.join("\n"));
+    assert!(
+        content.contains(&expected),
+        "every body line, blank ones included, should carry `> `, got:\n{content}"
+    );
+}
+
+#[tokio::test]
+async fn write_create_field_callout_quotes_every_paragraph() {
+    let content = create_callout_body(BRIDGE_BODY).await;
+
+    let expected = format!("> [!tip]\n{}", BRIDGE_LINES.join("\n"));
+    assert!(
+        content.contains(&expected),
+        "every body line, blank ones included, should carry `> `, got:\n{content}"
+    );
+}
+
+#[tokio::test]
+async fn template_and_field_level_paths_quote_a_body_identically() {
+    let crlf = BRIDGE_BODY.replace('\n', "\r\n");
+    let trailing_one = format!("{BRIDGE_BODY}\n");
+    let trailing_two = format!("{BRIDGE_BODY}\n\n");
+
+    for body in [BRIDGE_BODY, crlf.as_str(), &trailing_one, &trailing_two] {
+        let appended = append_bridge_body(body).await;
+        let created = create_callout_body(body).await;
+        assert!(
+            quoted_body_lines(&created).len() >= BRIDGE_LINES.len(),
+            "field-level path should quote the whole body {body:?}, got:\n{created}"
+        );
+
+        assert_eq!(
+            quoted_body_lines(&appended),
+            quoted_body_lines(&created),
+            "both paths should emit the same quoted lines for body {body:?}"
+        );
+        assert!(
+            !appended.contains('\r') && !created.contains('\r'),
+            "no \\r may survive on a quoted line for body {body:?}"
+        );
+    }
+}
+
 // --- Icon frontmatter tests ---
 
 fn icon_create_config(base_path: &str) -> Config {
