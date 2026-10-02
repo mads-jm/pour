@@ -139,23 +139,41 @@ enum OnUnknown {
     Leave,
 }
 
+/// What to do with a multi-line value whose placeholder sits on a template
+/// line that starts with `>`.
+enum QuotedLines {
+    /// Prefix every continuation line with `> ` so the value stays inside the
+    /// blockquote or callout the template line opened (append mode).
+    Bridge,
+    /// Substitute the value verbatim (paths, and the single-line special
+    /// tokens).
+    Verbatim,
+}
+
 /// Core `{{key}}` substitution kernel shared by both render functions.
 ///
 /// Iterates over `vars` and replaces every `{{key}}` occurrence with the
-/// corresponding value.  After all known keys are substituted, remaining
-/// unresolved placeholders are handled according to `on_unknown`:
+/// corresponding value.  With `QuotedLines::Bridge`, each occurrence is
+/// checked separately: one on a `>`-prefixed line gets its multi-line value
+/// bridged (see [`replace_bridging_quotes`]), one elsewhere gets the value
+/// verbatim.  After all known keys are substituted, remaining unresolved
+/// placeholders are handled according to `on_unknown`:
 /// - `Strip` — each `{{...}}` span is removed.
 /// - `Leave` — unresolved spans are left as-is.
 fn substitute_keys(
     template: &str,
     vars: &HashMap<String, String>,
     on_unknown: OnUnknown,
+    quoted_lines: QuotedLines,
 ) -> String {
     let mut result = template.to_owned();
 
     for (key, value) in vars {
         let placeholder = format!("{{{{{key}}}}}");
-        result = result.replace(&placeholder, value);
+        result = match quoted_lines {
+            QuotedLines::Bridge => replace_bridging_quotes(&result, &placeholder, value),
+            QuotedLines::Verbatim => result.replace(&placeholder, value),
+        };
     }
 
     if let OnUnknown::Strip = on_unknown {
@@ -169,6 +187,42 @@ fn substitute_keys(
     }
 
     result
+}
+
+/// Replace every `placeholder` in `haystack` with `value`, carrying a
+/// blockquote across the value's line breaks.
+///
+/// An occurrence whose line in `haystack` starts with `>` gets the value with
+/// `> ` in front of every line after the first, so a multi-paragraph body
+/// substituted into `> {{body}}` stays inside the callout. A blank line in the
+/// value becomes `> `. The value is split with [`str::lines`], the same
+/// splitter the field-level `callout` wrapping uses, so `\r\n` endings leave no
+/// `\r` behind and a single trailing newline is dropped.
+///
+/// Every other occurrence, and every single-line value, is substituted
+/// verbatim, so for those this is byte-identical to [`str::replace`].
+fn replace_bridging_quotes(haystack: &str, placeholder: &str, value: &str) -> String {
+    if !value.contains('\n') {
+        return haystack.replace(placeholder, value);
+    }
+
+    let bridged = value.lines().collect::<Vec<_>>().join("\n> ");
+    let mut out = String::with_capacity(haystack.len() + bridged.len());
+    let mut last = 0;
+
+    for (idx, _) in haystack.match_indices(placeholder) {
+        out.push_str(&haystack[last..idx]);
+        let line_start = haystack[..idx].rfind('\n').map_or(0, |nl| nl + 1);
+        if haystack[line_start..].starts_with('>') {
+            out.push_str(&bridged);
+        } else {
+            out.push_str(value);
+        }
+        last = idx + placeholder.len();
+    }
+    out.push_str(&haystack[last..]);
+
+    out
 }
 
 /// Render a path template by substituting `{{field}}` placeholders and
@@ -228,10 +282,20 @@ pub fn render_path(
     special_vars.insert("slug_or_time".to_string(), slug_or_time);
     // Substitute special tokens first (they don't use Strip — they're known tokens;
     // we use a merged approach: insert specials, then do one substitution pass).
-    let after_special = substitute_keys(&strftime_expanded, &special_vars, OnUnknown::Leave);
+    let after_special = substitute_keys(
+        &strftime_expanded,
+        &special_vars,
+        OnUnknown::Leave,
+        QuotedLines::Verbatim,
+    );
 
     // Step 3: Substitute field placeholders with Strip for unknown keys.
-    let result = substitute_keys(&after_special, field_values, OnUnknown::Strip);
+    let result = substitute_keys(
+        &after_special,
+        field_values,
+        OnUnknown::Strip,
+        QuotedLines::Verbatim,
+    );
 
     // Normalize to forward slashes so the API transport receives a consistent
     // vault-relative path, and PathBuf::join on Windows can handle it cleanly
@@ -297,7 +361,12 @@ pub fn render_append_template(
         special_vars.insert("callout".to_string(), callout.clone());
     }
 
-    let mut result = substitute_keys(&strftime_expanded, &special_vars, OnUnknown::Leave);
+    let mut result = substitute_keys(
+        &strftime_expanded,
+        &special_vars,
+        OnUnknown::Leave,
+        QuotedLines::Verbatim,
+    );
 
     // Replace composite field placeholders with markdown tables.
     // If the field is not visible, replace its placeholder with empty string.
@@ -370,8 +439,14 @@ pub fn render_append_template(
         resolved_vars.insert(key.clone(), resolved);
     }
 
-    // Substitute field placeholders; leave unknowns as-is (Leave mode).
-    substitute_keys(&result, &resolved_vars, OnUnknown::Leave)
+    // Substitute field placeholders; leave unknowns as-is (Leave mode). A
+    // multi-line value on a `>`-prefixed line keeps the quote going.
+    substitute_keys(
+        &result,
+        &resolved_vars,
+        OnUnknown::Leave,
+        QuotedLines::Bridge,
+    )
 }
 
 /// Sanitize the filename portion of a vault-relative path.

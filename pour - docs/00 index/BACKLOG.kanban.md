@@ -14,7 +14,6 @@ tags:
 
 - [ ] Preset save/delete only on preset/submit screen
 - [ ] Review text entry across mads.modules (textarea/popover for notes)
-- [ ] Text area double newline in blockquote output
 - [ ] Handle missing file in append mode (template fallback)
 - [ ] Callout type configurable per module/textarea
 - [ ] Composite dynamic select (submenus)
@@ -44,6 +43,8 @@ tags:
 # In Review
 
 # Done
+
+- [x] Text area double newline in blockquote output
 
 %% kanban:settings
 
