@@ -1,3 +1,4 @@
+mod cells;
 mod key;
 pub(super) mod overlays;
 pub mod render;

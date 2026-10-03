@@ -2414,3 +2414,97 @@ fn wide_characters_scroll_by_the_cells_they_take() {
         assert_eq!(sym(&shot.buf, c.x - 2, c.y), "🫘", "title, {i} wide chars");
     }
 }
+
+#[test]
+fn multi_char_emoji_take_the_cells_ratatui_draws() {
+    // `❤️` is U+2764 plus a variation selector and `👍🏽` an emoji plus a
+    // skin-tone modifier. Each is one grapheme ratatui draws 2 cells wide,
+    // though summing their chars' widths gives 1 and 4.
+    let heart = "❤\u{fe0f}";
+    let thumb = "👍\u{1f3fd}";
+    let value = format!("a{heart}b\na{thumb}b");
+    // (cursor char index, line, cell offset within the line, glyph left of it)
+    let cases: [(usize, u16, u16, &str); 4] = [
+        (3, 0, 3, heart),
+        (4, 0, 4, "b"),
+        (8, 1, 3, thumb),
+        (9, 1, 4, "b"),
+    ];
+    for (idx, line, col, before) in cases {
+        let mut app = entry_app();
+        set_value(&mut app, "body", &value);
+        focus(&mut app, BODY, "body");
+        handle_key(&mut app, key(KeyCode::Enter));
+        app.form_state.as_mut().unwrap().cursor_position = idx;
+
+        let shot = shoot(&app, 80, 24);
+        let p = popout(&shot);
+        let c = cursor_in_popout(&shot, p, &format!("cursor_position {idx}"));
+        assert_eq!(
+            c,
+            Position::new(p.x + 1 + col, p.y + 1 + line),
+            "cursor_position {idx}"
+        );
+        let w = before.width() as u16;
+        assert_eq!(
+            sym(&shot.buf, c.x - w, c.y),
+            before,
+            "cursor_position {idx}"
+        );
+    }
+
+    // Single-line row: the cursor at the end sits right after the last glyph.
+    let prefix = "▸ Title : ".width() as u16;
+    let mut app = entry_app();
+    let title = format!("a{heart}b{thumb}c");
+    set_value(&mut app, "title", &title);
+    focus(&mut app, TITLE, "title");
+    app.form_state.as_mut().unwrap().cursor_position = title.chars().count();
+    let shot = shoot(&app, 80, 24);
+    assert_eq!(shot.cursor, Some(Position::new(prefix + 7, 3 + 1)));
+}
+
+#[test]
+fn multi_char_emoji_scroll_by_the_cells_they_take() {
+    let heart = "❤\u{fe0f}";
+    let thumb = "👍\u{1f3fd}";
+
+    // Popout: typing past the right edge keeps the cursor after the glyph.
+    for (glyph, extra) in [(heart, '\u{fe0f}'), (thumb, '\u{1f3fd}')] {
+        let base = glyph.chars().next().unwrap();
+        let mut app = entry_app();
+        focus(&mut app, BODY, "body");
+        handle_key(&mut app, key(KeyCode::Enter));
+        for i in 1..=40 {
+            handle_key(&mut app, key(KeyCode::Char(base)));
+            handle_key(&mut app, key(KeyCode::Char(extra)));
+            let shot = shoot(&app, 80, 24);
+            let p = popout(&shot);
+            let c = cursor_in_popout(&shot, p, &format!("popout, {i} x {glyph}"));
+            assert_eq!(sym(&shot.buf, c.x - 2, c.y), glyph, "popout, {i} x {glyph}");
+        }
+    }
+
+    // Single-line row: 40 hearts then `END` overflow the row. The end of the
+    // value stays on screen, the cursor right after it, `◂` marking the cut.
+    let mut app = entry_app();
+    let title = format!("{}END", heart.repeat(40));
+    set_value(&mut app, "title", &title);
+    focus(&mut app, TITLE, "title");
+    app.form_state.as_mut().unwrap().cursor_position = title.chars().count();
+    let shot = shoot(&app, 80, 24);
+    let c = shot.cursor.expect("title cursor hidden");
+    assert_eq!(c.y, 3 + 1);
+    assert!(c.x < 80, "cursor off screen at {c:?}");
+    assert_eq!(
+        sym(&shot.buf, c.x - 1, c.y),
+        "D",
+        "cursor not after END:\n{}",
+        row(&shot.buf, c.y)
+    );
+    assert!(
+        row(&shot.buf, c.y).contains('◂'),
+        "no ◂ marker:\n{}",
+        row(&shot.buf, c.y)
+    );
+}

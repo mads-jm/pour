@@ -12,6 +12,9 @@ tags:
 
 # Inbox
 
+- [ ] Select dropdown and composite editor open one row too high below a preset description or callout textarea — `render_select_options` and `render_composite_editor` still use the field index as the screen row. An `allow_create` select covers its own search field.
+- [ ] Long-form editor cycle: sticky viewport on both axes — the textarea popout and single-line rows recompute scroll from the cursor each frame, so Up/Left slide the text under a still cursor instead of moving the cursor first.
+- [ ] Configure screen counts chars as cells — `tui/configure/render.rs` cursor placement uses `cursor_position - scroll_offset` as a column, so CJK and emoji in a setting value drift. Reuse the form's per-glyph cell count.
 - [ ] Preset save/delete only on preset/submit screen
 - [ ] Review text entry across mads.modules (textarea/popover for notes)
 - [ ] Handle missing file in append mode (template fallback)

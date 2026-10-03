@@ -1,3 +1,4 @@
+pub(super) mod clip;
 pub(super) mod composite;
 pub(super) mod fields;
 pub(super) mod panel;

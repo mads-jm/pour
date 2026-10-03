@@ -5,11 +5,13 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::FormState;
 use crate::config::{FieldConfig, FieldType};
+use crate::tui::form::cells::str_cells;
 use crate::visibility::visible_field_indices;
+
+use super::clip::{clip_line, single_line_skip};
 
 /// Render the vertical list of form fields plus a submit button row.
 ///
@@ -320,12 +322,15 @@ pub(super) fn render_fields(
         } else {
             let indicator_text = format!("{indicator} ");
             let label = format!("{icon_prefix}{}{}: ", field.prompt, required_marker);
-            let mut spans = Vec::new();
+            let prefix = str_cells(&indicator_text) + str_cells(&label);
+            let mut spans = vec![
+                Span::styled(indicator_text, prompt_style),
+                Span::styled(label, prompt_style),
+            ];
             if is_active && is_single_line_input(&field.field_type) {
                 // A value wider than the row scrolls sideways inside it. The
                 // cursor is a char index into the value, which leads
                 // `value_display` (a counter appends `   now …` after it).
-                let prefix = indicator_text.width() + label.width();
                 let room = (area.width as usize).saturating_sub(prefix);
                 let cursor = form_state.cursor_position;
                 let skip = single_line_skip(&value_display, cursor, room);
@@ -336,8 +341,6 @@ pub(super) fn render_fields(
             } else {
                 spans.push(Span::styled(value_display, value_style));
             }
-            spans.insert(0, Span::styled(label, prompt_style));
-            spans.insert(0, Span::styled(indicator_text, prompt_style));
             ListItem::new(Line::from(spans))
         }
     }));
@@ -483,92 +486,6 @@ fn is_single_line_input(field_type: &FieldType) -> bool {
         field_type,
         FieldType::Text | FieldType::Number | FieldType::Counter
     )
-}
-
-/// Chars a single-line input keeps on screen after the cursor once it scrolls.
-const SCROLL_MARGIN: usize = 2;
-
-/// Terminal cells one char takes. Control chars count as zero.
-fn char_cells(c: char) -> usize {
-    c.width().unwrap_or(0)
-}
-
-/// The first char of `text` to draw in a `width`-cell row so the cursor, and
-/// up to [`SCROLL_MARGIN`] chars after it, stay on screen.
-///
-/// Worked out fresh each frame from the cursor alone: the row starts at the
-/// first char until the cursor nears the right edge, then the cursor rides
-/// `SCROLL_MARGIN` chars in from it. Counts what [`clip_line`] draws: a `◂`
-/// cell once anything is hidden on the left, a `▸` cell while anything past
-/// the margin is hidden on the right.
-fn single_line_skip(text: &str, cursor: usize, width: usize) -> usize {
-    let chars: Vec<char> = text.chars().collect();
-    let cursor = cursor.min(chars.len());
-    let end = (cursor + SCROLL_MARGIN).min(chars.len());
-    let right_marker = usize::from(end < chars.len());
-    // A cursor past the last char needs a cell of its own.
-    let after_end = usize::from(cursor == chars.len());
-    let mut needed: usize = chars[..end].iter().map(|&c| char_cells(c)).sum::<usize>() + after_end;
-    let mut skip = 0;
-    while skip < cursor {
-        let left_marker = usize::from(skip > 0);
-        if needed + left_marker + right_marker <= width {
-            break;
-        }
-        needed -= char_cells(chars[skip]);
-        skip += 1;
-    }
-    skip
-}
-
-/// One row of editable text cut to `width` cells, starting `skip` chars in.
-///
-/// `◂` takes the first cell when text is hidden on the left and `▸` the last
-/// cell when text is hidden on the right. Also returns the cell, counted from
-/// the row's left edge, where the char at `cursor` sits (or where the next
-/// char goes when `cursor` is the end of the line).
-fn clip_line(
-    text: &str,
-    skip: usize,
-    width: usize,
-    cursor: usize,
-    style: Style,
-) -> (Vec<Span<'static>>, usize) {
-    let chars: Vec<char> = text.chars().collect();
-    let skip = skip.min(chars.len());
-    let left_clipped = skip > 0 && !chars.is_empty();
-    let room = width.saturating_sub(usize::from(left_clipped));
-    let rest: usize = chars[skip..].iter().map(|&c| char_cells(c)).sum();
-    let right_clipped = rest > room;
-    let content_width = room.saturating_sub(usize::from(right_clipped));
-
-    let mut used = 0;
-    let mut slice = String::new();
-    for &c in &chars[skip..] {
-        let w = char_cells(c);
-        if used + w > content_width {
-            break;
-        }
-        used += w;
-        slice.push(c);
-    }
-
-    let mut spans = Vec::new();
-    if left_clipped {
-        spans.push(Span::styled("◂", Style::default().fg(Color::DarkGray)));
-    }
-    spans.push(Span::styled(slice, style));
-    if right_clipped {
-        spans.push(Span::styled("▸", Style::default().fg(Color::DarkGray)));
-    }
-
-    let cursor = cursor.clamp(skip, chars.len());
-    let cell = usize::from(left_clipped)
-        + chars[skip..cursor]
-            .iter()
-            .map(|&c| char_cells(c))
-            .sum::<usize>();
-    (spans, cell)
 }
 
 /// Render a scrollable options list for select fields.

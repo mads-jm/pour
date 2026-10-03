@@ -183,7 +183,7 @@ field_type = "text"
 prompt = "Bean origin"
 ```
 
-__TUI__: Inline text input with cursor. Accepts any characters. A value wider than its row scrolls sideways within that row, keeping the cursor and the two characters after it on screen; `◂` and `▸` mark text hidden to the left and right. The cursor position counts display width, so CJK and emoji line up, and `number` and `counter` inputs behave the same way.
+__TUI__: Inline text input with cursor. Accepts any characters. A value wider than its row scrolls sideways within that row, keeping the cursor and the two characters after it on screen; `◂` and `▸` mark text hidden to the left and right. The cursor position counts display width per glyph as the terminal draws it, so CJK and emoji line up, including emoji built from several characters such as `❤️` and `👍🏽`. `number` and `counter` inputs behave the same way.
 __Output__: Value written as-is to frontmatter (or body if overridden). If `wikilink = true`, the value is wrapped in `[[...]]` before output.
 
 ## `textarea`
