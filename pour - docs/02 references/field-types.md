@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Friday, October 2nd 2026, 11:30:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # Field Types Reference
@@ -72,7 +72,7 @@ match_on = [{ field = "roaster", mode = "wikilink" }]
 show     = ["dose_g", { field = "water_temp_c", agg = "mean" }]
 ```
 
-**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state. The captures come from the folder part of the module's `path` (everything before the last `/`), read as written: a strftime or `{{field}}` token there, as in `Coffee/%Y/%Y-%m-%d-{{bean}}.md`, is not expanded, so that module finds no priors. Each resolve reads at most 500 notes.
+**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state. The captures come from the folder part of the module's `path` (everything before the last `/`), read as written: a strftime or `{{field}}` token there, as in `Coffee/%Y/%Y-%m-%d-{{bean}}.md`, is not expanded, so that module finds no priors. Each resolve reads at most 500 notes. Cells come from each note's frontmatter, so a module whose fields all land in the body, such as an `append` module on daily notes, gets a column per note with blank rows and only the age footer.
 
 ## Field Config Keys
 

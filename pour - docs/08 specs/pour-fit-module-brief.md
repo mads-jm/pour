@@ -5,12 +5,12 @@ tags:
   - module
 date created: Saturday, April 4th 2026, 7:29:13 am
 status: draft — not started
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # `pour fit` — Workout Module Design Brief
 
-> __Status:__ Draft, not built as of 2026-10-02. No `fit` module exists in `resources/mads_config.toml` or `resources/default_config.toml`. The seed config has a smaller `workout` module instead: `append` mode into the daily note, with `type`, `duration` and `notes` fields. Open question 2 still holds, since `composite_array` sub-fields are limited to `text`, `number` and `static_select`. For open question 3, the [[pour-review-priors]] panel (L1 shipped for coffee) is the closest thing Pour has to a "previous session" readout.
+> __Status:__ Draft, not built as of 2026-10-02. No `fit` module exists in `resources/mads_config.toml` or `resources/default_config.toml`. The seed config has a smaller `workout` module instead: `append` mode into the daily note, with `type`, `duration` and `notes` fields. Open question 2 still holds, since `composite_array` sub-fields are limited to `text`, `number` and `static_select`. For open question 3, the [[pour-review-priors]] panel (L1.5 in the TUI, unreleased) is the closest thing Pour has to a "previous session" readout.
 
 ## Intent
 

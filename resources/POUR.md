@@ -164,17 +164,18 @@ An unknown module, unknown field, unsupported field type, bad token, or extra ar
 
 ## Priors panel
 
-`[modules.<n>.priors]` configures a read-only panel in the TUI form that lists similar past captures from the module's folder. It never writes and never blocks submit. Every key is optional; without the block pour matches on the first wikilink or select field, ranks by recency, shows up to four number/select fields, and lists 5 rows.
+`[modules.<n>.priors]` configures a read-only panel in the TUI form that shows the most similar past captures from the module's folder, one column per capture, each row on the same line as its form field. A cell equal to the form's current value shows `·`. It never writes and never blocks submit. Fields that another field's `show_when` names act as a hard filter: a capture whose value differs from a filled one is dropped. The rest score one point per agreeing `match_on` field; `rank_by` and then recency break ties. Every key is optional; without the block pour matches on every wikilink or select field, ranks ties by recency, shows every field except textarea and composite_array, and shows 3 columns.
 
 ```toml
 [modules.coffee.priors]
-match_on = ["bean", "roaster", "method"]   # most specific first; the front key drops when nothing matches
-rank_by  = "rating desc"                   # "<field> desc|asc", "recent", or "none"
-show     = ["dose_g", { field = "time_s", agg = "mean" }]   # agg: median (default), mean, max, min, latest
-limit    = 5                               # must be > 0
+match_on = ["bean", "brewer", "grinder"]   # similarity, most important first; earlier fields break equal scores
+rank_by  = "rating desc"                   # tie-breaker: "<field> desc|asc", "recent", or "none"
+show     = ["dose_g", { field = "time_s", agg = "mean" }]   # agg (median default, mean, max, min, latest) only feeds the summary column
+limit    = 3                               # one column per capture; must be > 0
+summary  = true                            # optional aggregate column; default false
 ```
 
-All referenced fields must exist on the module. `match_on` object form takes `mode = "equality"` or `"wikilink"`; `"overlap"`, `"window"`, and `rank_by` `max`/`min` are reserved and rejected at load. `Ctrl+R` collapses the panel. Captures are read from the folder part of `path` (before the last `/`) as written, so a token there, as in `Coffee/%Y/...`, is not expanded and the panel finds nothing.
+All referenced fields must exist on the module. `match_on` object form takes `mode = "equality"` or `"wikilink"`; `"overlap"`, `"window"`, and `rank_by` `max`/`min` are reserved and rejected at load. `Ctrl+R` collapses the panel to one line, and terminals narrower than 74 columns get that line instead of columns. Captures are read from the folder part of `path` (before the last `/`) as written, so a token there, as in `Coffee/%Y/...`, is not expanded and the panel finds nothing. Cells come from frontmatter, so fields written to the note body show blank.
 
 ## Templates (inline creation)
 

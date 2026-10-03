@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -41,7 +41,7 @@ Bypasses the dashboard and launches directly into a specific data-entry view.
 - `pour me` — Opens the journal appending view.
 - `pour coffee` — Opens the coffee logging form.
 
-*[Deviation: not in the original vision. The capture form shows a read-only priors panel of earlier captures from the same module, to the right of the form or stacked below it on a narrow terminal. It resolves when the form opens and again when a match field changes, never on submit. Ctrl+R collapses it. A module with no `[modules.<name>.priors]` block gets a zero-config panel. TUI only. See [[pour-review-priors]].]*
+*[Deviation: not in the original vision. The capture form shows a read-only priors panel to its right, one column per similar earlier capture from the same module, each row on the same line as its form field. A narrower terminal drops columns, and below 74 columns the panel shrinks to a one-line hint. It resolves when the form opens and again when a match or `show_when` gate field changes, never on submit. Ctrl+R collapses it. A module with no `[modules.<name>.priors]` block gets a zero-config panel. TUI only. See [[pour-review-priors]].]*
 
 ### __2.3 Post-Execution Summary__
 

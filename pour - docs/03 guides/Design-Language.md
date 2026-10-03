@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Friday, October 2nd 2026, 11:30:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # Pour Design Language
@@ -65,15 +65,19 @@ Text that doesn't fit stays in its row. A long single-line value scrolls sideway
 ### Priors Panel
 
 ```ts
-┌ bean · method · rating desc ─┐
-│dose_g  time_s                │
-│18  165                       │
-│repeat: 18 · 165              │
-│3 of 12 captures              │
-└──────────────────────────────┘
+┌ similar · rating desc ─────────┐
+│  4.5       4         3.5       │
+│  ·         Benj Paz  ·         │
+│▸ 6.5       7         6         │
+│  ·         16        ·         │
+│  270       250       280       │
+│  3d        1w        2w        │
+└────────────────────────────────┘
 ```
 
-Read-only reference, so it stays quiet. Dark gray border and column names, white rows, and dark gray rows for captures that lack the `rank_by` value. The `repeat:` line is cyan. The title names the fields that matched, then the ranking when every row has a value for it. Collapsed with `Ctrl+R`, it shrinks to one cyan line: `▸ repeat: 18 · 165 — ^R for rows`. With no match it draws nothing, not an empty box.
+Read-only reference, so it stays quiet. One column per prior capture, and each row sits on the same line as its form field, so the form's labels name the rows. Dark gray border. Cyan `rank_by` values head the columns and dark gray ages sit at the foot. A value that matches the form is a dark gray `·`. A value that differs is yellow, because the differences are what you came to see. A capture without the `rank_by` value keeps its differences dark gray. The active field's row gets a dark gray band and a cyan `▸`. The title reads `similar`, or `no close match`, plus the `rank_by` label when it fits. It never says "best". With `summary = true`, a last cyan column summarizes each number row under an italic label such as `median`.
+
+When there's no room, or after `Ctrl+R`, the panel becomes one cyan line on the bottom row: `▸ priors: similar · rating desc · 3 priors — ^R to expand`. With nothing to show it reads `▸ priors: no prior captures match this form`, not an empty box.
 
 ### Summary
 

@@ -178,7 +178,7 @@ Each of these is optional and documented in the [field and config reference](pou
 - **Paths that fill themselves in.** strftime tokens, `{{field_name}}`, and `{{slug}}` in the filename: `inbox/%Y%m%d-%H%M%S{{slug}}.md`.
 - **Fixed frontmatter per module.** `tags`, `cssclasses`, a custom `date` format.
 - **Captures outside the vault.** A module can set its own `base_path` and write to a notes repo or anywhere else on disk.
-- **Your past captures beside the form.** The TUI shows a read-only panel of earlier captures from the same module, matched on fields like bean and method, with a median line for the numbers. `[modules.<name>.priors]` decides what counts as similar. Without the block, pour matches on the first select or `wikilink` field. `Ctrl+R` collapses the panel.
+- **Your past captures beside the form.** The TUI shows the earlier captures from the same module that look most like the one you're filling in, three by default, one column each, with every row beside its form field. A `·` means the capture had what the form holds now, so the differences stand out. `[modules.<name>.priors]` decides what counts as similar. Without the block, pour scores on every select and `wikilink` field. `Ctrl+R` collapses the panel.
 - **Post-write hooks.** `post_write_shell` runs a command after a save, for example to commit and push a note.
 - **A completion sound.** `[sound] on_save = true` plays one short tone when a capture saves in the TUI. It's off by default, and when it's off pour never opens an audio device.
 

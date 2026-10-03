@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, April 7th 2026, 3:14:07 am
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # Specs
@@ -16,7 +16,7 @@ Feature and component specifications.
 - [[pour-append-target-recovery]] — Append-target recovery when the daily note is missing (`create_note`, dashboard `⚠ missing`, confirm-on-submit). Not started.
 - [[pour-preset-hierarchy]] — Hierarchical drilldown preset picker: `preset_axes` config, data model, UX, overwrite confirm, validation. TUI shipped in v0.3.0; PWA drilldown not started.
 - [[pour-lookup-fields]] — Computed/lookup field type that resolves frontmatter from a linked vault note (e.g. `days_off_roast` from bean's `roast_date`). Draft, not started.
-- [[pour-review-priors]] — Inline "Priors" review panel: config-declared match/rank/summary of prior captures at capture time. L1 (coffee, TUI) shipped, unreleased; L1.5 reference columns specced, not built.
+- [[pour-review-priors]] — Inline "Priors" review panel: config-declared match/rank/summary of prior captures at capture time. L1 and L1.5 reference columns shipped (TUI, unreleased); L2/L3 not started.
 - [[pour-pwa-contract-typing]] — TypeScript contract types for the PWA via JSDoc + OpenAPI codegen. Not started.
 - [[pour-pwa-roadmap]] — PWA companion roadmap and phase plan. Phases 1, 1.5 and 2 shipped in v0.3.0; Phase 3 and the utoipa migration not started.
 - [[pour-phase2-task-backlog]] — Task cards for PWA Phase 2 (offline queue, service worker, sub-form, preset mutation, history heatmap). Complete, shipped in v0.3.0. Six acceptance criteria deviate, annotated inline.

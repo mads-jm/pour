@@ -7,7 +7,7 @@ aliases:
   - review panel spec
 date created: Monday, July 13th 2026, 2:05:00 pm
 status: partial — L1 and L1.5 shipped (TUI, unreleased); L2/L3 not started
-date modified: Friday, October 2nd 2026, 11:30:00 pm
+date modified: Saturday, October 3rd 2026, 12:30:00 am
 ---
 
 # Pour Review / Priors Panel
@@ -160,7 +160,7 @@ Two-tier, matching the existing transport fallback:
    ```
 2. **API down** — filesystem scan of the module's `source`/output directory: `list_directory_entries` → `read_file` with `Accept: application/vnd.olrapi.note+json` semantics (frontmatter parse) → filter/rank in-process. Bounded: stop once `limit` matches are found per tier.
 
-*[Deviation: L1 never calls `POST /search/`. Both paths list the module folder (`list_directory_entries`), then read every note in it: the API path as `note+json`, the FS path from disk. The resolver filters in-process (see Resolved #1). The fetch stops at 500 notes, not at `limit` matches per tier. The folder is the module `path` up to its last `/`, taken literally, so a strftime or `{{field}}` token in the folder part, like the default config's `Coffee/%Y/`, points at a folder that doesn't exist and the panel stays empty.]*
+*[Deviation: neither L1 nor L1.5 calls `POST /search/`. Both paths list the module folder (`list_directory_entries`), then read every note in it: the API path as `note+json`, the FS path from disk. The resolver filters in-process (see Resolved #1). The fetch stops at 500 notes, not at `limit` matches per tier. The folder is the module `path` up to its last `/`, taken literally, so a strftime or `{{field}}` token in the folder part, like the default config's `Coffee/%Y/`, points at a folder that doesn't exist and the panel shows its empty state.]*
 
 **Why not the in-memory history log?** `HistoryEntry` (`src/data/history.rs`) stores only `id`, `module_key`, `timestamp`, `vault_path`, `first_field` — **not** field values. The heatmap's "pure in-memory view" trick does not apply; the corpus must be read from the notes. (Enriching `history.jsonl` with field values is a *possible* future fast-path — see §11 — but deliberately out of L1 to avoid a log-schema change.)
 
