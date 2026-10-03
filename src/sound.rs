@@ -10,20 +10,31 @@
 //!
 //! # Rules this module keeps
 //!
-//! - **Never blocks the TUI.** [`DevicePlayer`] opens the device, plays, and
-//!   waits out the tone on its own thread. The summary screen renders and takes
-//!   keys while the tone is still sounding. Quitting mid-tone cuts it off,
-//!   which is accepted.
+//! - **Never blocks the TUI.** [`DevicePlayer`] hands each tone to one
+//!   long-lived audio thread, which opens the device, plays, and waits out the
+//!   tone. The summary screen renders and takes keys while the tone is still
+//!   sounding. Quitting mid-tone cuts it off, which is accepted.
+//! - **One audio thread per process.** Started on the first tone, then kept
+//!   until the process exits. On Windows, cpal caches its device enumerator
+//!   process-wide inside the COM apartment of whichever thread asked first;
+//!   if that thread exits, the next tone reads a dead pointer and the process
+//!   dies with an access violation (cpal#1302). The same thread also
+//!   serializes tones: a save during a tone queues behind it instead of
+//!   opening a second stream.
 //! - **Never writes to the terminal.** The TUI owns a raw-mode terminal (see
 //!   `hooks::run` for the same rule applied to child processes). A failure is
 //!   a one-line message on the [`Chime`] channel, which the event loop turns
-//!   into a status toast. On ALSA, the library's own stderr diagnostics are
-//!   routed into a buffer on both threads that call into it.
+//!   into a status toast. On Linux, alsa-lib's own stderr diagnostics go to a
+//!   per-thread buffer instead. That covers alsa-lib's messages on pour's
+//!   audio thread, where cpal opens the PCM. On cpal's `cpal_alsa_out` thread
+//!   it covers only what happens from the first data callback onward. Plugins
+//!   that log through their own logger (PipeWire's `pw_log`) bypass the
+//!   handler entirely and can reach stderr from either thread.
 //! - **Never changes the capture.** The note is already written when the tone
 //!   starts, and nothing here reports back into the summary.
 
-use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SendError, Sender};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 /// How long the synthesized tone lasts, attack to silence.
@@ -94,6 +105,8 @@ pub struct Chime {
     player: Arc<dyn Player>,
     failures_tx: Sender<String>,
     failures_rx: Receiver<String>,
+    /// Whether [`Chime::take_failure`] has already handed out a failure.
+    reported: bool,
 }
 
 impl Chime {
@@ -104,6 +117,7 @@ impl Chime {
             player,
             failures_tx,
             failures_rx,
+            reported: false,
         }
     }
 
@@ -118,38 +132,118 @@ impl Chime {
         self.player.start(self.failures_tx.clone());
     }
 
-    /// The oldest playback failure not yet collected, if any.
-    pub fn take_failure(&self) -> Option<String> {
-        self.failures_rx.try_recv().ok()
+    /// The first playback failure this chime has seen, handed out once.
+    ///
+    /// After that, every later failure is drained and dropped, so a session
+    /// raises at most one sound toast: a machine with no device (an SSH
+    /// session, say) fails the same way on every save, and the repeat says
+    /// nothing new.
+    pub fn take_failure(&mut self) -> Option<String> {
+        if self.reported {
+            while self.failures_rx.try_recv().is_ok() {}
+            return None;
+        }
+        let failure = self.failures_rx.try_recv().ok();
+        self.reported = failure.is_some();
+        failure
     }
 }
 
 /// Plays the tone on the system's default output device through `cpal`.
+///
+/// Every `DevicePlayer` shares one process-wide [`SoundThread`], because the
+/// state that thread protects (cpal's cached WASAPI enumerator) is
+/// process-wide too. A second `DevicePlayer` must not get a second thread.
 pub struct DevicePlayer;
+
+/// The audio thread behind every [`DevicePlayer`]. Never dropped, so once its
+/// thread starts it runs until the process exits.
+static DEVICE_THREAD: LazyLock<SoundThread> =
+    LazyLock::new(|| SoundThread::new(play_on_default_device));
 
 impl Player for DevicePlayer {
     fn start(&self, failures: Sender<String>) {
-        let from_thread = failures.clone();
+        DEVICE_THREAD.start(failures);
+    }
+}
+
+/// A [`Player`] that runs every tone on one thread of its own, one at a time.
+///
+/// The thread is spawned by the first [`Player::start`], not by
+/// [`SoundThread::new`], and then waits for requests until the `SoundThread`
+/// is dropped. Each `start` queues one call to `play`; calls run in order,
+/// each after the previous one returns, and none is skipped.
+///
+/// If the thread dies (a panic inside `play`), later starts report
+/// `sound thread stopped` rather than spawning a replacement. On Windows a
+/// replacement is exactly what cpal#1302 crashes on.
+pub struct SoundThread {
+    play: Arc<dyn Fn() -> Result<(), String> + Send + Sync>,
+    /// Request queue into the thread; `None` until the first `start`. Each
+    /// request is the channel that request's failure goes back on.
+    queue: Mutex<Option<Sender<Sender<String>>>>,
+}
+
+impl SoundThread {
+    /// A player that runs `play` once per tone on its own thread. Spawns
+    /// nothing until the first `start`.
+    pub fn new(play: impl Fn() -> Result<(), String> + Send + Sync + 'static) -> Self {
+        SoundThread {
+            play: Arc::new(play),
+            queue: Mutex::new(None),
+        }
+    }
+
+    fn spawn(&self) -> std::io::Result<Sender<Sender<String>>> {
+        let (tx, rx) = mpsc::channel::<Sender<String>>();
+        let play = Arc::clone(&self.play);
         // `Builder::spawn`, not `thread::spawn`: the latter panics when the OS
         // refuses a thread, and a panic here would tear down the TUI.
-        let spawned = std::thread::Builder::new()
+        std::thread::Builder::new()
             .name("pour-sound".to_string())
             .spawn(move || {
-                if let Err(e) = play_on_default_device() {
-                    let _ = from_thread.send(e);
+                for failures in rx {
+                    if let Err(e) = play() {
+                        let _ = failures.send(e);
+                    }
                 }
-            });
-        if let Err(e) = spawned {
-            let _ = failures.send(format!("could not start sound thread: {e}"));
+            })?;
+        Ok(tx)
+    }
+}
+
+impl Player for SoundThread {
+    fn start(&self, failures: Sender<String>) {
+        // Nothing panics while holding this lock, but if something ever did,
+        // the `Option` inside is still coherent; don't turn that into a
+        // second panic on the TUI thread.
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.is_none() {
+            match self.spawn() {
+                Ok(tx) => *queue = Some(tx),
+                Err(e) => {
+                    // Left `None`, so the next tone tries again.
+                    let _ = failures.send(format!("could not start sound thread: {e}"));
+                    return;
+                }
+            }
+        }
+        if let Some(tx) = queue.as_ref()
+            && let Err(SendError(failures)) = tx.send(failures)
+        {
+            let _ = failures.send("sound thread stopped".to_string());
         }
     }
 }
 
 /// Open the default output device, play the tone, and hold the stream open
 /// until it has drained. Blocks the calling thread for the length of the tone.
+/// Runs only on [`DEVICE_THREAD`].
 fn play_on_default_device() -> Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+    // Once per tone, not once per thread: a fresh install also drops the
+    // previous buffer, so diagnostics don't pile up over a long session.
     quiet_alsa_on_this_thread();
 
     let host = cpal::default_host();
@@ -168,6 +262,12 @@ fn play_on_default_device() -> Result<(), String> {
         cpal::SampleFormat::I16 => build_stream::<i16>(&device, config, samples, channels),
         cpal::SampleFormat::U16 => build_stream::<u16>(&device, config, samples, channels),
         cpal::SampleFormat::I32 => build_stream::<i32>(&device, config, samples, channels),
+        // cpal's ALSA host ranks these four above I16, so a device that
+        // offers any of them gets it as its default.
+        cpal::SampleFormat::I24 => build_stream::<cpal::I24>(&device, config, samples, channels),
+        cpal::SampleFormat::U24 => build_stream::<cpal::U24>(&device, config, samples, channels),
+        cpal::SampleFormat::U32 => build_stream::<u32>(&device, config, samples, channels),
+        cpal::SampleFormat::F64 => build_stream::<f64>(&device, config, samples, channels),
         other => return Err(format!("unsupported audio sample format {other}")),
     }
     .map_err(|e| format!("could not open audio stream: {e}"))?;
@@ -199,7 +299,8 @@ where
         move |out: &mut [T], _| {
             // The callback runs on cpal's own audio thread, which alsa-lib
             // will print from if it fails there. Install the quiet handler on
-            // first use.
+            // first use. Anything alsa-lib prints on this thread before the
+            // first callback is not covered.
             if !quieted {
                 quiet_alsa_on_this_thread();
                 quieted = true;
@@ -222,10 +323,13 @@ where
 ///
 /// alsa-lib prints to stderr by default (`ALSA lib confmisc.c: cannot find
 /// card '0'` and the like on a machine with no sound card), and stderr is the
-/// terminal the TUI is drawing on. The handler is thread-local, which is why it
-/// is installed both on the playback thread (device open and close) and inside
-/// the stream callback (cpal's audio thread). Failing to install it is not
-/// worth reporting; the tone still plays.
+/// terminal the TUI is drawing on. The handler is thread-local. It is installed
+/// on pour's audio thread before each tone, which covers every alsa-lib call
+/// made on that thread. It is also installed inside the stream callback, so on
+/// cpal's `cpal_alsa_out` thread it covers only the first callback onward,
+/// not the alsa-lib calls cpal makes on that thread before it. It never covers
+/// a plugin that logs through its own logger, such as PipeWire's `pw_log`.
+/// Failing to install it is not worth reporting; the tone still plays.
 #[cfg(target_os = "linux")]
 fn quiet_alsa_on_this_thread() {
     let _ = alsa::Output::local_error_handler();

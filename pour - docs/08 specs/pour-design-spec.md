@@ -193,7 +193,7 @@ Files annotated as oversized at v1.0.0 (`src/app.rs`, `src/config.rs`, `src/tui/
 - __Time:__ [[chrono]] (for file formatting and timestamps)
 - __URL encoding:__ `percent-encoding` — encodes vault paths containing spaces in REST API request URLs
 - __Shell open:__ `open` — cross-platform crate for opening a file or URL in the system default handler (used for "Open in Obsidian" via `obsidian://` URI)
-- __Audio:__ `cpal`, which plays the opt-in completion tone. On Linux it links ALSA (`libasound.so.2`), and the binary needs that library to start.
+- __Audio:__ `cpal`, which plays the opt-in completion tone. On Linux it links ALSA (`libasound.so.2`), and the binary needs that library to start. On macOS it needs 14.2 or later, and the release binary declares that floor.
 
 ## __6. Scope — v0.1__
 

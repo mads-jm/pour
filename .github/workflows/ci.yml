@@ -116,6 +116,28 @@ jobs:
       - name: File size budget
         run: bash scripts/check-file-size.sh
 
+  # ─── macOS build (reports, does not gate) ──────────────────────────────────
+  # Compile check for the `aarch64-apple-darwin` release binary, with the same
+  # deployment target `release.yml` uses. Builds only; no tests or clippy.
+  #
+  # Deliberately left OUT of `all`'s `needs`: a macOS compile break shows this
+  # job red on the PR without blocking merge. Do not add it to `all` by reflex;
+  # making it a gate is a decision, not a cleanup.
+  build-macos:
+    name: build (aarch64-apple-darwin)
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.2"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: build-macos
+      - run: cargo build --locked --target aarch64-apple-darwin
+
   # ─── Summary gate ──────────────────────────────────────────────────────────
   # Single required check for branch protection. GitHub's PR UI lets you
   # require `ci / all` as the only status check instead of pinning every

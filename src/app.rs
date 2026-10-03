@@ -500,13 +500,19 @@ impl App {
     /// Clear `status_message` if it has expired, then raise a toast for a
     /// completion sound that failed to play, if one has. Called each
     /// event-loop tick.
+    ///
+    /// The sound toast never replaces another toast: while one is up, the
+    /// failure stays queued on the chime and shows once the slot is free.
+    /// [`Chime::take_failure`] limits it to one per session.
     pub fn tick_status(&mut self) {
         if let Some(ref msg) = self.status_message
             && Instant::now() >= msg.expires_at
         {
             self.status_message = None;
         }
-        if let Some(failure) = self.chime.take_failure() {
+        if self.status_message.is_none()
+            && let Some(failure) = self.chime.take_failure()
+        {
             self.set_status_warning(format!("sound: {failure}"));
         }
     }

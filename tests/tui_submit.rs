@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
+use std::time::Instant;
 
 use pour::app::{App, Screen};
 use pour::config::Config;
@@ -168,10 +169,12 @@ async fn no_sound_table_never_starts_the_player() {
     seed_today(&f.dir);
 
     submit(&mut f, "note", &[("title", "a")]).await;
+    assert!(saved(&f.app), "the create capture must succeed");
     submit(&mut f, "log", &[("body", "b")]).await;
+    assert!(saved(&f.app), "the append capture must succeed");
     submit(&mut f, "habit", &[("meditated", "true")]).await;
+    assert!(saved(&f.app), "the update capture must succeed");
 
-    assert!(saved(&f.app), "the captures themselves must succeed");
     assert_eq!(player.starts(), 0);
 }
 
@@ -295,4 +298,73 @@ async fn playback_failure_surfaces_as_a_status_toast() {
     let toast = f.app.status_message.as_ref().expect("toast raised");
     assert_eq!(toast.text, "sound: no audio output device");
     assert!(!toast.text.contains('\n'), "toast is one line");
+}
+
+/// Expire whatever toast is up, as if its display time had run out.
+fn expire_toast(app: &mut App) {
+    let toast = app.status_message.as_mut().expect("a toast to expire");
+    toast.expires_at = Instant::now();
+}
+
+#[tokio::test]
+async fn sound_failure_waits_for_a_live_toast() {
+    let mut f = fixture("[sound]\non_save = true", Arc::new(FailingPlayer));
+    // Point the cache under a regular file, so the submit's own
+    // `cache.save()` fails and raises its warning in the same submit that
+    // plays the tone.
+    let blocker = f.dir.path().join("blocker");
+    std::fs::write(&blocker, "").unwrap();
+    f.cache = Cache::load_from(blocker.join("cache.json"));
+
+    submit(&mut f, "note", &[("title", "a")]).await;
+    assert!(saved(&f.app), "the capture itself must succeed");
+    let first = f.app.status_message.as_ref().expect("cache toast raised");
+    assert!(
+        first.text.starts_with("cache.save failed"),
+        "{}",
+        first.text
+    );
+
+    // The sound failure is already queued. The cache toast must survive it.
+    f.app.tick_status();
+    let still = f.app.status_message.as_ref().expect("cache toast kept");
+    assert!(
+        still.text.starts_with("cache.save failed"),
+        "{}",
+        still.text
+    );
+
+    // Once the cache toast clears, the sound toast takes the slot.
+    expire_toast(&mut f.app);
+    f.app.tick_status();
+    let sound = f.app.status_message.as_ref().expect("sound toast raised");
+    assert_eq!(sound.text, "sound: no audio output device");
+}
+
+#[tokio::test]
+async fn sound_failure_toasts_once_per_session() {
+    let mut f = fixture("[sound]\non_save = true", Arc::new(FailingPlayer));
+    seed_today(&f.dir);
+
+    submit(&mut f, "note", &[("title", "a")]).await;
+    f.app.tick_status();
+    assert_eq!(
+        f.app.status_message.as_ref().map(|t| t.text.as_str()),
+        Some("sound: no audio output device")
+    );
+    expire_toast(&mut f.app);
+
+    // Two more saves, two more failures: neither raises a toast.
+    submit(&mut f, "log", &[("body", "b")]).await;
+    assert!(saved(&f.app));
+    f.app.tick_status();
+    submit(&mut f, "habit", &[("meditated", "true")]).await;
+    assert!(saved(&f.app));
+    f.app.tick_status();
+
+    assert!(
+        f.app.status_message.is_none(),
+        "a later failure raised a toast: {:?}",
+        f.app.status_message
+    );
 }

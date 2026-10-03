@@ -668,7 +668,7 @@ title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |
 | `[vault].date_format` | string | strftime format string used to expand the `{{date}}` placeholder in module `path` and `append_template` values. Defaults to `"%Y%m%d"` when absent. Example: `"%Y-%m-%d"` produces `2026-04-21`. |
 | `module_order` | string[] | Optional dashboard display ordering. Modules not listed appear alphabetically after listed ones |
-| `[sound].on_save` | boolean | Play one short synthesized tone when a TUI capture saves (the summary reads `▽ saved`). Default `false`, and when off pour opens no audio device. Never plays on `! error`, for one-shot capture, or for `pour serve`. If playback fails (no output device, an SSH session), a one-line status toast says so and the capture is unaffected. |
+| `[sound].on_save` | boolean | Play one short synthesized tone when a TUI capture saves (the summary reads `▽ saved`). Default `false`, and when off pour opens no audio device. Never plays on `! error`, for one-shot capture, or for `pour serve`. Saves during a tone queue and play in turn. If playback fails (no output device, an SSH session), a one-line status toast says so and the capture is unaffected. That toast shows at most once per session and never replaces another toast. |
 
 ### `[sound]` Example
 
