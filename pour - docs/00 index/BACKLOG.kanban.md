@@ -12,11 +12,11 @@ tags:
 
 # Inbox
 
-- [ ] Select dropdown and composite editor open one row too high below a preset description or callout textarea — `render_select_options` and `render_composite_editor` still use the field index as the screen row. An `allow_create` select covers its own search field.
-- [ ] Long-form editor cycle: sticky viewport on both axes — the textarea popout and single-line rows recompute scroll from the cursor each frame, so Up/Left slide the text under a still cursor instead of moving the cursor first.
-- [ ] Form text editing moves by char, not by glyph — Left, Right and Backspace step through a multi-char glyph one char at a time, so a press can do nothing visible and Backspace after `❤️` strips only the variation selector.
-- [ ] Pasted control chars go straight into form values — `\t`, `\r`, and `\n` in a single-line field, since paste arrives as key presses and `handle_char` does no filtering. Some terminals send pasted line breaks as `\r`.
-- [ ] Configure screen counts chars as cells — `tui/configure/render.rs` cursor placement uses `cursor_position - scroll_offset` as a column, so CJK and emoji in a setting value drift. Reuse the form's per-glyph cell count.
+- [ ] Select dropdown and composite editor open one row too high below a preset description or callout textarea — `render_select_options` and `render_composite_editor` still use the field index as the screen row. An `allow_create` select covers its own search field. [#22](https://github.com/mads-jm/pour/issues/22)
+- [ ] Long-form editor cycle: sticky viewport on both axes — the textarea popout and single-line rows recompute scroll from the cursor each frame, so Up/Left slide the text under a still cursor instead of moving the cursor first. [#21](https://github.com/mads-jm/pour/issues/21)
+- [ ] Form text editing moves by char, not by glyph — Left, Right and Backspace step through a multi-char glyph one char at a time, so a press can do nothing visible and Backspace after `❤️` strips only the variation selector. [#23](https://github.com/mads-jm/pour/issues/23)
+- [ ] Pasted control chars go straight into form values — `\t`, `\r`, and `\n` in a single-line field, since paste arrives as key presses and `handle_char` does no filtering. Some terminals send pasted line breaks as `\r`. [#24](https://github.com/mads-jm/pour/issues/24)
+- [ ] Configure screen counts chars as cells — `tui/configure/render.rs` cursor placement uses `cursor_position - scroll_offset` as a column, so CJK and emoji in a setting value drift. Reuse the form's per-glyph cell count. [#25](https://github.com/mads-jm/pour/issues/25)
 - [ ] Preset save/delete only on preset/submit screen
 - [ ] Review text entry across mads.modules (textarea/popover for notes)
 - [ ] Handle missing file in append mode (template fallback)
