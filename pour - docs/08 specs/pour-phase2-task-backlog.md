@@ -5,7 +5,7 @@ status: complete — all streams A/B/C/D done 2026-04-27, shipped in v0.3.0; dev
 aliases:
   - phase 2 backlog
   - pwa phase 2 tasks
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:12 am
 ---
 
 # Phase 2 Task Backlog
@@ -87,7 +87,7 @@ Cross-stream: TASK-2.1.x assumes B's `auto_create_inputs` shape is settled (so t
 
 ## Task Cards
 
-### TASK-2.0.1 — Flag PWA Test Infra Gap (no implementation)
+### TASK-2.0.1 — Flag PWA Test Infra Gap (No Implementation)
 
 __Stream:__ meta (no stream — produces a doc note only)
 __Depends on:__ none
@@ -213,7 +213,7 @@ __Acceptance criteria:__
 __Out of scope:__ Cache logic (TASK-2.2.2), update flow (TASK-2.2.3).
 __Risk / inspector hot-spots:__ scope. The SW must be served at `/sw.js`, not `/static/sw.js`, or it cannot intercept root-level navigation. Existing `rust-embed` config may need adjustment.
 
-#### TASK-2.2.2 — App-shell Cache (network-first /api/*, Cache-first shell)
+#### TASK-2.2.2 — App-shell Cache (Network-first /api/*, Cache-first Shell)
 
 __Stream:__ A
 __Depends on:__ TASK-2.2.1
@@ -331,7 +331,7 @@ __Acceptance criteria:__
 __Out of scope:__ Discard / edit UX (TASK-2.1.5).
 __Risk / inspector hot-spots:__ the badge competing for header real estate with the existing status pill on a small viewport.
 
-#### TASK-2.1.5 — Conflict UX: Discard, Retry, and "edit and resubmit"
+#### TASK-2.1.5 — Conflict UX: Discard, Retry, and "Edit and Resubmit"
 
 __Stream:__ A
 __Depends on:__ TASK-2.1.4
@@ -355,7 +355,7 @@ __Risk / inspector hot-spots:__
 
 The presets read path (Phase 1.5 chip row) and the server-side mutation endpoints (`PUT /api/v1/presets/{module}/{name}`, `DELETE /api/v1/presets/{module}/{name}`, `PUT /api/v1/presets/{module}/order`) are already shipped per contract §6.7–6.10.
 
-#### TASK-2.4.1 — "Save Current Values as preset" Affordance
+#### TASK-2.4.1 — "Save Current Values as Preset" Affordance
 
 __Stream:__ C
 __Depends on:__ none
@@ -376,7 +376,7 @@ __Risk / inspector hot-spots:__
 - Empty `description` round-tripping. If the server normalizes "" to null, the client must accept either on subsequent reads.
 - URL-encoding the name in the path. Names with spaces, unicode, or odd ASCII MUST encode correctly. The server's axum matcher already rejects `/` per §6.8.
 
-#### TASK-2.4.2 — Edit Existing Preset (long-press chip)
+#### TASK-2.4.2 — Edit Existing Preset (Long-press Chip)
 
 __Stream:__ C
 __Depends on:__ TASK-2.4.1
@@ -489,7 +489,7 @@ __Acceptance criteria:__
 __Out of scope:__ Editing the file (forever out of scope — Pour writes, doesn't edit).
 __Risk / inspector hot-spots:__ XSS via content. Even though the user trusts their own vault, a markdown file with `<script>` rendered via innerHTML would execute. Use textContent only, or render in `<pre>`. Verify no `innerHTML` accepts the content string.
 
-#### TASK-2.5.4 — Heatmap Renderer (mobile-portrait-fit)
+#### TASK-2.5.4 — Heatmap Renderer (Mobile-portrait-fit)
 
 __Stream:__ D
 __Depends on:__ TASK-2.5.1 (and TASK-2.5.5 for data shape)
@@ -508,7 +508,7 @@ __Risk / inspector hot-spots:__
 - 360 px width fit — measure on a real device, not just devtools.
 - Per memory `feedback_pour_aesthetic.md`: low-friction and high-clarity beat aesthetic when they conflict. If the GitHub-grid feel doesn't fit, prefer a cleaner mobile-native layout.
 
-#### TASK-2.5.5 — Heatmap Data Source Decision (server Aggregate Vs Client rollup)
+#### TASK-2.5.5 — Heatmap Data Source Decision (Server Aggregate Vs Client Rollup)
 
 __Stream:__ D
 __Depends on:__ none (can be done in parallel with TASK-2.5.1 — but TASK-2.5.4 depends on its outcome)
@@ -569,7 +569,7 @@ These need a documented decision before or during the relevant task; they are NO
 
 ---
 
-## Inspector Hot-spot Summary (top 3)
+## Inspector Hot-spot Summary (Top 3)
 
 1. __Idempotency-Key discipline across the offline queue.__ Same key reused on every retry of the same payload (contract §9 round 5). Rotated only on 2xx success or explicit form reset. Verified across: queue-write (TASK-2.1.1), drain (TASK-2.1.3), edit-and-resubmit (TASK-2.1.5). One leak here = duplicate writes, the entire raison d'être of idempotency defeated.
 
@@ -579,7 +579,7 @@ These need a documented decision before or during the relevant task; they are NO
 
 ---
 
-## Out of Phase 2 Scope (remind the architect)
+## Out of Phase 2 Scope (Remind the Architect)
 
 - __Capture trim from PWA__ (roadmap §3.6 / contract §15) — desktop-only, intentionally deferred.
 - __TLS__ (roadmap §4.1) — Phase 3.

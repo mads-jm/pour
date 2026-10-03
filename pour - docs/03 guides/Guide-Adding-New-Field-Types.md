@@ -4,7 +4,7 @@ tags:
   - tui
   - config
 date created: Tuesday, March 31st 2026, 10:04:48 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:17 am
 ---
 
 # Guide: Adding a New Field Type to the TUI

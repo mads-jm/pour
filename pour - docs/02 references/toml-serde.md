@@ -8,7 +8,7 @@ aliases:
   - toml
   - serde
 date created: Tuesday, March 31st 2026, 12:14:44 am
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:21 am
 ---
 
 # TOML & Serde - Config Parsing Reference
@@ -109,7 +109,7 @@ let frontmatter = format!("---\n{}---\n", yaml);
 | `serde_yaml::from_str::<T>(s)` | Deserialize YAML string |
 | `serde_yaml::Value` | Dynamic YAML value type |
 
-## Serde JSON (API communication)
+## Serde JSON (API Communication)
 
 ```rust
 use serde_json;

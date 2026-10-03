@@ -7,10 +7,10 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Saturday, October 3rd 2026, 12:30:00 am
+date modified: Saturday, October 3rd 2026, 6:47:15 am
 ---
 
-# Project Pour — Design Specification (v0.2)
+# Project Pour — Design Specification (V0.2)
 
 ## __1. Product Overview__
 

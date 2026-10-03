@@ -10,7 +10,7 @@ aliases:
   - pwa phases
 date created: Monday, April 27th 2026, 4:34:59 pm
 status: living document — Phases 1, 1.5 and 2 shipped in v0.3.0; Phase 3 and utoipa not started
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:09 am
 ---
 
 # Pour PWA Roadmap
@@ -33,7 +33,7 @@ Mutation paths (preset save/delete, autocreate sub-form, offline queue) remain P
 
 ## 2. Phase 1.5 — DONE (2026-04-26)
 
-### 2.1 Preset Selector (read-only) — DONE
+### 2.1 Preset Selector (Read-only) — DONE
 
 Saved presets render as chip row above the form fields. Tap-to-apply mirrors TUI semantics (`preset_exclude` fields untouched, missing keys reset to field defaults). Read-only — save/delete still happens via the TUI; that lands in Phase 2.3 with mutation UI.
 
@@ -72,7 +72,7 @@ UX inspector audit closed across visual identity, mobile fit, and one CRITICAL i
 - `aria-required`, `aria-describedby`, `role="alert"` on field errors, `role="status" aria-live="polite"` on toast, `:focus-visible` outlines.
 - Single `<main>` with `<section>` children (HTML spec compliance).
 
-### 2½.4 Idempotency-on-retry — CRITICAL Bug Fix (contract round 5)
+### 2½.4 Idempotency-on-retry — CRITICAL Bug Fix (Contract round 5)
 
 __Bug:__ server cached every response (including 4xx/5xx). Client-side persistent `Idempotency-Key` (added Phase 1.5++) made it strictly worse — user could not retry-after-fix on `validation_failed` because the server replayed the cached 400 for 5 minutes.
 
@@ -93,7 +93,7 @@ Tests: `submit_idempotency_400_not_cached_allows_retry_with_fix`, `submit_idempo
 - Custom logs at: startup, auth outcomes (debug/info/warn per §14 slugs), submit success/failure (module + code, NO field values), captures (debug/warn), idempotency cache (replay/in-flight/eviction with `key_short` first 8 chars)
 - §14 compliance: no tokens, no request bodies, no user-supplied content in any log line
 
-### 2½.6 Test Isolation (POUR_HOME race)
+### 2½.6 Test Isolation (POUR_HOME Race)
 
 `tests/server_submit.rs` previously used bare `unsafe { set_var(POUR_HOME, …) }` without an `ENV_LOCK`. Concurrent test functions raced — when one test's `EnvGuard` dropped mid-other-test, POUR_HOME unset and `History::load()` fell through to `~/.pour/`, polluting users' real history files with test fixture entries (`vault_path: "Coffee/note.md"`, `first_field: "Collision Bean"`, etc.).
 
@@ -101,7 +101,7 @@ Fix: added file-level `ENV_LOCK` + `EnvGuard` matching the pattern in `server_ca
 
 User remediation: a backup-and-filter cleanup script for polluted `~/.pour/cache/history.jsonl` is documented in conversation history; affected users should run it.
 
-### 2½.7 Other Small Phase 1 Polish (not yet scheduled)
+### 2½.7 Other Small Phase 1 Polish (Not yet Scheduled)
 
 - README "Capturing from your phone" diagram
 - `mobile_visible` status pill in PWA header (so the user can confirm the PWA understands which modules are exposed)
@@ -114,7 +114,7 @@ User remediation: a backup-and-filter cleanup script for polluted `~/.pour/cache
 
 The original deferral list per the plan and [[ADR-005-PWA-Companion]] §Decision:
 
-### 3.1 Offline Submit Queue (the Festival case) — DONE (2026-04-27)
+### 3.1 Offline Submit Queue (The Festival Case) — DONE (2026-04-27)
 
 - __TASK-2.1.1__ — IDB schema: `pour-queue` DB, `pending_submits` store, auto-increment `id`, indexes on `module_key` + `queued_at`. Schema in `web/queue.js` (page context) and inlined in `web/sw.js` (SW context). Migration rule: NEVER `deleteObjectStore('pending_submits')` — data loss = capture loss. Each record carries: `id, module_key, body, idempotency_key, auth_header, queued_at, attempt_count, last_error`. *[Deviation: `auth_header` was removed from the record by the Stream A post-inspector fix (4). The drain asks an open page for a fresh token instead.]*
 - __TASK-2.1.2__ — SW intercepts `POST /api/v1/submit/*`. Network unreachable or 5xx → queue + synthetic 202. 4xx → pass through (client-fixable, never queued). Synthetic 202 body: `{ queued, queue_id, captured_at }`. `Idempotency-Key` captured at queue time, reused on every drain retry. `captured_at` from original body, never drain time. `QuotaExceededError` → 507 "queue full" response to page.
@@ -190,7 +190,7 @@ Per [[pour-api-contract]] §15.1: replace the hand-written `pour-openapi.yaml` w
 
 __When to trigger:__ after Phase 2 ships and we've gone ~1 month without a contract amendment. Premature automation re-creates the drift problem from a different angle.
 
-## 6. Out of Scope (probably forever)
+## 6. Out of Scope (Probably Forever)
 
 - Multi-tenant `pour serve` (one binary, one config, one vault, one token)
 - Cloud sync (violates manifesto's "Plaintext is Forever" — files are the source of truth)

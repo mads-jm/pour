@@ -1,9 +1,10 @@
 ---
 date created: Monday, April 27th 2026, 6:16:25 am
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:14 am
 status: not started
 ---
-# Spec: Append Target Recovery (missing Daily notes)
+
+# Spec: Append Target Recovery (Missing Daily Notes)
 
 > __Status:__ Not started as of 2026-10-02. There is no `create_note` transport method, no dashboard `⚠ missing` indicator, no `c` hotkey and no `TargetMissing` error. Append to a missing daily note still hard-fails on both transports, and `Config::check_paths` still skips paths containing `{{` or `%`. The line references below are from April 2026 and have drifted. The handler they name in `src/main.rs` now lives in `src/tui/loop_.rs`. For comparison, `update` mode ([[pour-habit-capture]] §2.3) took a different line on a missing note. Over the API it fires the `daily-notes` command and retries once, and over the filesystem it fails loudly. It never creates the note itself.
 
@@ -68,7 +69,7 @@ __Dashboard hotkey `c`.__ In the dashboard input handler (alongside the existing
 - `src/tui/dashboard.rs` — missing-target span in module list; conditional footer hint.
 - `src/main.rs` — `c` hotkey on dashboard; `TargetMissing` overlay in submit handler; create-and-retry path.
 
-## Reusable Helpers (don't reinvent)
+## Reusable Helpers (Don't Reinvent)
 
 - `template::render_path` at `src/output/template.rs:25-71` — strftime + token substitution. New `resolve_static_path` should call into the same logic.
 - `Config::check_paths` at `src/config.rs:1661-1711` — pattern for "skip paths with `{{` or `%`". The new dashboard check is the dynamic-aware sibling, not a replacement.
@@ -99,7 +100,7 @@ __Dashboard hotkey `c`.__ In the dashboard input handler (alongside the existing
 4. Manual, API transport: same flow with Obsidian Local REST API running. Verify PUT creates the note (check via Obsidian) and append-under-heading lands in the right spot.
 5. Field-templated path (`Coffee/{{bean}}.md`): confirm dashboard shows NO indicator (path can't be resolved without form input). Submitting still hits the existing error path — that's a separate UX problem and not in scope here.
 
-## Docs to Update on Implementation (per CLAUDE.md)
+## Docs to Update on Implementation (Per CLAUDE.md)
 
 - `pour - docs/04 architecture/System-Architecture-Overview.md` — note the new `create_note` transport method.
 - `pour - docs/09 milestones/v0.2.0-Foundation.md` — if "missing daily note" is listed as a known limitation, mark resolved.

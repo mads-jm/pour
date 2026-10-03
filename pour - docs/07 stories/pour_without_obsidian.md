@@ -7,12 +7,12 @@ aliases:
   - pour without obsidian
   - non-obsidian pour
 date created: Wednesday, April 29th 2026, 5:15:34 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:16 am
 ---
 
 # Pour Without Obsidian: A Story for the Curious Outsider
 
-## "Why Not just Use a notebook?"
+## "Why Not just Use a Notebook?"
 
 Fair question. A paper notebook is 'zero-friction' capture — pen hits page, done. No boot time, no config files, no terminal. For a lot of things, paper wins.
 
@@ -27,7 +27,7 @@ None of this makes paper bad. Pour isn't replacing a journal — it's replacing 
 
 Paper captures thoughts. Pour captures data shaped like thoughts.
 
-## "What Does it Actually do?"
+## "What Does it Actually Do?"
 
 Imagine you're standing in your kitchen. You just pulled a great shot of espresso — 18g in, 36g out, 28 seconds, the crema was perfect. You want to remember this. Not in a spreadsheet. Not in a note-taking app you'll forget to open. You want to type one command and be done.
 
@@ -39,7 +39,7 @@ A form appears in your terminal. You fill in the fields — bean, dose, ratio, m
 
 That's Pour. A fast, keyboard-driven terminal form that writes structured Markdown files to a folder.
 
-## "So Where Does Obsidian come in?"
+## "So Where Does Obsidian come In?"
 
 Obsidian is a note-taking app that reads a folder of Markdown files. That's its entire data model — a directory of `.md` files with YAML frontmatter at the top. There's no opinionated database, no proprietary format, no cloud lock-in.
 
@@ -90,7 +90,7 @@ Without Obsidian as the "viewer," you'd want *something* to make sense of the fi
 - __Plain `ls` + `grep`__ — the filenames are timestamped and descriptive; `grep -r "origin: Ethiopia" Coffee/` just works
 - __A future `pour query` command__ — Pour already knows the schema; a read-back mode is a natural extension
 
-## "What Would it Take to Make Pour Truly vault-agnostic?"
+## "What Would it Take to Make Pour Truly Vault-agnostic?"
 
 Not much. The architecture is already 90% there.
 

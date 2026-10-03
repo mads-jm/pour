@@ -4,7 +4,7 @@ tags:
   - keybindings
   - tui
 date created: Saturday, April 25th 2026, 4:19:07 pm
-date modified: Friday, October 2nd 2026, 11:30:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:20 am
 ---
 
 # Keyboard Shortcuts
@@ -53,7 +53,7 @@ Shown at startup when a module path has problems, or after `s` fails to bind the
 
 ---
 
-## Form (module Entry screen)
+## Form (Module Entry Screen)
 
 Reached by launching a module from the dashboard or via `pour <module>`. The form has a preset row at the top, the visible fields, and a submit row at the bottom.
 
@@ -95,7 +95,7 @@ Other characters are ignored on a toggle.
 | `=` | Start the value with `=` to set the stored value instead of adding (footer hint: `= set`) |
 | `Backspace` / `Left` / `Right` | Edit as a text field |
 
-### Textarea Fields (editor overlay)
+### Textarea Fields (Editor Overlay)
 
 | Key | Action |
 |-----|--------|
@@ -119,7 +119,7 @@ Other characters are ignored on a toggle.
 | `Enter` | Confirm title (an empty title clears it) |
 | `Esc` | Cancel |
 
-### Select Fields (dropdown overlay)
+### Select Fields (Dropdown Overlay)
 
 | Key | Action |
 |-----|--------|
@@ -145,7 +145,7 @@ Opens when `Enter` creates a new value on a select field that has `create_templa
 | `Enter` | Advance to next row; on the submit row, create the note |
 | `Esc` | Cancel |
 
-### Composite Array Fields (table overlay)
+### Composite Array Fields (Table Overlay)
 
 | Key | Action |
 |-----|--------|
@@ -164,7 +164,7 @@ Opens when `Enter` creates a new value on a select field that has `create_templa
 | `p` | Quick-cycle to the next saved per-field preset |
 | `Esc` | Close table overlay |
 
-### Per-field Preset Picker (composite overlay)
+### Per-field Preset Picker (Composite Overlay)
 
 Appears when `l` is pressed inside a composite_array editor with at least one saved preset.
 
@@ -207,7 +207,7 @@ Presets grouped by the module's `preset_axes`, one level per axis.
 
 ---
 
-## Summary (after submit)
+## Summary (After Submit)
 
 | Key | Action |
 |-----|--------|
@@ -218,7 +218,7 @@ Presets grouped by the module's `preset_axes`, one level per axis.
 
 ---
 
-## Configure (module and Vault settings)
+## Configure (Module and Vault Settings)
 
 Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 
@@ -241,7 +241,7 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 | `Ctrl+S` | Save the new module definition |
 | `Esc` | Cancel and discard the new module |
 
-### Freetext Edit Mode (active when Editing a Field value)
+### Freetext Edit Mode (Active when Editing a Field Value)
 
 | Key | Action |
 |-----|--------|
@@ -252,7 +252,7 @@ Reached via `e` (module settings) or `v` (vault settings) from the dashboard.
 | `Esc` | Cancel edit, restore original value |
 | `?` | Open placeholder help overlay (Path fields only) |
 
-### List Editor (options arrays)
+### List Editor (Options Arrays)
 
 One option per line.
 
@@ -265,7 +265,7 @@ One option per line.
 | `Ctrl+S` | Keep the edited list |
 | `Esc` | Discard changes |
 
-### Quick-select Overlay (callout type)
+### Quick-select Overlay (Callout Type)
 
 | Key | Action |
 |-----|--------|
@@ -280,7 +280,7 @@ One option per line.
 | `y` | Confirm delete |
 | `n` / `Esc` | Cancel |
 
-### Field List (sub-screen within Module settings)
+### Field List (Sub-screen within Module Settings)
 
 | Key | Action |
 |-----|--------|
@@ -292,7 +292,7 @@ One option per line.
 | `Enter` | Open field editor for selected field (on `< Back`, return to module settings) |
 | `Esc` | Return to module settings |
 
-### Sub-field List (within a composite_array Field editor)
+### Sub-field List (Within a composite_array Field Editor)
 
 | Key | Action |
 |-----|--------|
@@ -306,7 +306,7 @@ One option per line.
 
 ---
 
-## Browse (vault Directory browser)
+## Browse (Vault Directory Browser)
 
 Opened from path fields inside the configurator. It lists directories only.
 

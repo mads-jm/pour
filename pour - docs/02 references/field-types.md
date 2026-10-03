@@ -4,23 +4,23 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Saturday, October 3rd 2026, 12:30:00 am
+date modified: Saturday, October 3rd 2026, 6:47:20 am
 ---
 
 # Field Types Reference
 
 This document covers all field types available in Pour's `config.toml` schema, their config keys, validation rules, default output targets, and TUI rendering behavior.
 
-## The creed: frontmatter habits vs. event notes
+## The Creed: Frontmatter Habits vs. Event Notes
 
 > [!quote] Ambient state gets a property. Novel experience gets a note. Never both for the same signal.
 
 Pour has two capture shapes, and the line between them is a lasting rule:
 
-- **Frontmatter habit** — transient, ambient, binary-or-cumulative state of a *day*: partaken or not, ounces so far. It has no story to tell beyond its value, so it lives as a property on a periodic note. The **template owns the key and its default** (`cannabis: false`, `water: null`); pour only ever *mutates* it, via `mode = "update"` with `toggle`/`counter` fields.
-- **Event note** — anything with novelty or nuance: a coffee has a bean, a ratio, a taste worth remembering. It gets its own note via `create` mode.
+- __Frontmatter habit__ — transient, ambient, binary-or-cumulative state of a *day*: partaken or not, ounces so far. It has no story to tell beyond its value, so it lives as a property on a periodic note. The __template owns the key and its default__ (`cannabis: false`, `water: null`); pour only ever *mutates* it, via `mode = "update"` with `toggle`/`counter` fields.
+- __Event note__ — anything with novelty or nuance: a coffee has a bean, a ratio, a taste worth remembering. It gets its own note via `create` mode.
 
-Corollary: if a signal could be *derived* from event notes (coffee count from coffee notes), **derive it — never mirror it into frontmatter.** Two sources of truth drift by week one. A frontmatter habit is only for signals that have no event notes.
+Corollary: if a signal could be *derived* from event notes (coffee count from coffee notes), __derive it — never mirror it into frontmatter.__ Two sources of truth drift by week one. A frontmatter habit is only for signals that have no event notes.
 
 See [[pour-habit-capture]] for the full spec.
 
@@ -41,23 +41,24 @@ Every module defined in `[modules.<name>]` supports these keys:
 | `priors` | table | no | Read-only "priors" review panel declaration. See [[pour-review-priors]] and the [`[priors]` block](#priors-block) below. |
 
 <a id="priors-block"></a>
-### `[modules.<name>.priors]` block
 
-Declares a read-only review panel that shows your most similar prior captures beside the capture form, one column per prior, with each row on the same line as its form field (see [[pour-review-priors]]). **All keys are optional.** Omitting the whole block yields a zero-config default. The panel never writes, never blocks submit, and resolves only at form-open and when a `match_on` field or a gate field changes.
+### `[modules.<name>.priors]` Block
 
-Before scoring, the panel applies a **hard filter** that needs no config. Any field that another field's `show_when` names is a gate. When the form has a value for a gate, priors with a different value, or no value, for it are dropped. On coffee that keeps espresso brews off a pour-over form. Values in fields that `show_when` currently hides are ignored, as they are at submit, so a stale `brewer` left over from Pour Over doesn't affect an Espresso form.
+Declares a read-only review panel that shows your most similar prior captures beside the capture form, one column per prior, with each row on the same line as its form field (see [[pour-review-priors]]). __All keys are optional.__ Omitting the whole block yields a zero-config default. The panel never writes, never blocks submit, and resolves only at form-open and when a `match_on` field or a gate field changes.
+
+Before scoring, the panel applies a __hard filter__ that needs no config. Any field that another field's `show_when` names is a gate. When the form has a value for a gate, priors with a different value, or no value, for it are dropped. On coffee that keeps espresso brews off a pour-over form. Values in fields that `show_when` currently hides are ignored, as they are at submit, so a stale `brewer` left over from Pour Over doesn't affect an Espresso form.
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `match_on` | array | no | Ordered list (most → least important) of fields that define "similar". Each prior scores one point per field that agrees with the form's current value. Fields left empty on the form don't count. Equal scores go to the prior that agrees on the earlier field. Each entry is a **bare string** (equality, or wikilink when the referenced field has `wikilink = true`) or an **object** `{ field, mode }`. Only `mode = "equality"` / `"wikilink"` are accepted; `"overlap"` / `"window"` are reserved for L2 and rejected at config-load. |
+| `match_on` | array | no | Ordered list (most → least important) of fields that define "similar". Each prior scores one point per field that agrees with the form's current value. Fields left empty on the form don't count. Equal scores go to the prior that agrees on the earlier field. Each entry is a __bare string__ (equality, or wikilink when the referenced field has `wikilink = true`) or an __object__ `{ field, mode }`. Only `mode = "equality"` / `"wikilink"` are accepted; `"overlap"` / `"window"` are reserved for L2 and rejected at config-load. |
 | `rank_by` | string | no | Tie-breaker between equally similar priors: `"<field> desc"` / `"<field> asc"`, `"recent"` (newest first), or `"none"` (scan order). A prior missing the `rank_by` field sorts after the ones that have it, and its column renders dimmed. The `"<field> max"` / `"<field> min"` forms are reserved and rejected. Absent → `"recent"`. Recency always breaks the last tie, except under `"none"`. |
-| `show` | array | no | Which fields get a cell in each prior's column. Each entry is a **bare string** or an **object** `{ field, agg }`. `agg` ∈ `median` (default), `mean`, `max`, `min`, `latest`, and only matters for the summary column. Absent → every field except `textarea` and `composite_array`. Rows for fields outside `show` stay blank. `composite_array` rows are always blank: presets are how you reuse recipe stages. |
+| `show` | array | no | Which fields get a cell in each prior's column. Each entry is a __bare string__ or an __object__ `{ field, agg }`. `agg` ∈ `median` (default), `mean`, `max`, `min`, `latest`, and only matters for the summary column. Absent → every field except `textarea` and `composite_array`. Rows for fields outside `show` stay blank. `composite_array` rows are always blank: presets are how you reuse recipe stages. |
 | `limit` | integer | no | How many priors to show, one column each. Must be `> 0`. Defaults to `3`. |
 | `summary` | bool | no | `true` adds one column on the far right that aggregates each `number` row (per its `agg`, median by default) over the displayed priors. Other rows stay blank. The header names the aggregation, or reads `summary` when the rows use different ones. Defaults to `false`, because an average across brews reads like a recipe nobody brewed. |
 
 All `match_on` / `rank_by` / `show` field names must reference fields that exist on the module.
 
-**Zero-config default** (no `[priors]` block): `match_on` is every `wikilink`/select field in config field order; `rank_by = "recent"`; `show` = every field except `textarea` and `composite_array`; `limit = 3`; `summary = false`.
+__Zero-config default__ (no `[priors]` block): `match_on` is every `wikilink`/select field in config field order; `rank_by = "recent"`; `show` = every field except `textarea` and `composite_array`; `limit = 3`; `summary = false`.
 
 ```toml
 [modules.coffee.priors]
@@ -72,7 +73,7 @@ match_on = [{ field = "roaster", mode = "wikilink" }]
 show     = ["dose_g", { field = "water_temp_c", agg = "mean" }]
 ```
 
-**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state. The captures come from the folder part of the module's `path` (everything before the last `/`), read as written: a strftime or `{{field}}` token there, as in `Coffee/%Y/%Y-%m-%d-{{bean}}.md`, is not expanded, so that module finds no priors. Each resolve reads at most 500 notes. Cells come from each note's frontmatter, so a module whose fields all land in the body, such as an `append` module on daily notes, gets a column per note with blank rows and only the age footer.
+__TUI:__ the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state. The captures come from the folder part of the module's `path` (everything before the last `/`), read as written: a strftime or `{{field}}` token there, as in `Coffee/%Y/%Y-%m-%d-{{bean}}.md`, is not expanded, so that module finds no priors. Each resolve reads at most 500 notes. Cells come from each note's frontmatter, so a module whose fields all land in the body, such as an `append` module on daily notes, gets a column per note with blank rows and only the age footer.
 
 ## Field Config Keys
 
@@ -98,8 +99,8 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See __Conditional Visibility__ below. |
 | `icon` | string | no | Optional icon displayed next to the field prompt in the TUI form (e.g. `"🫘"`). Purely cosmetic — not written to output. |
 | `preset_exclude` | bool | no | When `true`, this field is excluded from preset capture and application. Useful for notes/textarea fields whose values change every entry and shouldn't be part of a saved preset. Defaults to `false`. |
-| `unit` | string | no | Only valid on `counter`. Display-only suffix (e.g. `"oz"`) shown in the TUI and the one-shot echo. **Never written to YAML.** |
-| `goal` | number | no | Only valid on `counter`. Reach-target rendered as `64/96`. **Config-only — pour never writes a goal into the vault.** Obsidian-side progress rendering (Bases/Dataview) mirrors it in its own query. |
+| `unit` | string | no | Only valid on `counter`. Display-only suffix (e.g. `"oz"`) shown in the TUI and the one-shot echo. __Never written to YAML.__ |
+| `goal` | number | no | Only valid on `counter`. Reach-target rendered as `64/96`. __Config-only — pour never writes a goal into the vault.__ Obsidian-side progress rendering (Bases/Dataview) mirrors it in its own query. |
 | `list` | bool | no | When `true`, values containing `", "` are split on that delimiter and emitted as a YAML sequence in frontmatter (e.g. `"a, b"` → `- a\n- b`). When `wikilink = true` is also set, each split item is individually wrapped in `[[...]]`. Defaults to `false` — value is treated as a literal string and properly escaped. Valid on `text`, `static_select`, and `dynamic_select`. |
 
 ## Output Target Defaults
@@ -244,7 +245,7 @@ default = "3"
 __TUI__: Inline text input, filtered to numeric characters only.
 __Output__: Depends on the write mode.
 
-- `create` modules write the value as a **quoted string**: `rating: "4"`, `dose_g: "15"`. A number field goes through the same scalar quoting as `text`, and that quoting wraps anything that parses as a number so YAML keeps it a string. This holds for the TUI and for `pour serve` captures alike, since both call the same create writer.
+- `create` modules write the value as a __quoted string__: `rating: "4"`, `dose_g: "15"`. A number field goes through the same scalar quoting as `text`, and that quoting wraps anything that parses as a number so YAML keeps it a string. This holds for the TUI and for `pour serve` captures alike, since both call the same create writer.
 - `update` modules write a bare YAML number: `rating: 4`. Integral values drop the `.0`.
 - `append` modules substitute the value into the template text exactly as typed.
 
@@ -306,7 +307,7 @@ The filename is sanitized: characters invalid on any platform (`:`  `?`  `*`  `<
 
 The new entry is appended to the in-memory cache so the next dropdown opens with the value available immediately. Creation is best-effort — a transport failure is logged to stderr but does not block form submission.
 
-### Combined Example (bare stub)
+### Combined Example (Bare Stub)
 
 ```toml
 [[modules.coffee.fields]]
@@ -335,7 +336,7 @@ When `create_template` references a `[templates.<name>]` section, novel values t
 
 `Esc` cancels the sub-form without creating anything. If the terminal is too small for the overlay (< 10 rows or < 30 cols), Pour falls back to bare stub creation.
 
-#### Combined Example (template + Command hook)
+#### Combined Example (Template + Command Hook)
 
 ```toml
 # Field references the template
@@ -405,7 +406,7 @@ Then `post_create_command` fires `templater:run`, which can add body content (br
 
 ## `toggle`
 
-A boolean property. Valid in **any** write mode — a general primitive, not a habit-only type.
+A boolean property. Valid in __any__ write mode — a general primitive, not a habit-only type.
 
 ```toml
 [[modules.habit.fields]]
@@ -414,13 +415,13 @@ field_type = "toggle"
 prompt = "Partaken?"
 ```
 
-__TUI__: Renders as `[x]` / `[ ]`; **space** flips it, and the footer says so (`space flip`) whenever the row is focused. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
+__TUI__: Renders as `[x]` / `[ ]`; __space__ flips it, and the footer says so (`space flip`) whenever the row is focused. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
 __One-shot__: `pour habit cannabis` sets `true`; `pour habit cannabis false` (or `off`) clears it. Also accepts `on`/`yes`/`1` and `no`/`0`.
 __Output__: On an `update` module, a bare YAML boolean: `cannabis: true`, never `"true"`. On a `create` module the value goes through the text quoting rules instead, so it is written as `cannabis: "true"`.
 
 ## `counter`
 
-A number that **accumulates**. Valid in any write mode, but only meaningful over time on an `update` module.
+A number that __accumulates__. Valid in any write mode, but only meaningful over time on an `update` module.
 
 ```toml
 [[modules.habit.fields]]
@@ -433,19 +434,19 @@ goal = 96          # reach-target; progress renders as 64/96 oz
 
 __Semantics__ (`update` mode):
 
-- `pour habit water 16` → read the current value, **add** 16, write.
-- `pour habit water =160` → **set** it. The fat-finger correction.
+- `pour habit water 16` → read the current value, __add__ 16, write.
+- `pour habit water =160` → __set__ it. The fat-finger correction.
 - A missing key, an empty value, and an explicit `null`/`~` all read as `0`, so a template's `water: null` ("untouched today") stays meaningfully distinct from an explicit `0` in the note.
-- A non-numeric current value (`water: lots`) is an **error**, not a silent reset — incrementing it would destroy what is there.
+- A non-numeric current value (`water: lots`) is an __error__, not a silent reset — incrementing it would destroy what is there.
 - Values parse as `f64`; integral results emit bare (`64`, not `64.0`).
-- A **blank** counter on a submitted form means "no change", not "set to zero".
+- A __blank__ counter on a submitted form means "no change", not "set to zero".
 
 __TUI__: Inline input filtered to digits, `.`, `-`, and `=`. The footer spells out which is which (`0-9 add`, `= set`) whenever the row is focused, since a bare number and an `=`-prefixed one do opposite things. On an `update` module the row also shows the note's current state — `now 64/96 oz` — read once when the form opens. A failed or slow read renders `now —/96 oz` rather than blocking the form.
 __Echo__: every write echoes the resulting state, `water: 64/96 oz`, which is simultaneously the confirmation, the correction prompt, and the progress display.
 __Output__: On an `update` module, a bare YAML number. On a `create` module the typed token is written as a quoted string (`water: "16"`), with no reading of a prior value.
 
 > [!note] Reserved for v2
-> `limit` and `limit_period` are reserved on `counter` for periodic stay-under targets (the inverse of `goal`). They are **not implemented** — nothing reads them today.
+> `limit` and `limit_period` are reserved on `counter` for periodic stay-under targets (the inverse of `goal`). They are __not implemented__ — nothing reads them today.
 
 ## `composite_array`
 
@@ -545,16 +546,16 @@ These keys are set on the module itself, not on individual fields:
 | `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note, named with `[vault].date_format` (default `%Y%m%d`): `daily: "[[20260405]]"` |
 | `append_shallow` | boolean | no | When `true` (append mode only), treats any subsequent heading as a section boundary — prevents sub-headings from being absorbed into the append target |
 | `mobile_visible` | boolean | no | When `false`, this module is hidden from the mobile PWA (`/api/v1/config` omits it entirely). Defaults to `true`. Togglable from the module configure screen. |
-| `base_path` | string | no | Per-module root override. When set, this module's `path` resolves against it instead of `[vault].base_path`. **Absolute only — `~` is not expanded** (Pour expands it nowhere). Absent → the vault, exactly as before. See [[#Per-module root (`base_path`)]]. |
+| `base_path` | string | no | Per-module root override. When set, this module's `path` resolves against it instead of `[vault].base_path`. __Absolute only — `~` is not expanded__ (Pour expands it nowhere). Absent → the vault, exactly as before. See [[#Per-module root (`base_path`)]]. |
 | `[modules.<name>.platform]` | table | no | Per-OS overrides for this module's `base_path`, keyed by `std::env::consts::OS` (`linux`, `macos`, `windows`). Mirrors `[vault.platform]`. |
-| `[modules.<name>.frontmatter]` | table | no | Static key→value frontmatter merged into **create**-mode output. Arrays render as YAML block sequences; scalars as scalars. **No token interpolation** — values are emitted literally. See [[#Static module frontmatter]]. |
+| `[modules.<name>.frontmatter]` | table | no | Static key→value frontmatter merged into __create__-mode output. Arrays render as YAML block sequences; scalars as scalars. __No token interpolation__ — values are emitted literally. See [[#Static module frontmatter]]. |
 | `frontmatter_date_format` | string | no | strftime format for the auto-injected create-mode `date` key. Absent → `%Y-%m-%d`. Per-module only; there is no global equivalent. Create mode only. |
 | `post_write_shell` | string | no | Shell command run after a successful write. Only the tokens in [[#`post_write_shell`]] may be interpolated; anything else is rejected at load. |
-| `post_write_shell_on_serve` | boolean | no | Whether `post_write_shell` also fires for captures submitted over the LAN (`pour serve`). **Defaults to `false`.** Requires `post_write_shell`. |
+| `post_write_shell_on_serve` | boolean | no | Whether `post_write_shell` also fires for captures submitted over the LAN (`pour serve`). __Defaults to `false`.__ Requires `post_write_shell`. |
 
-## `update` mode
+## `update` Mode
 
-`update` resolves `path` (strftime-templated, like `append`) to an **existing** note and merges only the frontmatter keys named by the module's fields. The body is never touched, key order and quoting survive byte-for-byte, and no key outside the field list is rewritten.
+`update` resolves `path` (strftime-templated, like `append`) to an __existing__ note and merges only the frontmatter keys named by the module's fields. The body is never touched, key order and quoting survive byte-for-byte, and no key outside the field list is rewritten.
 
 ```toml
 [modules.habit]
@@ -569,11 +570,11 @@ field_type = "toggle"
 prompt = "Partaken?"
 ```
 
-__Transports.__ Over the API, one `PATCH /vault/{path}` per key with `Operation: replace`, `Target-Type: frontmatter`, `Target: <key>` — Obsidian's own metadata layer does the mutation, so pour never re-emits YAML. Over the filesystem it is a guarded surgical edit: capture mtime → read → replace exactly one line → re-verify mtime → atomic rename. The stat comes **before** the read deliberately, so a concurrent save that lands while pour is reading is caught as well. A mismatch aborts **without writing**. An API too old to serve the PATCH degrades to the filesystem path rather than failing the capture.
+__Transports.__ Over the API, one `PATCH /vault/{path}` per key with `Operation: replace`, `Target-Type: frontmatter`, `Target: <key>` — Obsidian's own metadata layer does the mutation, so pour never re-emits YAML. Over the filesystem it is a guarded surgical edit: capture mtime → read → replace exactly one line → re-verify mtime → atomic rename. The stat comes __before__ the read deliberately, so a concurrent save that lands while pour is reading is caught as well. A mismatch aborts __without writing__. An API too old to serve the PATCH degrades to the filesystem path rather than failing the capture.
 
 __Multi-key writes are not atomic.__ The patch operation is single-key on both transports, so a module with two live fields writes two keys in sequence. Every *value* error (a bad token, a non-numeric current value) is raised before the first byte is written; only a transport failure — a concurrent save landing between the two patches, or I/O — can strike mid-write. When one does, the keys that already landed stay landed and the error names them, so a retry is an informed choice rather than a blind double-count.
 
-__Missing note.__ Pour **never fabricates a daily note** — the template owns that shape. Over the API it fires the `daily-notes` command and retries the read once; over the filesystem it fails loudly with an actionable message.
+__Missing note.__ Pour __never fabricates a daily note__ — the template owns that shape. Over the API it fires the `daily-notes` command and retries the read once; over the filesystem it fails loudly with an actionable message.
 
 __Missing key.__ If the note exists but the key doesn't (a stale template), the key is inserted into the existing frontmatter block, the capture succeeds, and a one-line notice tells you the template needs updating. Capture-first: refusing to log because a template drifted is exactly the friction pour exists to kill.
 
@@ -581,7 +582,7 @@ __A note with no frontmatter block at all__ is an error on both transports. Pour
 
 __Keys rejected on `update` modules__, because they belong to another mode and silently ignoring them would be a trap: `append_under_header`, `append_template`, `append_shallow`, `daily_link`, `frontmatter_date_format`, `[modules.<n>.frontmatter]`, plus any field that is `composite_array`, `list = true`, or targets the body.
 
-### One-shot capture
+### One-shot Capture
 
 ```
 pour <module> <field> [value]      # no TUI, write, echo, exit 0
@@ -597,7 +598,7 @@ cannabis: true · ✓ 20260805.md
 
 `pour <module>` with no field argument opens the TUI form exactly as before. Unknown module, unknown field, or a bad value token exits non-zero with an actionable message *before* the vault is touched. v1 wires the grammar for `toggle`/`counter` fields on `update` modules only; text-bearing one-shots (`pour me "thought"`) are deferred.
 
-## Per-module root (`base_path`)
+## Per-module Root (`base_path`)
 
 By default every module writes under `[vault].base_path`. A module that sets its own `base_path` writes somewhere else entirely — useful when a capture target is genuinely not part of the vault (e.g. an agent inbox kept in a different git repo).
 
@@ -620,12 +621,12 @@ windows = "C:\\Users\\user\\notes-repo"
 
 Notes and limits:
 
-- **`path` stays root-relative.** The override moves the root; it does not relax any guard. Absolute paths, drive letters, UNC paths, and `..` traversal are still rejected — now against the module's root.
-- **Always filesystem transport.** The Obsidian Local REST API can only address notes inside the vault it serves, so a root-overriding module bypasses the API even when it is connected. The TUI summary and the `/api/v1/submit` response both report `FileSystem` for these captures — truthfully, not as a fallback.
-- **Known limit:** a `dynamic_select` `source` on a root-overriding module still resolves against the **vault**, not the module root. Reads and auto-creates stay consistent with each other; only the module's own note is redirected.
+- __`path` stays root-relative.__ The override moves the root; it does not relax any guard. Absolute paths, drive letters, UNC paths, and `..` traversal are still rejected — now against the module's root.
+- __Always filesystem transport.__ The Obsidian Local REST API can only address notes inside the vault it serves, so a root-overriding module bypasses the API even when it is connected. The TUI summary and the `/api/v1/submit` response both report `FileSystem` for these captures — truthfully, not as a fallback.
+- __Known limit:__ a `dynamic_select` `source` on a root-overriding module still resolves against the __vault__, not the module root. Reads and auto-creates stay consistent with each other; only the module's own note is redirected.
 - Windows-style and Unix-style absolute paths both validate on every OS — one `config.toml` is meant to describe every machine.
 
-## Static module frontmatter
+## Static Module Frontmatter
 
 `[modules.<name>.frontmatter]` holds keys that are a property of the *module* rather than of the capture:
 
@@ -649,15 +650,15 @@ tags:
 ---
 ```
 
-- **Arrays always become block sequences**, even single-element ones. This is *not* the `list = true` path, which only splits a comma-joined string and would render `tags = ["inbox"]` as the scalar `tags: inbox`.
-- **Values are literal.** There is no token interpolation here, deliberately — it is static config, not a template.
-- **Emitted after captured fields**, in alphabetical key order (stable across runs).
-- **The capture wins on collision.** A static whose key matches a captured field (or the injected `icon`/`daily`) is skipped — a static is a default, not an override.
-- **Create mode only.** Append mode has no frontmatter block; setting it there is a validation error rather than a silent no-op.
+- __Arrays always become block sequences__, even single-element ones. This is *not* the `list = true` path, which only splits a comma-joined string and would render `tags = ["inbox"]` as the scalar `tags: inbox`.
+- __Values are literal.__ There is no token interpolation here, deliberately — it is static config, not a template.
+- __Emitted after captured fields__, in alphabetical key order (stable across runs).
+- __The capture wins on collision.__ A static whose key matches a captured field (or the injected `icon`/`daily`) is skipped — a static is a default, not an override.
+- __Create mode only.__ Append mode has no frontmatter block; setting it there is a validation error rather than a silent no-op.
 - `date` is rejected as a static key — use `frontmatter_date_format` to change its shape.
 
 > [!warning] TOML ordering
-> Every plain module key (`path`, `post_write_shell`, …) must appear **before** `[modules.<name>.frontmatter]` and `[modules.<name>.platform]`. Once a sub-table header is opened, following bare keys belong to *it* — a `post_write_shell` written after `[modules.inbox.frontmatter]` silently becomes a frontmatter entry instead of a hook, with no error.
+> Every plain module key (`path`, `post_write_shell`, …) must appear __before__ `[modules.<name>.frontmatter]` and `[modules.<name>.platform]`. Once a sub-table header is opened, following bare keys belong to *it* — a `post_write_shell` written after `[modules.inbox.frontmatter]` silently becomes a frontmatter entry instead of a hook, with no error.
 
 ## `post_write_shell`
 
@@ -669,7 +670,7 @@ post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_
 # post_write_shell_on_serve = true   # default false
 ```
 
-**Tokens — this list is exhaustive:**
+__Tokens — this list is exhaustive:__
 
 | Token | Value |
 |---|---|
@@ -679,32 +680,32 @@ post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_
 | `{{slug}}` | kebab-cased `title` field, dash-prefixed (`-my-title`); empty when untitled |
 | `{{slug_or_time}}` | bare slug (`my-title`), or a `%Y%m%d-%H%M%S` timestamp when untitled |
 
-**Any other token — including `{{field_name}}` and `{{title}}` — is rejected at config-load time**, not silently stripped (contrast `path`, where unknown placeholders *are* stripped). Token spelling is exact: `{{ slug }}` is an error, not a synonym for `{{slug}}`.
+__Any other token — including `{{field_name}}` and `{{title}}` — is rejected at config-load time__, not silently stripped (contrast `path`, where unknown placeholders *are* stripped). Token spelling is exact: `{{ slug }}` is an error, not a synonym for `{{slug}}`.
 
 Semantics:
 
-- **Working directory is `base_path`** — so `git add <rel_path>` needs no `git -C`.
+- __Working directory is `base_path`__ — so `git add <rel_path>` needs no `git -C`.
 - Runs through the OS shell (`sh -c` / `cmd /C`), so `&&` and pipelines work.
-- **Best-effort, never fatal.** The note is on disk before the hook runs. A non-zero exit, a spawn failure, or a 30s timeout surfaces as a warning (TUI summary message, or a `post_write_shell_failed` warning on the 201) — the capture is never lost.
-- The child gets **null stdin and piped stdout/stderr**: a command that prompts fails fast instead of hanging behind the TUI, and its output cannot corrupt the terminal.
-- **`post_write_shell_on_serve` defaults to `false`.** A LAN capture does not run commands unless the module opts in. (The wire DTO cannot carry config keys at all, so this is a second gate, not the only one.)
+- __Best-effort, never fatal.__ The note is on disk before the hook runs. A non-zero exit, a spawn failure, or a 30s timeout surfaces as a warning (TUI summary message, or a `post_write_shell_failed` warning on the 201) — the capture is never lost.
+- The child gets __null stdin and piped stdout/stderr__: a command that prompts fails fast instead of hanging behind the TUI, and its output cannot corrupt the terminal.
+- __`post_write_shell_on_serve` defaults to `false`.__ A LAN capture does not run commands unless the module opts in. (The wire DTO cannot carry config keys at all, so this is a second gate, not the only one.)
 - One-shot capture (`pour <module> <field> [value]`) never runs the hook. Only TUI saves and, when opted in, `pour serve` captures do.
 
 > [!danger] This is arbitrary command execution from config
-> It is safe to interpolate without quoting **only because no token can carry raw user text** — the slug is `[a-z0-9-]` by construction. If a hook ever needs a token that *can* carry user text, that is the trigger to move to argv-style execution, **not** to extend the token list. Note also that a hook which auto-commits and pushes makes a bad capture public history.
+> It is safe to interpolate without quoting __only because no token can carry raw user text__ — the slug is `[a-z0-9-]` by construction. If a hook ever needs a token that *can* carry user text, that is the trigger to move to argv-style execution, __not__ to extend the token list. Note also that a hook which auto-commits and pushes makes a bad capture public history.
 
-## `{{slug}}` in `path`
+## `{{slug}}` In `path`
 
-`{{slug}}` and `{{slug_or_time}}` are **special** path tokens (like `{{date}}` and `{{time}}`), derived from the module's `title` field:
+`{{slug}}` and `{{slug_or_time}}` are __special__ path tokens (like `{{date}}` and `{{time}}`), derived from the module's `title` field:
 
 ```
 title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 ```
 
-- Runs of non-`[a-z0-9]` collapse to a single `-`; leading/trailing dashes are trimmed. **All non-ASCII is dropped** — `café` → `caf` — matching the Obsidian Templater's JS exactly, so hand-authored and poured notes land on the same name.
+- Runs of non-`[a-z0-9]` collapse to a single `-`; leading/trailing dashes are trimmed. __All non-ASCII is dropped__ — `café` → `caf` — matching the Obsidian Templater's JS exactly, so hand-authored and poured notes land on the same name.
 - `{{slug}}` is dash-*prefixed* so `%Y%m%d-%H%M%S{{slug}}.md` reads `20260716-143255-my-title.md` when titled and `20260716-143255.md` when not.
 - A field literally named `slug` is shadowed by the token (as a field named `date` already is).
-- **Use `%S` in an untitled-capable path.** Two untitled captures in the same minute collide, and a filesystem collision is a hard error that discards the entry just typed — not a silent overwrite.
+- __Use `%S` in an untitled-capable path.__ Two untitled captures in the same minute collide, and a filesystem collision is a hard error that discards the entry just typed — not a silent overwrite.
 
 ## Top-Level Config Keys
 
@@ -804,7 +805,7 @@ This means Pour handles *data capture* and Templater handles *presentation* — 
 - `post_create_command` requires `create_template` to be set on the same field
 - Referenced template names must exist in `[templates]`
 
-### Module Validation Rules (root, frontmatter, hooks)
+### Module Validation Rules (Root, Frontmatter, Hooks)
 
 - Every module must have at least one field, and field names must be unique within a module
 - `module.path` must be vault-relative (no absolute, drive-qualified, UNC, or `..` paths)
@@ -813,7 +814,7 @@ This means Pour handles *data capture* and Templater handles *presentation* — 
 - `list = true` is only valid on `text`, `static_select`, and `dynamic_select`
 - `unit` and `goal` are only valid on `counter` fields
 
-- `base_path` and every `[modules.<name>.platform]` value must be **absolute** and must not start with `~`
+- `base_path` and every `[modules.<name>.platform]` value must be __absolute__ and must not start with `~`
 - `module.path` must stay root-relative even when `base_path` is set (no absolute, drive-qualified, UNC, or `..` paths)
 - `[modules.<name>.frontmatter]` values must be a string, number, boolean, or a flat array of those — nested tables and TOML datetimes are rejected
 - `date` is not a permitted `[modules.<name>.frontmatter]` key (auto-injected; use `frontmatter_date_format`)

@@ -6,7 +6,7 @@ tags:
 aliases:
   - reqwest
 date created: Tuesday, March 31st 2026, 12:14:41 am
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:21 am
 ---
 
 # Reqwest - HTTP Client Reference
@@ -46,7 +46,7 @@ let resp = client.get("https://127.0.0.1:27124/vault/path/to/file.md")
 let body = resp.text().await?;
 ```
 
-### PUT (create/overwrite file)
+### PUT (create/overwrite File)
 
 ```rust
 let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md")
@@ -57,7 +57,7 @@ let resp = client.put("https://127.0.0.1:27124/vault/path/to/note.md")
     .await?;
 ```
 
-### POST (append to file)
+### POST (Append to File)
 
 ```rust
 let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md")
@@ -68,7 +68,7 @@ let resp = client.post("https://127.0.0.1:27124/vault/path/to/note.md")
     .await?;
 ```
 
-### PATCH (surgical edit)
+### PATCH (Surgical Edit)
 
 ```rust
 let resp = client.patch("https://127.0.0.1:27124/vault/path/to/note.md")
@@ -111,7 +111,7 @@ if resp.status().is_success() {
 }
 ```
 
-## Connection Check Pattern (for Pour)
+## Connection Check Pattern (For Pour)
 
 ```rust
 /// Check if Obsidian REST API is available
@@ -124,7 +124,7 @@ async fn check_api(client: &Client, port: u16) -> bool {
 }
 ```
 
-## Directory Listing (for Dynamic selects)
+## Directory Listing (For Dynamic Selects)
 
 ```rust
 let resp = client.get("https://127.0.0.1:27124/vault/02-Logbook/Beans/")

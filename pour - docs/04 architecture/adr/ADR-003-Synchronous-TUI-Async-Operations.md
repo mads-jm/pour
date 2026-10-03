@@ -4,7 +4,7 @@ tags:
   - adr
   - tui
 date created: Tuesday, March 31st 2026, 10:03:30 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:16 am
 ---
 
 # ADR 003: Blocking UI During Async Transport

@@ -4,14 +4,14 @@ tags:
   - pwa
   - serve
 date created: Friday, October 2nd 2026, 10:40:00 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:18 am
 ---
 
 # Guide: Capturing From Your Phone
 
 `pour serve` is the second front door. It runs the same engine as the TUI behind a small [[ADR-005-PWA-Companion|PWA]], reachable from any browser on your LAN, and writes the same Markdown to the same vault. The vault never knows which door a capture came through.
 
-## Starting the server
+## Starting the Server
 
 From the TUI dashboard, press `s`. The dashboard suspends, the server starts in the same terminal on port 8421, and the QR code prints there. If the port is taken, the dashboard comes back with a warning instead. `Ctrl+C` stops the server and brings the dashboard back. One process, one terminal.
 
@@ -46,7 +46,7 @@ magick web/icon.svg -resize 512x512 web/icon-512.png
 
 A release build embeds everything under `web/` at compile time and serves it at `/static/{filename}`, so PNGs placed in `web/` show up at `/static/icon-{size}.png` after a rebuild. A debug build reads `web/` from disk instead.
 
-## Network and auth
+## Network and Auth
 
 The server binds `0.0.0.0:<port>`. Any device on the same network can reach it; nothing exposes it to the internet. Getting to it from outside your LAN is up to you. [Tailscale](https://tailscale.com) and ZeroTier both work with no extra config.
 
@@ -54,7 +54,7 @@ The first `pour serve` generates a `mobile_token` and writes it to `~/.pour/secr
 
 `post_write_shell` hooks don't run for phone captures unless the module sets `post_write_shell_on_serve = true`. See [[field-types#`post_write_shell`]].
 
-## Hiding a module from the phone
+## Hiding a Module from the Phone
 
 ```toml
 [modules.secret]
@@ -74,6 +74,6 @@ POUR_LOG=pour=debug,tower_http=warn  # per target
 
 At `info` pour logs server startup (bind address, transport, vault path), every `/api/` request and response (method, URI, status, latency), auth outcomes (`accepted_via_query`, `rejected`), and submit results (module, vault path, autocreate count). It never logs token values, request bodies, field values, or anything you typed.
 
-## What the PWA does
+## What the PWA Does
 
 Module tiles, forms for every field type, submit, and history shipped in v0.3.0. The `toggle` and `counter` types added in v1.1.0 have no PWA widget yet and render as plain text inputs, which is why the sample `habit` module sets `mobile_visible = false`. Phase 2 (closed 2026-04-27) added the IndexedDB offline queue, a service-worker app-shell cache, the sub-form overlay for `create_template` fields, preset save/edit/delete/reorder, a 90-day history heatmap, bottom-tab navigation, and a paginated history list. The closeout report is `06 reports/v1.0.0-phase2-closeout.md`. TLS and mDNS (`pour.local`) are deferred; see [[pour-pwa-roadmap]].

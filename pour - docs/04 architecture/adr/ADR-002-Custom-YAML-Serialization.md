@@ -4,7 +4,7 @@ tags:
   - adr
   - output
 date created: Tuesday, March 31st 2026, 10:03:09 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:15 am
 ---
 
 # ADR 002: Custom YAML Frontmatter Generation

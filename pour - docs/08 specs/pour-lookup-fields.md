@@ -6,7 +6,7 @@ aliases:
   - field lookup
 date created: Wednesday, April 29th 2026, 5:03:15 pm
 status: draft — not started
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:11 am
 ---
 
 # Pour Lookup / Computed Fields
@@ -140,7 +140,7 @@ Round-N amendment to `pour-api-contract.md`:
 
 No body shape change. The lookup field's resolved value rides in `field_values[<lookup_field_name>]` like any other frontmatter field. Whether the value is server-resolved or user-overridden is transparent on the wire.
 
-### 7.3 Server Resolver Endpoint (optional, for Live previews)
+### 7.3 Server Resolver Endpoint (Optional, for Live Previews)
 
 For PWA live preview without round-trip-on-every-keystroke, expose:
 
@@ -172,7 +172,7 @@ Add the new field-type discriminator and the optional endpoint.
 
 ## 9. Phasing
 
-### L1 — Foundation (target: 1–2 weeks)
+### L1 — Foundation (Target: 1–2 Weeks)
 
 - Schema: `field_type = "lookup"` with `lookup_via`, `lookup_key`, `compute`, `fallback`, `default`.
 - Resolver in `src/data/lookup.rs` (new module): `resolve(field, form_state, vault) -> Result<String, FallbackReason>`.
@@ -195,7 +195,7 @@ Add the new field-type discriminator and the optional endpoint.
 - Add `parse_int`, `to_lower`, `format_date`, `concat`, `template` as concrete needs surface.
 - Lookup result cache: per-submit memoization (already implicit in the resolver) plus per-form-session cache so re-resolves on `lookup_via` change don't re-read the same note.
 
-## 10. Out of Scope (forever)
+## 10. Out of Scope (Forever)
 
 - __Editing the linked note from Pour__ — Pour writes, doesn't edit. Bean note's `roast_date` is set when the user creates the bean; updating requires opening the bean note in Obsidian.
 - __Cross-vault lookups__ — single-vault model per design spec §1.
@@ -213,7 +213,7 @@ Add the new field-type discriminator and the optional endpoint.
 6. __Logging__: §14 forbids logging user content. Lookup resolution involves reading frontmatter values that could be user-supplied. Resolver MUST NOT log resolved values. Log only field name + outcome (resolved/fallback/cycle/missing).
 7. __Field ordering__: lookup fields should render AFTER their `lookup_via` field in the form so the user sees the source first. Validate at config-load that all `lookup_via` references point to fields earlier in the field list. (Otherwise the resolver still works server-side but the TUI/PWA UX is awkward.)
 
-## 12. Concrete First Use case (the Trigger for This spec)
+## 12. Concrete First Use case (The Trigger for This Spec)
 
 ```toml
 # In templates.bean — already added 2026-04-29

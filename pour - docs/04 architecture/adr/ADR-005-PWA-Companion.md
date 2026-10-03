@@ -5,7 +5,7 @@ tags:
   - mobile
   - pwa
 date created: Sunday, April 26th 2026, 6:06:13 pm
-date modified: Friday, October 2nd 2026, 11:00:00 pm
+date modified: Saturday, October 3rd 2026, 6:47:16 am
 ---
 
 # ADR 005: Local-First PWA Companion via `pour serve`

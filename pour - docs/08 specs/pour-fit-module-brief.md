@@ -5,7 +5,7 @@ tags:
   - module
 date created: Saturday, April 4th 2026, 7:29:13 am
 status: draft — not started
-date modified: Saturday, October 3rd 2026, 12:30:00 am
+date modified: Saturday, October 3rd 2026, 6:47:15 am
 ---
 
 # `pour fit` — Workout Module Design Brief

@@ -5,7 +5,7 @@ tags:
   - frontend
   - wasm
 date created: Sunday, April 26th 2026, 6:07:06 pm
-date modified: Wednesday, April 29th 2026, 5:31:49 pm
+date modified: Saturday, October 3rd 2026, 6:48:56 am
 ---
 
 # When Rust→WASM Frontends Make Sense (And Why Pour Isn't There Yet)
