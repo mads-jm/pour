@@ -12,8 +12,11 @@ use ratatui::text::Span;
 /// and the rest of its chars get 0. Summing any run of chars that starts and
 /// ends on a cluster boundary then gives the cells ratatui draws for it.
 ///
-/// A cluster holding a control char counts as 0, as a lone control char did
-/// before, and so does a `\n`.
+/// A cluster holding a control char counts as 0, and so does a `\n`. This is
+/// the one place the count leaves ratatui, which gives `\t`, `\r` and the
+/// like a cell each. A raw control char garbles the row on a real terminal
+/// whatever is counted here, so the fix belongs at input, which does not
+/// filter them yet.
 pub(super) fn char_cells(text: &str) -> Vec<usize> {
     let mut cells = Vec::with_capacity(text.len());
     for (i, line) in text.split('\n').enumerate() {
