@@ -95,3 +95,7 @@ One config vocabulary, four domains. If it can serve **coffee and `me` from the 
 - Data path mirrors [[ADR-001-Hybrid-Transport-Layer]]: Obsidian REST `/search/` when the API is up, filesystem scan + frontmatter parse when it's not.
 
 See [[pour-review-priors]] for the spec.
+
+---
+
+**Revision (2026-10-02).** First real use changed the payload. The `repeat:` line of medians turned out to describe a recipe nobody brewed, and the panel rarely found similar brews on a small corpus. The panel is now reference, not a target: one column per real prior brew, rows lined up with the form, scored by similarity. See [[pour-review-priors]] §8.1 and §10 (L1.5).
