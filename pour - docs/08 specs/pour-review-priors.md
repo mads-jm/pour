@@ -6,7 +6,7 @@ aliases:
   - pour review
   - review panel spec
 date created: Monday, July 13th 2026, 2:05:00 pm
-status: shipped — L1 (coffee, TUI); revising — L1.5 reference columns
+status: shipped — L1 (coffee, TUI); L1.5 reference columns (TUI)
 date modified: Friday, October 2nd 2026, 12:00:00 pm
 ---
 
@@ -34,7 +34,7 @@ A per-module `[modules.<key>.priors]` block declares:
 4. **`limit`** — how many priors to show, one column each (default 3).
 5. **`summary`** — opt-in aggregate column (§6). Off by default.
 
-At form-open and on every `match_on`-field change, the resolver:
+At form-open and whenever a `match_on` field or a hard-filter gate changes, the resolver:
 
 1. Collects the module's prior captures (via `/search/` or FS scan — §7).
 2. Applies hard filters: a field that gates other fields through `show_when` must match exactly, so espresso priors never appear on a pour-over form (§4.1).
@@ -42,8 +42,6 @@ At form-open and on every `match_on`-field change, the resolver:
 4. Renders the top `limit` priors as columns whose rows line up with the form's fields (§8.1).
 
 The panel is **read-only**. It never writes, never blocks submit, and never fires at submit time.
-
-*[Deviation: L1 shipped a row-per-capture panel. It filters with the strict widen-by-drop cascade (§4.1, old), ranks by `rank_by` first, shows a fixed `show` list (zero-config: the first four select/number fields, which are mostly fields the user has already filled), and always renders the `repeat:` median line. On a small corpus where nearly every combination is unique (17 coffee brews, 2026-10), the cascade almost always widens to `brew_method` alone and the panel reads as a recent-brews list. L1.5 (§10) replaces this.]*
 
 ## 3. Schema
 
@@ -64,8 +62,6 @@ rank_by = "recent"
 ```
 
 Every key is optional. **Zero-config default** (no `[priors]` block at all): `match_on` = every `wikilink`/select field in config order; `rank_by = "recent"`; `show` = every visible field; `limit = 3`; `summary = false`. The hard filter (§4.1) needs no config. This makes a useful panel appear for `me`/`note` with no setup, while `coffee` opts into richness.
-
-*[Deviation: L1 zero-config matches on the first `wikilink`/select field only, shows the first four numeric + select fields, and uses `limit = 5`.]*
 
 ### 3.1 `rank_by` grammar
 
@@ -93,9 +89,13 @@ Nothing is dropped for scoring low. If no prior agrees on anything past the hard
 
 The new-bag story still holds. A new bean agrees on nothing in `bean`, so its brews with the same brewer and grinder rise to the top on their own, without a separate widening step. The strict cascade (L1) is the special case where only full agreement counts.
 
-**Architect's call:** the exact weighting (plain count vs. order-weighted), and whether a minimum score should hide the panel. Record the choice in impl-notes.
+**Weighting (L1.5):** a plain count. Order matters only between equal counts, compared field by field in `match_on` order, so a prior agreeing on `bean` alone outranks one agreeing on `intent` alone, but a prior agreeing on `brewer` and `grinder` outranks one agreeing on `bean` alone. An order-weighted score would let the first key outvote all the others, which is the strict cascade again by another name.
 
-*[Deviation: L1 runs the strict widen-by-drop cascade. It resolves the full conjunction of `match_on`, drops the most-specific (front) key on zero rows, and repeats until a tier matches. The header names the matched tier (`Onyx · V60`).]*
+**No minimum score (L1.5).** The panel is never hidden for scoring low. `no close match` appears only when the form has at least one `match_on` field filled. At form-open with nothing filled there is nothing to miss, so the header stays `similar` and the order falls to `rank_by` and recency.
+
+**Missing gate key (L1.5).** A prior with no value at all for a filled gate is dropped along with the mismatches. Nothing shows it describes the current form's shape.
+
+**Hidden fields don't count (L1.5).** The form keeps a field's value after `show_when` hides it, the same way it does for submit. The resolver sees only the values of fields the form currently shows, so a `brewer` picked under Pour Over and left behind by a switch to Espresso neither gates, scores, nor turns the header into `no close match`. Submit drops hidden fields by the same rule.
 
 ### 4.2 Match modes
 
@@ -122,8 +122,6 @@ Columns are ordered left to right by:
 
 A prior missing the `rank_by` field (an unrated brew) is still shown, with its column **dimmed**. The header reads `similar`, plus the `rank_by` label when one is set (`similar · rating desc`). It never claims "best": the panel shows what is close, not what is good.
 
-*[Deviation: L1 ranks by `rank_by` first. Rows that have the field come first ("qualifying"), and dimmed "texture" rows fill up to `limit`. The header shows the rank qualifier only when every row qualifies, and the summary line is computed from qualifying rows.]*
-
 ## 6. Summary Column (opt-in, per-field-type)
 
 **Off by default.** `summary = true` adds one extra column on the right, labeled with its aggregation, that summarizes each row across the displayed priors. It is off by default because it mixes values from different captures, which is exactly what §2 warns against. It earns its place where an average is the point: a stable process variable (water temp), or a `lift` module's working weight.
@@ -147,8 +145,6 @@ show = [
 ```
 
 Rows with no summarizable type stay blank in the summary column. Ratios (`1:16`) are a coffee-specific *render* of two numeric fields; the primitive summarizes each number independently — ratio formatting is a display concern (§8.3), not a summary type.
-
-*[Deviation: L1 always renders a `repeat:` line of medians under the rows, computed from qualifying rows, with a match-count fallback. There is no `summary` key.]*
 
 ## 7. Data Path (hybrid, mirrors [[ADR-001-Hybrid-Transport-Layer]])
 
@@ -183,12 +179,12 @@ One column per prior, and each panel row sits on the same screen line as the for
    Bean            Cyesha Honey        │  ·        Benj Paz ·        │
    Grinder         K-Ultra             │  ·        ·        ·        │
  ▸ Grind setting   <empty>             │▸ 6.5      7        6        │
-   Dose (g)        18                  │  18       16       18       │
+   Dose (g)        18                  │  ·        16       ·        │
    Yield (g)       <empty>             │  270      250      280      │
    Total time (s)  <empty>             │  165      150      185      │
    Water temp      <empty>             │  94       96       93       │
    Filter          <empty>             │  Sibarist Sibarist Cafec    │
-   Recipe          add rows            │  5 stg    4 stg    5 stg    │
+   Recipe          add rows            │                             │
    Rating          <empty>             │  4.5      4        3.5      │
                                        │  3d       1w       2w       │
                                        └─────────────────────────────┘
@@ -197,17 +193,15 @@ One column per prior, and each panel row sits on the same screen line as the for
 
 - **Column = one real prior.** Read top to bottom, it is a whole capture. Nothing is blended (summary column aside, §6).
 - **Row = the field beside it.** Read across, it is the range for that field. The active field's row is highlighted across the panel.
-- **`·` means "same as the form's current value".** A value that differs from the current selection renders highlighted, so the user sees at a glance how close each prior is.
-- **Column header:** the `rank_by` value when set (`★4.5`). **Column footer:** age (`3d`, `1w`).
+- **`·` means "same as the form's current value".** A value that differs from the current selection renders highlighted, so the user sees at a glance how close each prior is. A value filled from a field's config `default` counts as current like any other, so at form-open the Dose row above shows `·` for every prior brewed at 18 g. The marks are computed each frame from the live form, so typing a dose moves them without a new fetch.
+- **Column header:** the `rank_by` value when set (`★4.5`). **Column footer:** age (`3d`, `1w`). *[Deviation: L1.5 prints the stored value without the `★`. The glyph would assume every `rank_by` field is a rating.]*
 - **Unrated priors** (missing `rank_by`) render dimmed (§5).
 - **Row alignment is the hard part.** Some form items take two lines (callout fields), and the preset row sits above the fields. Panel row heights must come from the same visible-field item list `tui/form/render/fields.rs` builds, not from a parallel count.
-- **Composite fields** render a short digest (`5 stg`). Recipe stages are better reused through presets; the panel only shows that a prior had them. **Textarea fields** stay blank unless listed in `show`.
-- **Narrow terminals drop columns** (3 → 2 → 1) instead of moving the panel below the form, so rows stay aligned. Below one column's width the panel collapses to a one-line hint.
+- **Composite fields** render blank. Presets are how you reuse recipe stages, so the panel doesn't summarize them. **Textarea fields** stay blank unless listed in `show`.
+- **Narrow terminals drop columns** (3 → 2 → 1) instead of moving the panel below the form, so rows stay aligned. Below one column's width the panel collapses to a one-line hint. L1.5 thresholds: the form keeps 60 columns and each panel column is 10 wide, so 3 columns need 94, 2 need 84, 1 needs 74. The summary column (§6) is dropped before any prior.
 - Appears automatically when any prior survives the hard filter. With none, a one-line empty state.
 - `Ctrl+R` toggles the panel (collapse/expand).
-- Trigger timing: resolve at form-open and on any `match_on`-field change. **Never at submit** (read-only). Reuse the [[pour-lookup-fields]] trigger model.
-
-*[Deviation: L1 renders a 34-column panel to the right (≥ 100 cols) or stacked below, one prior per row, cells joined without alignment, header `<matched-tier> · <rank-label>`, and a `repeat:` line + `N of M captures` footer.]*
+- Trigger timing: resolve at form-open and on any `match_on` or gate field change. A gate re-resolves even when it isn't in `match_on`, because it changes which priors survive. **Never at submit** (read-only). Reuse the [[pour-lookup-fields]] trigger model.
 
 ### 8.2 PWA
 
@@ -215,7 +209,8 @@ Out of scope for L1 (like lookup-fields). L2: needs the contract amendment (§9)
 
 ### 8.3 Rendering notes
 
-- Column widths derived from `show` field types (numbers right-aligned, capped precision).
+- Column widths derived from `show` field types (numbers right-aligned, capped precision). *[Deviation: L1.5 uses one fixed 9-cell width for every column, left-aligned. Longer values truncate with `…`.]*
+- **Shared prefixes are elided.** When a value is too long for its cell and shares a leading run with a different value on the same screen line, either another column or the form's own value, the panel replaces the shared run with `…`, cut back to a word boundary. Beans named `YesPlz - Homestar` and `YesPlz - SOE Ethiopia` read `…Homestar` and `…SOE Ethi…` rather than `YesPlz -…` twice. Values that fit are shown whole. `·` is still decided on the full value.
 - Ratio display (`1:16`) is opt-in per module via a display hint, not a summary type — deferred to L2. L1 shows raw `dose_g`/`yield_g`.
 
 ## 9. API Contract Impact
@@ -287,12 +282,12 @@ Replaces L1's row panel with the column layout. Driven by first real use (2026-1
 - ~~**DQL vs JsonLogic**~~ → **JsonLogic** (injection-safe), and the `/search/` fast path ships **in L1** alongside the FS fallback.
 - ~~**Summary aggregation**~~ → **configurable per shown field, default `median`** (§6). `mean`/`max`/`min`/`latest` via object form.
 - ~~**Zero-config `show`**~~ → **numeric + select fields, first 4 by config order** (§3), user-overridable.
-- ~~**Narrow terminal**~~ → **stack below the form**, full width (§8.1). Carries a min-terminal-height caveat (open #2 below).
+- ~~**Narrow terminal**~~ → **stack below the form**, full width (§8.1). Carries a min-terminal-height caveat (open #2 below). *Superseded by L1.5 (2026-10-02): narrow terminals drop columns and the panel stays beside the form.*
 
 ### Resolved (L1 build, 2026-07-13)
 
 1. ~~**JsonLogic frontmatter accessor shape**~~ → **`{"var": "frontmatter.<key>"}`**, confirmed from the Obsidian Local REST API OpenAPI spec (`obsidian-local-rest-api-openapi.yaml`, `/search/` examples: `find_by_frontmatter_value`). Equality uses `{"==": [...]}`. *[Deviation: the spec claimed `/search/` returns "matching files with frontmatter"; the API actually returns `[{filename, result}]`, so the L1 build fetches each note's frontmatter via `Accept: application/vnd.olrapi.note+json`. And, to keep the two transport paths provably equivalent under the new-bag cascade, L1 fetches the module corpus once and runs the (pure, tested) resolver in-process rather than pushing each cascade tier server-side; the injection-safe JsonLogic builder ships and is tested as the documented query surface, so server-side filtering remains a localized future change.]*
-2. ~~**Stack-below min height**~~ → **9-row form minimum**: the stacked panel is only rendered as a box when ≥ 6 rows remain after reserving 9 rows for the form; otherwise it collapses to the one-line summary hint (`▸ repeat: … — ^R for rows`). The `Ctrl+R` collapse reserves a single hint row.
+2. ~~**Stack-below min height**~~ → **9-row form minimum**: the stacked panel is only rendered as a box when ≥ 6 rows remain after reserving 9 rows for the form; otherwise it collapses to the one-line summary hint (`▸ repeat: … — ^R for rows`). The `Ctrl+R` collapse reserves a single hint row. *Superseded by L1.5 (2026-10-02): there is no stacked layout, so there is no height budget. The one-line hint takes the bottom row.*
 
 ### Resolved (L1 review, 2026-10-02)
 
@@ -304,7 +299,7 @@ Replaces L1's row panel with the column layout. Driven by first real use (2026-1
 ### Still open
 
 3. **Window timezone** — `mode="window"` uses `today_local` (server-side, per [[pour-lookup-fields]] §11.2). Document the same caveat. *(L2 — only relevant once `window` mode lands.)*
-4. **Minimum similarity** — show the closest priors even when nothing agrees past the hard filter (current spec), or hide the panel below some score? Architect's call in L1.5, revisit with use.
+4. **Minimum similarity** — show the closest priors even when nothing agrees past the hard filter (current spec), or hide the panel below some score? Architect's call in L1.5, revisit with use. *L1.5 chose: no minimum, and a plain-count score with earlier-field tie-breaks (§4.1). Revisit once the corpus is larger.*
 
 ## 13. Cross-references
 
@@ -317,6 +312,8 @@ Replaces L1's row panel with the column layout. Driven by first real use (2026-1
 - [[pour-api-contract]] — L2 amendment target (§9).
 
 ## 14. Change Log
+
+- **2026-10-02 (L1.5 built)** — Reference columns landed in the TUI. The resolver hard-filters on `show_when` gates, scores by plain `match_on` agreement count with earlier-field tie-breaks, and orders by score, `rank_by`, then recency. No minimum score; `no close match` needs at least one filled `match_on` field. Config: `limit` defaults to 3, `show` to every non-textarea, non-composite field, zero-config `match_on` to every wikilink/select field in config order, and a new opt-in `summary` key. No `config_version` bump. The panel draws one column per prior with rows placed from the form's own item heights, `·` for values equal to the live form (defaults included), dimmed columns for priors missing `rank_by`, `rank_by` values as column headers and ages as footers. Narrow terminals drop columns, then fall back to a one-line hint; the stacked layout and `repeat:` line are gone. Composite rows render blank. The resolver ignores values of fields `show_when` hides, and cells elide a prefix shared with another value on the same row. Deviation notes closed by this work were removed.
 
 - **2026-10-02 (L1.5 specced)** — First real use showed the L1 panel was not useful: zero-config showed fields the user had already filled, and the strict cascade rarely found similar brews on a 17-brew corpus. Revised to reference columns: one column per real prior, rows aligned to the form, `·` for same-as-current, similarity scoring with a `show_when` hard filter in place of the cascade, `rank_by` demoted to tie-breaker, `repeat:` line replaced by an opt-in summary column. L1 behavior annotated as deviations. New phase L1.5 (§10).
 

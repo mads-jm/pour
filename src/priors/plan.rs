@@ -3,18 +3,16 @@
 //!
 //! The plan is pure config-derivation: it does not touch the transport or read
 //! any notes. It resolves the zero-config defaults (§3), classifies each
-//! `match_on` key's mode from the field's `wikilink` flag, parses the `rank_by`
-//! grammar, and picks the `show` columns. Validation of the config has already
+//! `match_on` key's mode from the field's `wikilink` flag, derives the hard
+//! filter gates from the module's `show_when` rules (§4.1), parses the
+//! `rank_by` grammar, and picks the `show` fields. Validation of the config has already
 //! happened in `Config::validate` — this module assumes a valid config and
 //! falls back sensibly on anything it does not recognise.
 
 use crate::config::{FieldConfig, FieldType, MatchOn, ModuleConfig, ShowField};
 
-/// Default row limit when `limit` is absent (§3).
-pub const DEFAULT_LIMIT: usize = 5;
-
-/// Zero-config `show` column cap (§3).
-const ZERO_CONFIG_SHOW_CAP: usize = 4;
+/// Default number of priors (one column each) when `limit` is absent (§3).
+pub const DEFAULT_LIMIT: usize = 3;
 
 /// How a single `match_on` key is compared.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,8 +30,8 @@ pub struct MatchKey {
     pub mode: MatchMode,
 }
 
-/// Aggregation for a numeric summary field (§6). Only the numeric aggregations
-/// are modelled in L1; `show` fields are numeric on coffee's path.
+/// Aggregation for a number row in the opt-in summary column (§6). Only the
+/// numeric aggregations are modelled; select/tag `mode` summaries are L2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Agg {
     Median,
@@ -56,35 +54,41 @@ impl Agg {
     }
 }
 
-/// A resolved `show` column.
+/// A resolved `show` entry: a field that gets a cell in each prior's column.
 #[derive(Debug, Clone)]
 pub struct ShowColumn {
     pub field: String,
     pub agg: Agg,
-    /// Whether the field is numeric (drives right-alignment + summary inclusion).
+    /// Whether the field is a `number` field (only these get a summary cell).
     pub numeric: bool,
 }
 
-/// How the matched rows are ordered (§5).
+/// How priors with equal similarity are ordered (§5).
 #[derive(Debug, Clone)]
 pub enum RankBy {
-    /// Sort by a field, descending or ascending. Rows split into qualifying
-    /// (have the field) and texture (missing it).
+    /// Break ties by a numeric field, descending or ascending. Priors missing
+    /// the field sort after the ones that have it and render dimmed.
     Field { field: String, descending: bool },
-    /// Newest capture first. Every row qualifies; no texture split.
+    /// Break ties by recency alone, newest first.
     Recent,
-    /// Preserve scan order, unranked. Every row qualifies.
+    /// Preserve scan order between equally similar priors.
     None,
 }
 
 /// A fully-resolved priors plan.
 #[derive(Debug, Clone)]
 pub struct PriorsPlan {
-    /// Ordered match keys, most → least specific (drives the cascade).
+    /// Ordered match keys, most → least important. Each agreeing key adds one
+    /// to a prior's score; earlier keys break ties (§4.1).
     pub match_keys: Vec<MatchKey>,
+    /// Hard-filter gates: every field another field's `show_when` names. A
+    /// prior must match the form's value for each gate the form has filled.
+    pub gates: Vec<MatchKey>,
     pub rank_by: RankBy,
     pub show: Vec<ShowColumn>,
     pub limit: usize,
+    /// Whether the opt-in summary column is on (§6).
+    pub summary: bool,
 }
 
 impl PriorsPlan {
@@ -107,7 +111,7 @@ impl PriorsPlan {
         let rank_by = parse_rank_by(cfg.rank_by.as_deref());
 
         let show = if cfg.show.is_empty() {
-            zero_config_show(module)
+            default_show(module)
         } else {
             cfg.show
                 .iter()
@@ -115,66 +119,104 @@ impl PriorsPlan {
                 .collect()
         };
 
-        let limit = cfg.limit.unwrap_or(DEFAULT_LIMIT);
-
         PriorsPlan {
             match_keys,
+            gates: gate_keys(module),
             rank_by,
             show,
-            limit,
+            limit: cfg.limit.unwrap_or(DEFAULT_LIMIT),
+            summary: cfg.summary.unwrap_or(false),
         }
     }
 
     fn zero_config(module: &ModuleConfig) -> PriorsPlan {
-        // Match on the module's first wikilink/select field, if one exists.
-        let match_keys = first_match_field(module)
-            .map(|k| vec![k])
-            .unwrap_or_default();
-
         PriorsPlan {
-            match_keys,
+            match_keys: zero_config_match_keys(module),
+            gates: gate_keys(module),
             rank_by: RankBy::Recent,
-            show: zero_config_show(module),
+            show: default_show(module),
             limit: DEFAULT_LIMIT,
+            summary: false,
         }
+    }
+
+    /// The form fields whose change re-resolves the panel: every `match_on`
+    /// field plus every gate, without duplicates, in that order.
+    pub fn trigger_fields(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for k in self.match_keys.iter().chain(&self.gates) {
+            if !out.contains(&k.field.as_str()) {
+                out.push(&k.field);
+            }
+        }
+        out
     }
 }
 
-/// The zero-config match field: the module's first `wikilink`/select field.
-fn first_match_field(module: &ModuleConfig) -> Option<MatchKey> {
-    module.fields.iter().find_map(|f| {
-        let is_select = matches!(
-            f.field_type,
-            FieldType::StaticSelect | FieldType::DynamicSelect
-        );
-        let is_wikilink = f.wikilink.unwrap_or(false);
-        if is_wikilink || is_select {
-            Some(MatchKey {
-                field: f.name.clone(),
-                mode: if is_wikilink {
-                    MatchMode::Wikilink
-                } else {
-                    MatchMode::Equality
-                },
-            })
-        } else {
-            None
-        }
-    })
+/// Zero-config `match_on`: every `wikilink`/select field, in config order.
+fn zero_config_match_keys(module: &ModuleConfig) -> Vec<MatchKey> {
+    module
+        .fields
+        .iter()
+        .filter_map(|f| {
+            let is_select = matches!(
+                f.field_type,
+                FieldType::StaticSelect | FieldType::DynamicSelect
+            );
+            let is_wikilink = f.wikilink.unwrap_or(false);
+            if is_wikilink || is_select {
+                Some(MatchKey {
+                    field: f.name.clone(),
+                    mode: if is_wikilink {
+                        MatchMode::Wikilink
+                    } else {
+                        MatchMode::Equality
+                    },
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
-/// Zero-config `show`: numeric + select fields in config order, capped at 4.
-fn zero_config_show(module: &ModuleConfig) -> Vec<ShowColumn> {
+/// The hard-filter gates (§4.1): every field that another field's `show_when`
+/// names, in config order, compared like a `match_on` key on that field.
+/// Derived from config alone, so no module's field names are hardcoded here.
+fn gate_keys(module: &ModuleConfig) -> Vec<MatchKey> {
+    module
+        .fields
+        .iter()
+        .filter(|g| {
+            module
+                .fields
+                .iter()
+                .any(|f| f.show_when.as_ref().is_some_and(|sw| sw.field == g.name))
+        })
+        .map(|g| MatchKey {
+            field: g.name.clone(),
+            mode: if g.wikilink.unwrap_or(false) {
+                MatchMode::Wikilink
+            } else {
+                MatchMode::Equality
+            },
+        })
+        .collect()
+}
+
+/// Default `show` (no block, or a block without `show`): every field in config
+/// order except `textarea` and `composite_array`. Textarea values live in the
+/// body, and composite rows render blank because presets cover them (§8.1).
+fn default_show(module: &ModuleConfig) -> Vec<ShowColumn> {
     module
         .fields
         .iter()
         .filter(|f| {
-            matches!(
+            !matches!(
                 f.field_type,
-                FieldType::Number | FieldType::StaticSelect | FieldType::DynamicSelect
+                FieldType::Textarea | FieldType::CompositeArray
             )
         })
-        .take(ZERO_CONFIG_SHOW_CAP)
         .map(|f| ShowColumn {
             field: f.name.clone(),
             agg: Agg::Median,

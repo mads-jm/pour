@@ -61,28 +61,30 @@ pub async fn run_loop(
                 break 'main;
             }
 
-            // Snapshot priors `match_on` values before the key is handled so we
-            // can re-resolve the panel only when a match field actually changed
-            // (read-only trigger model: form-open + match_on change, never
-            // submit). Only relevant while the form is on screen.
+            // Snapshot priors `match_on` and gate values before the key is
+            // handled so we can re-resolve the panel only when one of them
+            // actually changed (read-only trigger model: form-open + match_on
+            // or gate change, never submit). Only relevant while the form is
+            // on screen.
             let priors_before = if app.screen == Screen::Form {
                 app.module_keys
                     .get(app.selected_module)
                     .cloned()
-                    .map(|key| (key.clone(), priors_match_values(app, &key)))
+                    .map(|key| (key.clone(), priors_trigger_values(app, &key)))
             } else {
                 None
             };
 
             let action = tui::handle_event(app, key_event);
 
-            // Re-resolve the priors panel if a `match_on` field value changed
-            // and we are still on the form (skip when navigating away/submit).
+            // Re-resolve the priors panel if a `match_on` or gate field value
+            // changed and we are still on the form (skip when navigating
+            // away/submit).
             if let Some((key, before)) = priors_before
                 && app.screen == Screen::Form
                 && matches!(action, tui::Action::None)
             {
-                let after = priors_match_values(app, &key);
+                let after = priors_trigger_values(app, &key);
                 if after != before {
                     resolve_priors(app, &key).await;
                 }
@@ -1618,40 +1620,39 @@ async fn handle_browse(app: &mut App, path: &str) {
     }
 }
 
-/// The current values of a module's `match_on` fields, in plan order.
+/// The current values of a module's `match_on` and gate fields, in
+/// [`crate::priors::PriorsPlan::trigger_fields`] order.
 ///
-/// Used to detect a `match_on`-field change so the read-only priors panel can
-/// re-resolve (§ trigger model). Returns an empty vec when the module has no
-/// priors match keys.
-fn priors_match_values(app: &App, module_key: &str) -> Vec<String> {
+/// Used to detect a change that should re-resolve the read-only priors panel
+/// (§ trigger model). A gate re-resolves even when it is not in `match_on`,
+/// because it changes which priors survive the hard filter. Other fields only
+/// move the `·` marks, which the renderer recomputes every frame.
+fn priors_trigger_values(app: &App, module_key: &str) -> Vec<String> {
     let module = match app.config.modules.get(module_key) {
         Some(m) => m,
         None => return Vec::new(),
     };
-    let plan = crate::priors::PriorsPlan::build(module);
-    let form = match &app.form_state {
-        Some(fs) => fs,
-        None => return Vec::new(),
-    };
-    plan.match_keys
-        .iter()
-        .map(|k| form.field_values.get(&k.field).cloned().unwrap_or_default())
-        .collect()
+    match &app.form_state {
+        Some(fs) => crate::priors::trigger_values(module, &fs.field_values),
+        None => Vec::new(),
+    }
 }
 
 /// Resolve the read-only priors panel for the current form and store it on the
 /// form state. Mirrors the background-fetch model of `fetch_dynamic_options`:
-/// resolve at form-open and on `match_on`-field change, never at submit.
+/// resolve at form-open and on `match_on` or gate field change, never at
+/// submit.
 ///
-/// Best-effort: a transport failure yields the empty state (no panel), never an
-/// error surfaced mid-capture.
+/// Best-effort: a transport failure yields the empty state (a panel with no
+/// columns), never an error surfaced mid-capture.
 pub async fn resolve_priors(app: &mut App, module_key: &str) {
     let module = match app.config.modules.get(module_key).cloned() {
         Some(m) => m,
         None => return,
     };
 
-    // Snapshot the current form values for the resolver.
+    // Snapshot the current form values for the resolver. `resolve_panel`
+    // drops the values of fields `show_when` hides.
     let match_values: std::collections::HashMap<String, String> = match &app.form_state {
         Some(fs) => fs.field_values.clone(),
         None => return,
@@ -1660,7 +1661,7 @@ pub async fn resolve_priors(app: &mut App, module_key: &str) {
     let panel = crate::priors::resolve_panel(&app.transport, &module, &match_values).await;
 
     if let Some(ref mut fs) = app.form_state {
-        fs.priors_panel = panel;
+        fs.priors_panel = Some(panel);
     }
 }
 

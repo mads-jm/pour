@@ -246,20 +246,27 @@ pub struct ShowWhen {
 /// forms (`mode = overlap/window`) with a clear error.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct PriorsConfig {
-    /// Ordered list (most → least specific) of keys defining "similar". Widen by
-    /// dropping the tail key when a tier yields no matches (the new-bag cascade).
+    /// Ordered list (most → least important) of keys defining "similar". Each
+    /// prior scores by how many of these agree with the form; earlier keys
+    /// break ties between equal counts.
     #[serde(default)]
     pub match_on: Vec<MatchOn>,
-    /// How to order matches. `"<field> desc"` / `"<field> asc"` (L1),
-    /// `"recent"`, or `"none"`. Absent → treated as `recent`.
+    /// Tie-breaker between equally similar priors. `"<field> desc"` /
+    /// `"<field> asc"` (L1), `"recent"`, or `"none"`. Absent → `recent`.
     #[serde(default)]
     pub rank_by: Option<String>,
-    /// Which frontmatter fields render as columns and get summarized.
+    /// Which frontmatter fields get a cell in the panel's rows. Empty → every
+    /// field except textarea and composite_array.
     #[serde(default)]
     pub show: Vec<ShowField>,
-    /// Maximum rows to display (default 5, applied at resolve time).
+    /// How many priors to show, one column each (default 3, applied at
+    /// resolve time).
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Opt-in summary column (§6). `true` adds one column on the right that
+    /// aggregates number rows across the displayed priors. Absent → off.
+    #[serde(default)]
+    pub summary: Option<bool>,
 }
 
 /// A single `match_on` entry: bare string (equality, or wikilink when the
