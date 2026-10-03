@@ -34,10 +34,42 @@ Every module defined in `[modules.<name>]` supports these keys:
 | `path` | string | yes | Vault-relative path template. Supports strftime tokens (`%Y`, `%m`, `%d`) and field placeholders (`{{field_name}}`). |
 | `display_name` | string | no | Human-readable label shown on the dashboard. Defaults to the module key. |
 | `append_under_header` | string | conditional | Required for `append` mode. Markdown heading to insert content under. |
-| `append_template` | string | no | Template string for append-mode output. Supports `{{field}}`, `{{date}}`, `{{time}}`, `{{callout}}` placeholders. |
+| `append_template` | string | no | Template string for append-mode output. Supports `{{field}}`, `{{date}}`, `{{time}}`, `{{callout}}` placeholders. A multi-line value on a line that starts with `>` gets `> ` on every continuation line, blank lines included, so it stays inside the blockquote or callout. See [[#`textarea`]]. |
 | `callout_type` | string | no | Default Obsidian callout type for `{{callout}}` in templates. |
 | `icon` | string | no | Optional icon displayed on the TUI dashboard next to the module name (e.g. `"☕"`). For create-mode modules, also written to output frontmatter as `icon: <value>`, making it queryable by Dataview and compatible with Iconize/Supercharged Links. |
 | `preset_axes` | string[] | no | Ordered list of field names used as drilldown axes in the preset picker. Empty/absent → no picker; the legacy `←→` cycler stays active. See [[pour-preset-hierarchy]]. |
+| `priors` | table | no | Read-only "priors" review panel declaration. See [[pour-review-priors]] and the [`[priors]` block](#priors-block) below. |
+
+<a id="priors-block"></a>
+### `[modules.<name>.priors]` block
+
+Declares a read-only review panel that shows the best-relevant prior captures beside the capture form (see [[pour-review-priors]]). **All keys are optional** — omitting the whole block yields a zero-config default. The block never writes, never blocks submit, and only resolves at form-open and on `match_on`-field change.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `match_on` | array | no | Ordered list (most → least specific) of keys defining "similar". Widen by dropping the most-specific (front) key when a tier yields no matches (the new-bag cascade). Each entry is a **bare string** (equality, or wikilink when the referenced field has `wikilink = true`) or an **object** `{ field, mode }`. In **L1** only `mode = "equality"` / `"wikilink"` are accepted; `"overlap"` / `"window"` are reserved for L2 and rejected at config-load. |
+| `rank_by` | string | no | `"<field> desc"` / `"<field> asc"` (sort by a field; L1), `"recent"` (newest first), or `"none"` (scan order). The `"<field> max"` / `"<field> min"` single-extreme forms are reserved for a later phase and rejected in L1. Absent → `"recent"`. |
+| `show` | array | no | Which frontmatter fields render as columns and get summarized. Each entry is a **bare string** (default aggregation) or an **object** `{ field, agg }`. `agg` ∈ `median` (default), `mean`, `max`, `min`, `latest`. Absent → numeric + select fields in config order, capped at 4. |
+| `limit` | integer | no | Max rows displayed. Must be `> 0`. Defaults to `5`. |
+
+All `match_on` / `rank_by` / `show` field names must reference fields that exist on the module.
+
+**Zero-config default** (no `[priors]` block): match on the module's first `wikilink`/select field if one exists (else recent-N of the same module); `rank_by = "recent"`; `show` = numeric + select fields capped at 4; `limit = 5`.
+
+```toml
+[modules.coffee.priors]
+match_on = ["bean", "roaster", "method"]   # ordered: most → least specific
+rank_by  = "rating desc"                     # best shots first
+show     = ["dose_g", "yield_g", "time_s"]   # columns + numeric (median) summary
+limit    = 5
+
+# object forms: explicit wikilink mode and a mean-aggregated column
+[modules.brew.priors]
+match_on = [{ field = "roaster", mode = "wikilink" }]
+show     = [{ field = "water_temp_c", agg = "mean" }]
+```
+
+**TUI:** the panel renders to the right of the form on wide terminals (≥ 100 cols), stacks below on narrower ones, and collapses to a one-line summary hint on short terminals or via `Ctrl+R`. It auto-appears when the matched tier is non-empty and shows a one-line empty state otherwise.
 
 ## Field Config Keys
 
@@ -168,7 +200,7 @@ target = "body"
 
 __TUI__: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
 __Output__: Defaults to Markdown body. Can be overridden to frontmatter.
-__Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax. This applies in both create mode (`partition_fields`) and append mode (template `{{field}}` substitution).
+__Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax. This applies in both create mode (`partition_fields`) and append mode (template `{{field}}` substitution). Every line of the value gets `> `, and a blank line between paragraphs is written as `> ` so the callout does not end at the gap. `\r\n` line endings are treated like `\n`, and a single trailing newline is dropped.
 
 ```toml
 [[modules.me.fields]]
@@ -182,9 +214,13 @@ Produces:
 
 ```markdown
 > [!tip]
-> First line of content
-> Second line
+> First paragraph, line one
+> First paragraph, line two
+> 
+> Second paragraph
 ```
+
+__Template-line bridging__: A field without its own `callout` can still land in a callout through `append_template`, as the shipped `me` module does with `"#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"`. When a multi-line value is substituted onto a template line that starts with `>`, every continuation line gets `> ` and blank lines become `> `, the same lines the field-level wrapping above produces. A plain blockquote line such as `> {{body}}` bridges too, with or without a `[!type]` opener. The check runs per occurrence, so a placeholder used on a `>` line and again on an unprefixed line is bridged only on the `>` line. Lines that do not start with `>`, such as `"- [ ] {{body}}"`, get the value verbatim, and a multi-line value there still spills past the first line.
 
 __Runtime cycling__: When a textarea field has `callout` configured, Left/Right arrow keys cycle through callout types while the editor overlay is closed. The `[!type]` label is shown on the field row. The selected type overrides the config default for that entry only.
 
@@ -492,7 +528,7 @@ These keys are set on the module itself, not on individual fields:
 | `fields` | array | yes | At least one field definition |
 | `display_name` | string | no | Human-readable name shown in the dashboard (defaults to module key) |
 | `append_under_header` | string | conditional | Required when `mode = "append"`. The Markdown heading to append under |
-| `append_template` | string | no | Template for append-mode content. Supports `{{time}}`, `{{date}}`, `{{callout}}`, and field name placeholders |
+| `append_template` | string | no | Template for append-mode content. Supports `{{time}}`, `{{date}}`, `{{callout}}`, and field name placeholders. A multi-line value on a line that starts with `>` gets `> ` on every continuation line, so `> {{body}}` keeps a multi-paragraph body inside the callout |
 | `callout_type` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). Resolved as `{{callout}}` in `append_template` |
 | `icon` | string | no | Unicode emoji shown in the TUI dashboard and written to frontmatter in create-mode output |
 | `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note |

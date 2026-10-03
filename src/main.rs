@@ -192,6 +192,8 @@ async fn main() {
         // Fetch dynamic select options for this module
         pour::tui::fetch_dynamic_options(&mut app, module_name, &mut cache).await;
         pour::tui::fetch_current_values(&mut app, module_name).await;
+        // Resolve the read-only priors panel at form-open, as the dashboard path does.
+        pour::tui::resolve_priors(&mut app, module_name).await;
     }
 
     // Install panic hook that restores terminal before printing panic.

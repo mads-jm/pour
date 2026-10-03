@@ -119,6 +119,7 @@ fn make_module_with_field(field: FieldConfig) -> ModuleConfig {
         frontmatter_date_format: None,
         post_write_shell: None,
         post_write_shell_on_serve: None,
+        priors: None,
     }
 }
 

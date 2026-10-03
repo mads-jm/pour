@@ -723,6 +723,138 @@ callout_title = "Default"
     );
 }
 
+// ── Blockquote bridging for multi-line values ───────────────────────────────
+//
+// A multi-line value substituted onto a template line that starts with `>`
+// must carry `> ` onto every continuation line, or everything after its first
+// line falls out of the callout.
+
+/// The multi-paragraph body from the original bug report.
+const BRIDGE_BODY: &str =
+    "Para one line A.\nPara one line B.\n\nPara two after blank.\n\nPara three.";
+
+/// Every line of `BRIDGE_BODY` after the first, as it must appear when bridged.
+const BRIDGE_TAIL: &str = "\n> Para one line B.\n> \n> Para two after blank.\n> \n> Para three.";
+
+/// Render `template` against `callout_module()` (callout_type = "tip") with
+/// the given field values and a fixed clock.
+fn render_bridge(template: &str, pairs: &[(&str, &str)]) -> String {
+    use chrono::TimeZone as _;
+    let fields: HashMap<String, String> = pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    render_append_template(
+        template,
+        &fields,
+        &callout_module(),
+        &no_composites(),
+        &no_overrides(),
+        &no_overrides(),
+        Local.with_ymd_and_hms(2026, 7, 16, 14, 32, 55).unwrap(),
+    )
+}
+
+#[test]
+fn multi_paragraph_body_stays_inside_the_callout() {
+    let result = render_bridge(
+        "#### T\n> [!{{callout}}] {{title}}\n> {{body}}",
+        &[("title", "Morning"), ("body", BRIDGE_BODY)],
+    );
+
+    assert_eq!(
+        result,
+        format!("#### T\n> [!tip] Morning\n> Para one line A.{BRIDGE_TAIL}")
+    );
+}
+
+#[test]
+fn crlf_body_bridges_like_lf_and_leaves_no_carriage_return() {
+    let crlf = BRIDGE_BODY.replace('\n', "\r\n");
+    let result = render_bridge(
+        "#### T\n> [!{{callout}}] {{title}}\n> {{body}}",
+        &[("title", "Morning"), ("body", &crlf)],
+    );
+
+    assert_eq!(
+        result,
+        format!("#### T\n> [!tip] Morning\n> Para one line A.{BRIDGE_TAIL}")
+    );
+    assert!(
+        !result.contains('\r'),
+        "no \\r may survive, got: {result:?}"
+    );
+}
+
+#[test]
+fn plain_blockquote_line_bridges_without_a_callout_opener() {
+    let result = render_bridge("> {{body}}", &[("body", BRIDGE_BODY)]);
+
+    assert_eq!(result, format!("> Para one line A.{BRIDGE_TAIL}"));
+}
+
+#[test]
+fn only_the_quoted_occurrence_of_a_placeholder_is_bridged() {
+    let result = render_bridge("> {{body}}\n\n{{body}}", &[("body", "a\n\nb")]);
+
+    assert_eq!(result, "> a\n> \n> b\n\na\n\nb");
+}
+
+#[test]
+fn bridging_drops_trailing_newlines_the_way_str_lines_does() {
+    // Same splitter as the field-level callout path: one trailing newline
+    // vanishes, a second one becomes a final blank quote line.
+    assert_eq!(render_bridge("> {{body}}", &[("body", "a\n")]), "> a");
+    assert_eq!(render_bridge("> {{body}}", &[("body", "a\n\n")]), "> a\n> ");
+}
+
+#[test]
+fn single_line_value_on_a_quoted_line_is_unchanged() {
+    let result = render_bridge("> {{body}}", &[("body", "Just one line.  ")]);
+
+    assert_eq!(result, "> Just one line.  ");
+}
+
+#[test]
+fn multi_line_values_on_unquoted_shipped_templates_are_verbatim() {
+    let multi = "first\n\nsecond\r\n";
+
+    assert_eq!(
+        render_bridge("- [ ] {{body}}", &[("body", multi)]),
+        format!("- [ ] {multi}")
+    );
+    assert_eq!(
+        render_bridge("- **{{time}}** · {{entry}}", &[("entry", multi)]),
+        format!("- **14:32** · {multi}")
+    );
+    assert_eq!(
+        render_bridge(
+            "- **{{time}}** · {{type}} — {{duration}} min : {{notes}}",
+            &[("type", "Run"), ("duration", "30"), ("notes", multi)],
+        ),
+        format!("- **14:32** · Run — 30 min : {multi}")
+    );
+}
+
+#[test]
+fn field_level_callout_on_a_quoted_line_nests_consistently() {
+    // A field with its own `callout` renders a `> `-prefixed block; placed on
+    // a `>` line, its continuation lines pick up a second `> ` to match the
+    // `> > [!tip]` opener instead of dropping out of the outer quote.
+    let fields: HashMap<String, String> = [("body".to_string(), "x\ny".to_string())].into();
+    let result = render_append_template(
+        "> {{body}}",
+        &fields,
+        &field_callout_module(),
+        &no_composites(),
+        &no_overrides(),
+        &no_overrides(),
+        Local::now(),
+    );
+
+    assert_eq!(result, "> > [!tip]\n> > x\n> > y");
+}
+
 // ── {{slug}} / {{slug_or_time}} ──────────────────────────────────────────────
 //
 // The slug must match the Lyra Templater's JS exactly:

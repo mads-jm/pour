@@ -1,11 +1,13 @@
 pub mod cache;
 pub mod field_presets;
+pub mod frontmatter_read;
 pub mod history;
 pub(crate) mod history_legacy;
 pub(crate) mod history_summary;
 pub mod json_store;
 pub mod preset_tree;
 pub mod presets;
+pub mod wikilink;
 
 use crate::transport::Transport;
 use cache::Cache;
