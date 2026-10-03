@@ -11,6 +11,7 @@ pub mod output;
 pub mod paths;
 pub mod priors;
 pub mod server;
+pub mod sound;
 pub mod transport;
 pub mod tui;
 pub mod util;

@@ -38,6 +38,8 @@ irm https://raw.githubusercontent.com/mads-jm/pour/main/install.ps1 | iex
 
 The installer downloads the latest release from GitHub, places the binary at `~/.local/bin/pour` (Unix) or `%LOCALAPPDATA%\Programs\pour\pour.exe` (Windows), bundles the `resources/` folder alongside (sample configs, presets, AI-agent reference), and adds it to your PATH. Pin a specific version: `curl ... | sh -s -- 0.2.2` on Unix, or `$env:POUR_VERSION = '0.2.2'; irm ... | iex` on Windows.
 
+**macOS: 14.2 or later, and untested.** The prebuilt macOS binary is Apple Silicon only and needs macOS 14.2 or later, because `cpal`, the audio library behind the [completion sound](#completion-sound-sound), needs it. An older macOS refuses to launch the binary, even with sound turned off. CI compiles every change for macOS, but nobody has ever run pour on a Mac, so the completion sound and the rest of pour are untested there.
+
 **From crates.io** (requires Rust toolchain):
 
 ```bash
@@ -51,7 +53,9 @@ cargo build --release
 # Binary is at target/release/pour
 ```
 
-Requires Rust 2024 edition. No other system dependencies — Obsidian Local REST API is optional.
+Requires Rust 2024 edition. Obsidian Local REST API is optional.
+
+**Linux needs ALSA.** Pour links `libasound.so.2` for the [completion sound](#completion-sound-sound), so the binary won't start without it, even with sound turned off. Desktop distros ship it. A minimal server or container image may not: install `libasound2` (Debian/Ubuntu; `libasound2t64` on 24.04+), `alsa-lib` (Fedora, Arch). Building from source also needs the headers and `pkg-config`: `libasound2-dev` on Debian/Ubuntu, `alsa-lib-devel` on Fedora. Windows needs nothing extra. macOS needs 14.2 or later, as noted above.
 
 ## Quick Start
 
@@ -241,6 +245,17 @@ post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_
 Runs from `base_path` through the OS shell. Best-effort: the note is written first, so a failing hook warns and never loses the capture.
 
 > **This is arbitrary command execution from your config.** Only `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, and `{{slug_or_time}}` interpolate — all Pour-generated. `{{field_name}}` is **rejected at load**, not stripped: captured text must never reach a shell string. A hook that auto-commits and pushes also makes a bad capture public history.
+
+### Completion Sound (`[sound]`)
+
+A short synthesized tone when a capture saves in the TUI:
+
+```toml
+[sound]
+on_save = true   # default false, and when off pour opens no audio device
+```
+
+It plays when the summary reads `▽ saved`, in every write mode, and never on `! error`. One-shot capture (`pour habit water 16`) and `pour serve` stay silent. Saves made while a tone is still sounding queue, and each gets its tone in turn. With no output device available (an SSH session, say), the capture still saves and a one-line toast says why there was no sound. That toast shows once per session and waits for any toast already on screen.
 
 ### Conditional Fields (`show_when`)
 
@@ -432,6 +447,7 @@ mobile_visible = false
 | Filesystem paths | `dirs` — locates the home directory for `~/.pour/` |
 | Errors | `anyhow` — error propagation in non-trivial Result chains |
 | Shell open | `open` — opens notes in Obsidian via the `o` key on the summary screen |
+| Audio | `cpal` — plays the completion sound; links ALSA on Linux. `alsa` (Linux only) keeps alsa-lib's diagnostics off the TUI's terminal |
 
 ## Development
 

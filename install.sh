@@ -20,7 +20,7 @@ case "$os-$arch" in
   darwin-arm64|darwin-aarch64) target="aarch64-apple-darwin" ;;
   *)
     printf 'Unsupported platform: %s-%s\n' "$os" "$arch" >&2
-    printf 'Prebuilt targets: linux x86_64, macOS arm64.\n' >&2
+    printf 'Prebuilt targets: linux x86_64, macOS arm64 (macOS 14.2 or later).\n' >&2
     printf 'Build from source: cargo install --git https://github.com/%s\n' "$REPO" >&2
     exit 1 ;;
 esac

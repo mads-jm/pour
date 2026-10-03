@@ -531,7 +531,10 @@ fn handle_append_static_option(app: &mut App, field_index: usize, value: &str) {
 }
 
 /// Handle form submission: validate, write, transition to summary.
-async fn handle_submit(app: &mut App, cache: &mut Cache) {
+///
+/// Public so integration tests can drive a submit end to end; the event loop
+/// is its only production caller.
+pub async fn handle_submit(app: &mut App, cache: &mut Cache) {
     let module_key = match app.module_keys.get(app.selected_module) {
         Some(k) => k.clone(),
         None => return,
@@ -715,6 +718,14 @@ async fn handle_submit(app: &mut App, cache: &mut Cache) {
                 transport_mode,
                 auto_created_notes: auto_created,
             });
+
+            // The tone confirms what the green `▽ saved` header confirms, so it
+            // fires here and only here: after the hook, never on the Err arm.
+            // `play` returns at once; a failure comes back as a status toast
+            // via `App::tick_status`, never into the summary.
+            if app.config.sound.on_save {
+                app.chime.play();
+            }
         }
         Err(e) => {
             app.summary_state = Some(SummaryState {
