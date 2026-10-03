@@ -1,6 +1,20 @@
-# [Pour](https://pour.madigan.app/)
+<div align="center">
 
-A terminal-native capture tool that writes structured Markdown to a folder. Config-driven, keyboard-first, no friction. Built for [Obsidian](https://obsidian.md) users, works without it.
+# ▽ pour
+
+**Log the things you care about without leaving the terminal.**
+
+A config-driven capture tool that writes structured Markdown into your [Obsidian](https://obsidian.md) vault, or any folder you point it at.
+
+[![ci](https://github.com/mads-jm/pour/actions/workflows/ci.yml/badge.svg)](https://github.com/mads-jm/pour/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/mads-jm/pour?color=4c1)](https://github.com/mads-jm/pour/releases/latest)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+[Website](https://pour.madigan.app/) · [Install](#install) · [Docs](pour%20-%20docs/index.md) · [Changelog](CHANGELOG.md)
+
+</div>
+
+![pour running in a terminal](https://github.com/user-attachments/assets/8c658f4f-2b3c-43d5-ada3-8d44b12221c6)
 
 ## Why
 
@@ -18,86 +32,82 @@ pour note         # create a fleeting note
 pour              # open the dashboard
 ```
 
-![WindowsTerminal_MrF7aYYLa6](https://github.com/user-attachments/assets/8c658f4f-2b3c-43d5-ada3-8d44b12221c6)
+## What a pour looks like
+
+You describe a module once in `~/.pour/config.toml`. After that, `pour coffee` opens a form, you fill it in, and a note lands in your vault:
+
+```markdown
+---
+date: 2026-10-02
+bean: "[[Ethiopia Guji]]"
+method: V60
+ratio: "1:16"
+---
+
+Blueberry up front, tea-like finish. Grind one step finer next time.
+```
+
+That's `Coffee/2026-10-02-Ethiopia Guji.md`, written by pour from a short block of config. Fields become YAML frontmatter, so Dataview, Bases, or a ten-line script can query a year of brews later. The tasting notes go to the body. The bean list in the form came from the files in `Coffee/Beans/`, and the bean is written as a wikilink back to its note.
+
+Pour knows nothing about coffee. Everything it knows lives in your config, so the same engine logs a set list, a book, a workout, or the thing you thought of in the shower.
+
+Some captures don't need a form at all:
+
+```bash
+$ pour habit water 16
+water: 64/96 oz · ✓ 20260805.md
+```
 
 ## Install
 
-**Prebuilt binary (recommended)**
-
-Linux / macOS:
+**Prebuilt binary** (recommended)
 
 ```bash
+# Linux / macOS
 curl -fsSL https://raw.githubusercontent.com/mads-jm/pour/main/install.sh | sh
 ```
 
-Windows (PowerShell):
-
 ```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/mads-jm/pour/main/install.ps1 | iex
 ```
 
-The installer downloads the latest release from GitHub, places the binary at `~/.local/bin/pour` (Unix) or `%LOCALAPPDATA%\Programs\pour\pour.exe` (Windows), bundles the `resources/` folder alongside (sample configs, presets, AI-agent reference), and adds it to your PATH. Pin a specific version: `curl ... | sh -s -- 0.2.2` on Unix, or `$env:POUR_VERSION = '0.2.2'; irm ... | iex` on Windows.
+The installer puts `pour` at `~/.local/bin/pour` (Unix) or `%LOCALAPPDATA%\Programs\pour\pour.exe` (Windows), adds it to your PATH, and drops the `resources/` folder next to it (sample configs, presets, an AI-agent reference). To pin a version, run `curl ... | sh -s -- 0.2.2` on Unix, or set `$env:POUR_VERSION = '0.2.2'` before the `irm` line on Windows.
 
-**macOS: 14.2 or later, and untested.** The prebuilt macOS binary is Apple Silicon only and needs macOS 14.2 or later, because `cpal`, the audio library behind the [completion sound](#completion-sound-sound), needs it. An older macOS refuses to launch the binary, even with sound turned off. CI compiles every change for macOS, but nobody has ever run pour on a Mac, so the completion sound and the rest of pour are untested there.
-
-**From crates.io** (requires Rust toolchain):
+**With cargo**
 
 ```bash
 cargo install --git https://github.com/mads-jm/pour
+# or, from a clone: cargo build --release  →  target/release/pour
 ```
 
-**From source**:
+Needs a Rust toolchain with 2024 edition support.
 
-```bash
-cargo build --release
-# Binary is at target/release/pour
-```
+**Platform notes**
 
-Requires Rust 2024 edition. Obsidian Local REST API is optional.
+- **Linux** needs ALSA. Pour links `libasound.so.2` for the [completion sound](#and-the-rest), so the binary won't start without it, even with sound off. Desktop distros ship it. On a minimal server or container image, install `libasound2` (`libasound2t64` on Ubuntu 24.04+) or `alsa-lib` on Fedora and Arch. Building from source also needs `pkg-config` and the headers: `libasound2-dev` on Debian/Ubuntu, `alsa-lib-devel` on Fedora.
+- **macOS** binaries are Apple Silicon only and need macOS 14.2 or later, because `cpal` (the audio library) does. An older macOS refuses to launch the binary even with sound off. CI compiles every change for macOS, but nobody has run pour on a Mac yet. If you do, please open an issue and say how it went, good or bad.
+- **Windows** needs nothing extra.
 
-**Linux needs ALSA.** Pour links `libasound.so.2` for the [completion sound](#completion-sound-sound), so the binary won't start without it, even with sound turned off. Desktop distros ship it. A minimal server or container image may not: install `libasound2` (Debian/Ubuntu; `libasound2t64` on 24.04+), `alsa-lib` (Fedora, Arch). Building from source also needs the headers and `pkg-config`: `libasound2-dev` on Debian/Ubuntu, `alsa-lib-devel` on Fedora. Windows needs nothing extra. macOS needs 14.2 or later, as noted above.
-
-## Quick Start
-
-**0. Initialize**
+## Quick start
 
 ```bash
 pour init
 ```
 
-`pour init` creates the default layout at `~/.pour/` — `config.toml`, `secrets.toml`, and example modules — guided by interactive prompts. Run this once before first use. All Pour state lives under `~/.pour/` (override with `POUR_HOME`).
+`pour init` walks you through creating `~/.pour/` with a `config.toml`, a `secrets.toml`, and a few example modules. Everything pour keeps lives in that folder. Set `POUR_HOME` to move it.
 
-**1. Create the config file (manual alternative)**
-
-```bash
-mkdir -p ~/.pour
-touch ~/.pour/config.toml
-```
-
-All Pour state lives under `~/.pour/` (override with `POUR_HOME`):
-
-```
-~/.pour/
-  config.toml
-  secrets.toml
-  presets.json
-  field_presets.json
-  cache/
-    state.json
-    history.jsonl
-    history-summary.json
-```
-
-**2. Point it at your vault**
+Or write the config by hand. Point it at your vault:
 
 ```toml
-config_version = "1.0.0"
+# ~/.pour/config.toml
+config_version = "0.4.0"
 
 [vault]
 base_path = "/path/to/your/vault"
 ```
 
-**3. Define a module and run it**
+Add a module:
 
 ```toml
 [modules.todo]
@@ -116,38 +126,23 @@ required = true
 target = "body"
 ```
 
+And run it:
+
 ```bash
 pour todo
 ```
 
-## Config Overview
+## Three ways to write
 
-### Modes
+| Mode | What it does |
+|------|--------------|
+| `create` | A new note per entry, with YAML frontmatter. A brew, a show, a book. |
+| `append` | Adds a line under a header in a note that already exists, like your daily note. |
+| `update` | Rewrites a few frontmatter properties on an existing note and leaves everything else alone. Pour never creates that note. Your template owns it. |
 
-Each module uses one of three modes:
+Which mode a thing belongs in is a design question with a real answer. [Pour Types](pour%20-%20docs/01%20concepts/Pour-Types.md) explains how to tell.
 
-| Mode | Behavior |
-|------|----------|
-| `append` | Appends content under a header in an existing note (e.g. a daily note) |
-| `create` | Creates a new file per entry with YAML frontmatter |
-| `update` | Mutates frontmatter properties on an existing note. Body untouched; only the module's own keys are rewritten. Pour never creates the note — your template owns it. |
-
-### Field Types
-
-- `text` - single-line input
-- `number` - numeric input
-- `textarea` - multi-line; goes to the Markdown body by default
-- `static_select` - fixed options list
-- `dynamic_select` - options pulled from your vault (see Transport below)
-- `composite_array` - repeatable set of sub-fields (e.g. brew recipe stages)
-- `toggle` - a boolean property; space flips it in the form
-- `counter` - a number that accumulates; `16` adds, `=16` sets
-
-Fields go to YAML frontmatter by default. Override with `target = "body"` or `target = "frontmatter"`.
-
-### Habits: one-line capture
-
-`update` mode plus `toggle`/`counter` fields plus the one-shot argv grammar turns an ambient daily property into a single shell line:
+`update` mode is what makes habit tracking a one-liner. Give a module `toggle` and `counter` fields, then call it with a field name:
 
 ```toml
 [modules.habit]
@@ -156,300 +151,99 @@ path = "Daily/%Y%m%d.md"
 icon = "🌱"
 
 [[modules.habit.fields]]
-name = "cannabis"
-field_type = "toggle"
-prompt = "Partaken?"
-
-[[modules.habit.fields]]
 name = "water"
 field_type = "counter"
 prompt = "Water"
 unit = "oz"          # display only, never written to YAML
-goal = 96            # reach-target; renders as 64/96 oz
+goal = 96            # renders as 64/96 oz
 ```
 
 ```bash
-$ pour habit water 16
+$ pour habit water 16           # a counter adds; =16 would set it
 water: 64/96 oz · ✓ 20260805.md
 
-$ pour habit cannabis
-cannabis: true · ✓ 20260805.md
-
-$ pour habit cannabis false     # the correction path
-cannabis: false · ✓ 20260805.md
-
-$ pour habit                    # no field arg → the usual TUI form
+$ pour habit                    # no field → the usual form
 ```
 
-Your daily-note template owns the keys and their defaults (`cannabis: false`, `water: null`); pour only mutates them. A missing key is added with a "your template is stale" notice rather than blocking the capture; a missing *note* fails loudly — pour never fabricates one.
+If the daily note is missing a key, pour adds it and tells you your template is stale, so the capture still lands. If the note itself is missing, pour fails loudly instead of making one up.
 
-### Path Interpolation
+## And the rest
 
-Paths support strftime tokens and field name tokens:
+Each of these is optional and documented in the [field and config reference](pour%20-%20docs/02%20references/field-types.md).
 
-```toml
-# strftime: %Y, %m, %d, %H, %M, %S
-path = "Daily/%Y%m%d.md"
+- **Eight field types.** `text`, `number`, `textarea`, `static_select`, `dynamic_select` (options read from a vault folder), `composite_array` (repeatable rows, like the stages of a pour-over recipe), `toggle`, and `counter`.
+- **Conditional fields.** `show_when` hides a field until another field has a given value. Hidden fields skip validation and stay out of the note.
+- **New notes from inside the form.** Type a bean that doesn't exist yet and `allow_create` opens a sub-form, writes `Coffee/Beans/<name>.md` from a template, and carries on with your brew.
+- **Presets.** `Ctrl+S` saves the current form, `←`/`→` cycles through saved ones. With `preset_axes` set, `p` opens a picker that drills down by method, then bean. Composite fields keep their own presets, so a favorite recipe can be replayed on its own.
+- **Paths that fill themselves in.** strftime tokens, `{{field_name}}`, and `{{slug}}` in the filename: `inbox/%Y%m%d-%H%M%S{{slug}}.md`.
+- **Fixed frontmatter per module.** `tags`, `cssclasses`, a custom `date` format.
+- **Captures outside the vault.** A module can set its own `base_path` and write to a notes repo or anywhere else on disk.
+- **Post-write hooks.** `post_write_shell` runs a command after a save, for example to commit and push a note.
+- **A completion sound.** `[sound] on_save = true` plays one short tone when a capture saves in the TUI. It's off by default, and when it's off pour never opens an audio device.
 
-# field token: {{field_name}}
-path = "Coffee/{{bean}}@%Y%m%d.md"
+> [!WARNING]
+> `post_write_shell` runs arbitrary commands from your config. Only pour-generated tokens (`{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, `{{slug_or_time}}`) interpolate. A `{{field_name}}` in a hook is **rejected at load**, so nothing you type into a form can reach a shell. Hooks don't run for phone captures unless you set `post_write_shell_on_serve = true`. And a hook that pushes to a public repo makes a bad capture public history.
 
-# special tokens: {{date}}, {{time}}
-path = "Notes/%Y/%m/{{title}}.md"
+Every key the TUI listens to is in [keyboard shortcuts](pour%20-%20docs/02%20references/keyboard-shortcuts.md). For a walkthrough that maps a real vault onto a config, see [Adapting Pour to Your Vault](pour%20-%20docs/03%20guides/Guide-Config-to-Vault.md).
 
-# {{slug}} - kebab-cased `title` field, dash-prefixed; empty when untitled.
-# Untitled captures in the same minute collide, so use %S when title is optional.
-path = "inbox/%Y%m%d-%H%M%S{{slug}}.md"   # 20260716-143255-my-title.md
-```
+## From your phone
 
-### Static Module Frontmatter
-
-Keys that belong to the module rather than the capture. Arrays become YAML block sequences; values are literal (no interpolation). Create mode only.
-
-```toml
-[modules.inbox.frontmatter]
-tags = ["inbox", "capture"]
-cssclasses = ["poured"]
-author = "sam"
-
-# Shape of the auto-injected `date` key. Absent → %Y-%m-%d.
-[modules.inbox]
-frontmatter_date_format = "%Y-%m-%dT%H:%M"
-```
-
-### Per-Module Root (`base_path`)
-
-By default every module writes under `[vault].base_path`. A module can override it to capture somewhere that isn't the vault at all:
-
-```toml
-[modules.inbox]
-base_path = "/home/user/notes-repo"    # absolute only; `~` is NOT expanded
-path = "inbox/%Y%m%d-%H%M%S{{slug}}.md"
-
-[modules.inbox.platform]               # optional per-OS override
-windows = "C:\\Users\\user\\notes-repo"
-```
-
-`path` stays root-relative (traversal is still rejected), and such a module always writes via the filesystem — the Obsidian API can only reach the vault it serves.
-
-### Post-Write Hooks (`post_write_shell`)
-
-Run a command after a successful write — e.g. to deliver a note somewhere a local file can't reach:
-
-```toml
-[modules.inbox]
-post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_or_time}}' -- '{{rel_path}}' && git push -q"
-# post_write_shell_on_serve = true   # default false — LAN captures don't run commands
-```
-
-Runs from `base_path` through the OS shell. Best-effort: the note is written first, so a failing hook warns and never loses the capture.
-
-> **This is arbitrary command execution from your config.** Only `{{base_path}}`, `{{rel_path}}`, `{{abs_path}}`, `{{slug}}`, and `{{slug_or_time}}` interpolate — all Pour-generated. `{{field_name}}` is **rejected at load**, not stripped: captured text must never reach a shell string. A hook that auto-commits and pushes also makes a bad capture public history.
-
-### Completion Sound (`[sound]`)
-
-A short synthesized tone when a capture saves in the TUI:
-
-```toml
-[sound]
-on_save = true   # default false, and when off pour opens no audio device
-```
-
-It plays when the summary reads `▽ saved`, in every write mode, and never on `! error`. One-shot capture (`pour habit water 16`) and `pour serve` stay silent. Saves made while a tone is still sounding queue, and each gets its tone in turn. With no output device available (an SSH session, say), the capture still saves and a one-line toast says why there was no sound. That toast shows once per session and waits for any toast already on screen.
-
-### Conditional Fields (`show_when`)
-
-Gate field visibility on another field's value. Hidden fields are excluded from validation and output.
-
-```toml
-[[modules.coffee.fields]]
-name = "shot_style"
-field_type = "static_select"
-prompt = "Shot style"
-options = ["Standard", "Turbo", "Ristretto"]
-show_when = { field = "brew_method", equals = "Espresso" }
-
-# or match multiple values
-show_when = { field = "brew_method", one_of = ["Pour Over", "Immersion"] }
-```
-
-### Templates (inline note creation)
-
-When a `dynamic_select` field has `allow_create = true`, typing a novel value opens a sub-form overlay to capture structured frontmatter for the new note before continuing.
-
-```toml
-[[modules.coffee.fields]]
-name = "bean"
-field_type = "dynamic_select"
-source = "Coffee/Beans"
-allow_create = true
-create_template = "bean"
-post_create_command = "templater:run"   # fires an Obsidian plugin command after creation
-wikilink = true                         # wraps the value in [[...]]
-
-[templates.bean]
-path = "Coffee/Beans/{{name}}.md"
-
-[[templates.bean.fields]]
-name = "origin"
-field_type = "static_select"
-options = ["Ethiopia", "Colombia", "Kenya"]
-```
-
-### Presets
-
-Save and recall named field-value sets per module.
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+S` | Save current form as preset |
-| `Ctrl+D` | Delete current preset |
-| `p` / `Ctrl+P` | Open hierarchical picker (when `preset_axes` is configured) |
-| `Left / Right` | Cycle through saved presets (only when no `preset_axes`) |
-| `Ctrl+Left/Right` | Reorder presets |
-
-Fields with `preset_exclude = true` are skipped during save and apply - useful for notes or observations that change every entry.
-
-#### Preset Hierarchy (drilldown picker)
-
-When you have many presets organised by brewer × bean × intent, add `preset_axes` to the module and press `p` to drill through them one level at a time instead of cycling linearly.
-
-```toml
-[modules.coffee]
-mode = "create"
-path = "Coffee/log.md"
-preset_axes = ["method", "bean"]   # drilldown order: Method → Bean → preset list
-```
-
-Inside the picker: `↑↓` navigate, `Enter` drill/apply, `Backspace`/`←` pop back, `Esc` cancel. The name field is auto-filled with `<method> · <bean>` when saving a new preset.
-
-### Per-field presets (composite_array)
-
-Composite-array fields like `recipe` or `pressure_profile` carry their own preset list, scoped per `module.field`, so a "Hoffmann 4:6" recipe can be replayed without touching the rest of the form. Presets live in `~/.pour/field_presets.json` and only surface inside the composite editor overlay.
-
-| Key (inside the composite overlay) | Action |
-|-----|--------|
-| `s` | Save current rows as a named preset |
-| `l` | Open the load picker (Up/Down · Enter · `Ctrl+D` delete · Esc) |
-| `p` | Quick-cycle to the next saved preset |
-
-Apply replaces the current rows silently. If `sub_fields` were added or removed since the preset was saved, rows are padded or truncated to match the current schema.
-
-## Transport
-
-Pour writes to Obsidian via two paths, falling back automatically:
-
-1. **API** - HTTPS to [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) at `https://127.0.0.1:27124` with Bearer token auth. Set `api_key` in `~/.pour/secrets.toml` or via `POUR_API_KEY` env var.
-2. **Filesystem** - Direct `std::fs` writes to `vault.base_path`. Always available.
-
-A module with its own `base_path` always uses the filesystem path, and the summary reports it as such — the API can only address notes inside the vault it serves.
-
-```toml
-# ~/.pour/config.toml
-[vault]
-base_path = "/path/to/vault"
-api_port = 27124
-```
-
-```toml
-# ~/.pour/secrets.toml  (keep out of version control)
-api_key = "your-key-here"   # or POUR_API_KEY env var
-```
-
-**`dynamic_select` data fallback chain**: API query → disk scan of `source` path → `~/.pour/cache/state.json` → freetext input. The TUI renders immediately from cache while fetching fresh data in the background.
-
-## Do I Need Obsidian?
-
-No. Pour writes plain Markdown files with YAML frontmatter to any directory. Obsidian is one excellent consumer of those files, but anything that reads Markdown works — Logseq, Dendron, Hugo, Zola, `grep`, a 10-line Python script.
-
-**Without Obsidian**: set `base_path` to any folder, skip the `api_key` and `api_port` settings. Pour writes files directly to disk. You get structured, queryable Markdown — no plugins, no proprietary format.
-
-**With Obsidian**: you get the REST API transport (faster writes, richer directory listing), `[[wikilink]]` support, and post-create plugin commands. These are opt-in — if you don't configure them, none of that code runs.
-
-A few config options are Obsidian-flavored (`wikilink = true`, `post_create_command`), but they're all opt-in. The core — config, TUI, form engine, presets, YAML output — is vault-agnostic.
-
-For the full story, see [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
-
-## Capturing from your phone
-
-The terminal is the right answer at your desk. It's the wrong answer at the kitchen counter or away from the laptop. `pour serve` is the second front door — same engine, same vault, same Markdown output, accessible from any browser on your LAN.
-
-**From the TUI dashboard**, press `s` to suspend the dashboard and start the server inline. The QR code appears in the cooked terminal. Step away, capture from your phone, come back, press Ctrl+C — the dashboard resumes. One process, one terminal, no second window.
-
-**From the command line:**
+The terminal is the right tool at your desk and the wrong one at the kitchen counter. `pour serve` runs the same engine behind a small web app on your LAN:
 
 ```bash
-pour serve            # default port 8421
+pour serve            # port 8421
 pour serve --port 9000
 ```
 
-On startup, a QR code prints to the terminal alongside the raw URL. Scan it with your phone. The URL carries your auth token as a query param for the first-visit bootstrap; after that the PWA stores the token client-side and sends it as a header.
+It prints a QR code. Scan it, add the page to your home screen, and every module is a tile you can tap. The phone writes exactly the same Markdown the terminal does. It also queues captures while you're offline, shows a 90-day history heatmap, and lets you manage presets. From the dashboard, press `s` to start the server in place, and `Ctrl+C` to drop back into the TUI.
 
-The PWA lists your modules as tappable tiles. Tap a module, fill the form, submit. The capture path is:
+It's LAN-only, guarded by a token pour generates and keeps in `secrets.toml`. For access away from home, Tailscale or ZeroTier work well. Add `mobile_visible = false` to keep a module off the phone entirely. Token rotation, logging, and home-screen icons are covered in [Capturing From Your Phone](pour%20-%20docs/03%20guides/Guide-Phone-Capture.md).
 
-```
-Phone → POST /api/v1/submit/:module → axum → engine → vault
-```
+## Do I need Obsidian?
 
-Identical to what the TUI writes. The vault never knows or cares which front door was used.
+No. Pour writes plain Markdown with YAML frontmatter to a folder. Obsidian reads that well, and so do Logseq, Hugo, Zola, `grep`, and anything else that reads text files.
 
-**Add to Home Screen** — on iOS and Android the browser offers an "Add to Home Screen" prompt. This gives the PWA an app-like icon and launch behavior; no app store involved.
+Without Obsidian, set `base_path` to any folder and skip the API settings. Pour writes straight to disk.
 
-**PNG icons.** The PWA ships a vector `web/icon.svg`. Android and iOS also accept raster PNGs for the home screen icon. ImageMagick is not bundled with the project; to generate them yourself run:
-
-```bash
-magick web/icon.svg -resize 180x180 web/icon-180.png
-magick web/icon.svg -resize 192x192 web/icon-192.png
-magick web/icon.svg -resize 512x512 web/icon-512.png
-```
-
-The Rust server embeds everything under `web/` and serves files under `web/` at `/static/{filename}`. Place PNGs in `web/` and they will be served at `/static/icon-{size}.png` automatically.
-
-**LAN-only by design.** The server binds `0.0.0.0:<port>` — reachable from any device on the same network, not exposed to the internet. Off-LAN access is your responsibility. [Tailscale](https://tailscale.com) and ZeroTier are both effective zero-config options.
-
-**Auth.** A `mobile_token` is generated on first `pour serve` run and written to `~/.pour/secrets.toml`. All token comparisons are constant-time; the query-param bootstrap is only accepted on first contact. Rotate by deleting the key from `secrets.toml` — the next `pour serve` generates a new one and prints a new QR code.
-
-**Logs.** `pour serve` emits structured, level-filtered logs to stderr. The default level is `info`. Control it with the `POUR_LOG` env var:
-
-```bash
-POUR_LOG=debug pour serve            # verbose — all targets
-POUR_LOG=pour=debug,tower_http=warn  # fine-grained
-```
-
-What is logged at `info`: server startup (bind address, transport mode, vault path), every API request/response (method, URI, status, latency), auth outcomes (`accepted_via_query`, `rejected`), and submit results (module name, vault path, autocreate count). What is **never** logged: token values, request bodies, field values, or any user content.
-
-**Per-module opt-out.** Add `mobile_visible = false` to any module section to hide it from the phone entirely. The PWA cannot see or submit to hidden modules.
+With Obsidian and the [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin, pour writes through the API instead. That gets you faster writes, richer folder listings for dropdowns, and plugin commands like Templater fired after a note is created. Put the key in `~/.pour/secrets.toml` or `POUR_API_KEY`:
 
 ```toml
-[modules.secret]
-mobile_visible = false
+# ~/.pour/secrets.toml  (keep this out of version control)
+api_key = "your-key-here"
 ```
 
-**Phase 1 + Phase 2 shipped.** Module list, form rendering for all field types, submit, history list (Phase 1, v0.3.0 initial). IndexedDB offline queue, service worker app-shell cache, sub-form overlay for `create_template` fields, preset mutation UI (save/edit/delete/reorder from PWA), 90-day history heatmap, bottom-tab navigation, and cursor-paginated history list (Phase 2, closed 2026-04-27). Full closeout report at `pour - docs/06 reports/v1.0.0-phase2-closeout.md`. Phase 3 scope (TLS, mDNS / `pour.local`) remains deferred.
+If the API isn't reachable, pour falls back to writing files directly, and it reports which one it used on every save. Dropdowns follow the same idea: they render instantly from cache, then refresh from the API or a disk scan in the background. More in [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
 
-## Tech Stack
+## Built with
+
+Rust, [ratatui](https://ratatui.rs) and crossterm for the TUI, axum for `pour serve`, reqwest for the Obsidian API.
+
+<details>
+<summary>Full dependency list</summary>
 
 | Area | Crate |
 |------|-------|
 | TUI | `ratatui` + `crossterm` |
 | HTTP server | `axum` + `tower` + `tower-http` + `tokio` |
 | HTTP client | `reqwest` |
-| Static assets | `rust-embed` — PWA shell embedded in the binary at compile time |
+| Static assets | `rust-embed` (PWA shell embedded in the binary at compile time) |
 | Serialization | `serde` + `toml` + `toml_edit` + `serde_json` |
 | Time | `chrono` |
-| URL encoding | `percent-encoding` — encodes vault paths with spaces in REST API URLs |
-| QR codes | `qrcode` — terminal QR code rendering for `pour serve` |
-| LAN address | `local-ip-address` — discovers the LAN-routable address printed at startup |
-| Identifiers | `uuid` — idempotency keys, capture IDs |
-| Constant-time compare | `subtle` — bearer-token comparison |
-| Logging | `tracing` + `tracing-subscriber` — structured server logs (`POUR_LOG`) |
-| Unicode width | `unicode-width` — terminal cursor / column accounting |
-| Filesystem paths | `dirs` — locates the home directory for `~/.pour/` |
-| Errors | `anyhow` — error propagation in non-trivial Result chains |
-| Shell open | `open` — opens notes in Obsidian via the `o` key on the summary screen |
-| Audio | `cpal` — plays the completion sound; links ALSA on Linux. `alsa` (Linux only) keeps alsa-lib's diagnostics off the TUI's terminal |
+| URL encoding | `percent-encoding` (vault paths with spaces in REST API URLs) |
+| QR codes | `qrcode` (terminal QR code for `pour serve`) |
+| LAN address | `local-ip-address` (the LAN-routable address printed at startup) |
+| Identifiers | `uuid` (idempotency keys, capture IDs) |
+| Constant-time compare | `subtle` (bearer-token comparison) |
+| Logging | `tracing` + `tracing-subscriber` (structured server logs, `POUR_LOG`) |
+| Unicode width | `unicode-width` (terminal cursor and column accounting) |
+| Filesystem paths | `dirs` (finds the home directory for `~/.pour/`) |
+| Errors | `anyhow` |
+| Shell open | `open` (the `o` key on the summary screen opens the note in Obsidian) |
+| Audio | `cpal` plays the completion sound and links ALSA on Linux. `alsa` (Linux only) keeps alsa-lib's diagnostics off the TUI's terminal |
 
-## Development
+</details>
+
+## Contributing
 
 ```bash
 cargo build
@@ -458,39 +252,14 @@ cargo clippy
 cargo fmt -- --check
 ```
 
-Tests live in `tests/` mirroring `src/` structure. Use `POUR_CONFIG` env var to point tests at a temporary config file.
-
-### Justfile workflows
-
-Install [`just`](https://github.com/casey/just) (`cargo install just`) and run `just` to list recipes. Two flows are supported:
-
-**Init from a tracked template** — copies a resources file into `~/.pour/`:
-
-```bash
-just pour    # init from resources/default_config.toml (sanitized contributor template)
-just mads    # init from resources/mads_config.toml (a real-world working example)
-```
-
-**Live edits via symlink** — bypass the `pour init` round-trip; edits to the source file show up in `git diff` directly:
-
-```bash
-just install   # cargo install --path . --force — drops `pour` on $PATH
-just link      # ~/.pour/config.toml -> resources/mads_config.toml (default)
-just unlink    # remove the symlink (no-op if not a symlink)
-```
-
-`just link <path>` accepts any tracked config as the target — `just link resources/default_config.toml` for the contributor template, or point at your own `resources/<name>_config.toml`.
-
-`resources/mads_config.toml` is kept in version control as a real-world working example (the maintainer's personal config); `resources/default_config.toml` is the sanitized contributor template that ships with `pour init`.
-
-**Caution:** while a symlink is in place, `pour init` (and `just pour` / `just mads`) writes *through* the link and overwrites the source file — `just unlink` first if you want to reset.
-
-**Windows:** symlink creation requires [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/developer-mode-features-and-debugging) enabled or an elevated terminal.
-
-## Documentation
-
-Full docs in [`pour - docs/`](pour%20-%20docs/index.md) - design spec, field type reference, architecture overview, and release notes.
+Tests live in `tests/`, mirroring `src/`. [CONTRIBUTING.md](CONTRIBUTING.md) covers branching, commit style, and the `just` recipes for working against a live config. The design spec, architecture notes, and decision records live in [`pour - docs/`](pour%20-%20docs/index.md), which is itself an Obsidian vault. Open it in Obsidian and the graph view shows how it fits together.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
+
+<div align="center">
+
+▽
+
+</div>

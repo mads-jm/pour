@@ -192,6 +192,33 @@ cargo test
 cargo clippy && cargo fmt -- --check
 ```
 
+### Justfile Workflows
+
+Install [`just`](https://github.com/casey/just) (`cargo install just`) and run `just` to list recipes. Two flows are supported.
+
+**Init from a tracked template.** Copies a resources file into `~/.pour/`:
+
+```bash
+just pour    # init from resources/default_config.toml (sanitized contributor template)
+just mads    # init from resources/mads_config.toml (a real-world working example)
+```
+
+**Live edits via symlink.** Skips the `pour init` round-trip, so edits to the source file show up in `git diff` directly:
+
+```bash
+just install   # cargo install --path . --force, puts `pour` on $PATH
+just link      # ~/.pour/config.toml -> resources/mads_config.toml (default)
+just unlink    # remove the symlink (no-op if not a symlink)
+```
+
+`just link <path>` accepts any tracked config as the target: `just link resources/default_config.toml` for the contributor template, or your own `resources/<name>_config.toml`.
+
+`resources/mads_config.toml` is the maintainer's personal config, kept in version control as a real-world example. `resources/default_config.toml` is the sanitized template that ships with `pour init`.
+
+**Caution:** while a symlink is in place, `pour init` (and `just pour` / `just mads`) writes *through* the link and overwrites the source file. Run `just unlink` first if you want to reset.
+
+**Windows:** creating symlinks needs [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/developer-mode-features-and-debugging) or an elevated terminal.
+
 ### Environment Variables
 
 | Variable | Purpose |
