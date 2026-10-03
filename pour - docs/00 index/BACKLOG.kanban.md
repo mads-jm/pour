@@ -25,7 +25,6 @@ tags:
 - [ ] Icon validation (length, grapheme, control chars)
 - [ ] TUI test coverage for icon rendering
 - [ ] `secrets.toml` file permissions on Unix
-- [ ] Form value-side cursor uses byte offset; CJK/emoji in field *values* can drift (prompt-side fixed in v0.2.1)
 - [ ] `App.deferred_stderr` not drained on panic — autocreate diagnostics may be lost
 - [ ] `render_append_template` hardcodes `%Y-%m-%d` for `{{date}}` (only `path` rendering honors `date_format`)
 - [ ] `required` + `show_when` — clear value on hide or preserve for toggle-back?
@@ -46,6 +45,7 @@ tags:
 
 # Done
 
+- [x] Form value-side cursor uses byte offset; CJK/emoji in field *values* can drift (prompt-side fixed in v0.2.1). Textarea popout and single-line rows now place the cursor by display width.
 - [x] Text area double newline in blockquote output
 - [x] Priors / review panel **L1** (coffee, TUI) — config-declared read-back of best prior captures at capture time; shared frontmatter reader + wikilink stripper foundation. Spec: [[pour-review-priors]] (shipped). Story: [[priors_at_the_pour]]. ADR: [[ADR-007-Frontmatter-Reader]].
 

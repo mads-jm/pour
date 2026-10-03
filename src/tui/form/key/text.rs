@@ -121,7 +121,8 @@ pub(super) fn handle_right(
     FormAction::None
 }
 
-fn sync_scroll(form_state: &mut FormState, field_name: &str) {
+/// Keep the open textarea's horizontal scroll in step with the cursor.
+pub(super) fn sync_scroll(form_state: &mut FormState, field_name: &str) {
     let value_snap = form_state
         .field_values
         .get(field_name)

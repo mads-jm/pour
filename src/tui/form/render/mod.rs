@@ -169,7 +169,6 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     // has_picker is false when axes are empty OR axes failed validation (axis_warnings non-empty).
     let has_picker = !module.preset_axes.is_empty() && form_state.axis_warnings.is_empty();
-    fields::render_fields(frame, chunks[1], &module.fields, form_state, has_picker);
 
     // Footer: validation errors, axis warnings, delete confirmation, or key hints
     let footer_content = if !form_state.validation_errors.is_empty() {
@@ -267,6 +266,10 @@ pub fn render(app: &App, frame: &mut Frame) {
     };
     let footer = Paragraph::new(footer_content).block(Block::default().borders(Borders::TOP));
     frame.render_widget(footer, chunks[2]);
+
+    // Fields after the footer: a textarea popout near the bottom of the form
+    // runs over the footer and has to paint on top of it.
+    fields::render_fields(frame, chunks[1], &module.fields, form_state, has_picker);
 
     // Read-only priors panel: right, stacked-below, or a one-line hint.
     if let Some((panel_area, collapsed, panel)) = panel_render {

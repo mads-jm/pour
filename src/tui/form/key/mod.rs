@@ -5,6 +5,7 @@ pub(super) mod submit;
 pub(super) mod text;
 
 use crossterm::event::{KeyCode, KeyEvent};
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::{App, FormState};
 use crate::config::FieldType;
@@ -64,8 +65,9 @@ pub(super) fn cycle_select_filtered(
 
 /// Sync textarea horizontal scroll so the cursor stays visible.
 ///
-/// `cursor_position` is a char-index. Line lengths are measured in chars to
-/// stay consistent.
+/// `cursor_position` is a char-index and the offset counts chars, but the
+/// room on screen is measured in terminal cells, so a CJK or emoji line
+/// scrolls by what it takes to draw.
 pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u16) {
     if avail_width == 0 {
         return;
@@ -73,13 +75,15 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
     let avail = avail_width as usize;
     const MARGIN: usize = 2;
 
-    // Walk lines in chars to find the cursor column on its line.
+    // Walk lines in chars to find the cursor's line and column.
     let mut remaining = form_state.cursor_position;
     let mut cursor_col: usize = 0;
+    let mut cursor_line: Vec<char> = Vec::new();
     for line in value.split('\n') {
         let line_char_len = line.chars().count();
         if remaining <= line_char_len {
             cursor_col = remaining;
+            cursor_line = line.chars().collect();
             break;
         }
         remaining -= line_char_len + 1;
@@ -87,10 +91,17 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
 
     let scroll = form_state.textarea_scroll_offset;
 
-    let right_edge = scroll + avail.saturating_sub(MARGIN + 1);
-    if cursor_col >= right_edge {
-        form_state.textarea_scroll_offset =
-            cursor_col.saturating_sub(avail.saturating_sub(MARGIN + 1));
+    // Cells the text between the scroll offset and the cursor may take: the
+    // row less a `◂` cell, the cursor's cell and a `▸` cell, plus the margin.
+    let max_cells = avail.saturating_sub(MARGIN + 1);
+    if let Some(before_cursor) = cursor_line.get(scroll..cursor_col) {
+        let mut cells: usize = before_cursor.iter().map(|&c| c.width().unwrap_or(0)).sum();
+        let mut s = scroll;
+        while s < cursor_col && cells > max_cells {
+            cells -= cursor_line[s].width().unwrap_or(0);
+            s += 1;
+        }
+        form_state.textarea_scroll_offset = s;
     }
     if cursor_col < scroll + MARGIN && scroll > 0 {
         form_state.textarea_scroll_offset = cursor_col.saturating_sub(MARGIN);
@@ -241,6 +252,7 @@ pub(super) fn dispatch(
                         .unwrap_or_default();
                     let cursor = form_state.cursor_position;
                     form_state.cursor_position = move_cursor_vertically(&value, cursor, -1);
+                    text::sync_scroll(form_state, fname);
                 }
                 FormAction::None
             } else {
@@ -286,6 +298,7 @@ pub(super) fn dispatch(
                         .unwrap_or_default();
                     let cursor = form_state.cursor_position;
                     form_state.cursor_position = move_cursor_vertically(&value, cursor, 1);
+                    text::sync_scroll(form_state, fname);
                 }
                 FormAction::None
             } else {

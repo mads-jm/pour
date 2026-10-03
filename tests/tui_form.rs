@@ -1702,3 +1702,715 @@ fn the_submit_button_keeps_the_generic_interact_hint() {
         "the submit button is still an Enter target, got: {footer}"
     );
 }
+
+// ── Text entry: textarea popout and single-line fields ──
+//
+// Each test renders the form into a `TestBackend` and reads cells and the
+// cursor straight off the backend. The fields area at 80x24 is rows 3..=20
+// (title 0-2, footer 21-23), so a field at list row `r` sits on frame row
+// `3 + r`.
+
+use ratatui::backend::Backend;
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Position, Rect};
+use unicode_width::UnicodeWidthStr;
+
+const ENTRY_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.entry]
+mode = "create"
+path = "entry.md"
+
+[[modules.entry.fields]]
+name = "title"
+field_type = "text"
+prompt = "Title"
+
+[[modules.entry.fields]]
+name = "aside"
+field_type = "textarea"
+prompt = "Aside"
+callout = "note"
+
+[[modules.entry.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+
+[[modules.entry.fields]]
+name = "mood"
+field_type = "text"
+prompt = "Mood"
+
+[[modules.entry.fields]]
+name = "place"
+field_type = "text"
+prompt = "Place"
+icon = "📍"
+
+[[modules.entry.fields]]
+name = "cups"
+field_type = "number"
+prompt = "Cups"
+"####;
+
+// active_field slots in ENTRY_TOML (preset row is 0).
+const TITLE: usize = 1;
+const ASIDE: usize = 2;
+const BODY: usize = 3;
+const MOOD: usize = 4;
+const PLACE: usize = 5;
+const CUPS: usize = 6;
+
+fn app_from(toml: &str, module: &str) -> App {
+    let config = Config::from_toml(toml).expect("parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let mut app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/test-entry-history.json")),
+        Presets::empty(),
+        FieldPresets::empty(),
+    );
+    app.selected_module = app.module_keys.iter().position(|k| k == module).unwrap();
+    app.form_state = app.init_form(module);
+    app.screen = pour::app::Screen::Form;
+    app
+}
+
+fn entry_app() -> App {
+    app_from(ENTRY_TOML, "entry")
+}
+
+fn set_value(app: &mut App, field: &str, value: &str) {
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert(field.to_string(), value.to_string());
+}
+
+/// Focus `slot` with the cursor at the end of its value, as Tab would.
+fn focus(app: &mut App, slot: usize, field: &str) {
+    let fs = app.form_state.as_mut().unwrap();
+    fs.active_field = slot;
+    fs.cursor_position = fs.field_values.get(field).map_or(0, |v| v.chars().count());
+}
+
+/// Give the form a selected preset whose description adds a second row.
+fn select_described_preset(app: &mut App) {
+    let fs = app.form_state.as_mut().unwrap();
+    fs.preset_names = vec!["morning".to_string()];
+    fs.preset_descriptions = vec![Some("a described preset".to_string())];
+    fs.selected_preset_name = Some("morning".to_string());
+}
+
+struct Shot {
+    buf: Buffer,
+    /// `None` when the render hid the cursor.
+    cursor: Option<Position>,
+}
+
+/// Render the form at `w`x`h`. The cursor reads `None` when the render did
+/// not place it: the backend's position is primed with a sentinel that a
+/// hidden cursor leaves untouched.
+fn shoot(app: &App, w: u16, h: u16) -> Shot {
+    let sentinel = Position::new(u16::MAX, u16::MAX);
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).expect("terminal");
+    terminal
+        .backend_mut()
+        .set_cursor_position(sentinel)
+        .unwrap();
+    terminal
+        .draw(|frame| pour::tui::form::render(app, frame))
+        .expect("render must not panic");
+    let cursor = terminal.backend_mut().get_cursor_position().unwrap();
+    Shot {
+        buf: terminal.backend().buffer().clone(),
+        cursor: (cursor != sentinel).then_some(cursor),
+    }
+}
+
+/// Cells `[x0, x1)` of row `y` as text, skipping the blank cell a wide glyph
+/// leaves behind it.
+fn cells(buf: &Buffer, y: u16, x0: u16, x1: u16) -> String {
+    let mut out = String::new();
+    let mut x = x0;
+    while x < x1 {
+        let sym = buf[(x, y)].symbol();
+        out.push_str(sym);
+        x += (sym.width() as u16).max(1);
+    }
+    out
+}
+
+fn row(buf: &Buffer, y: u16) -> String {
+    cells(buf, y, 0, buf.area.width)
+}
+
+fn sym(buf: &Buffer, x: u16, y: u16) -> &str {
+    buf[(x, y)].symbol()
+}
+
+/// The textarea popout's outer rect, found from its border. Panics with the
+/// rendered screen when the border is missing or broken.
+fn popout(shot: &Shot) -> Rect {
+    let buf = &shot.buf;
+    let screen = || {
+        (0..buf.area.height)
+            .map(|y| row(buf, y))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let (x0, y0) = (0..buf.area.height)
+        .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
+        .find(|&(x, y)| sym(buf, x, y) == "┌")
+        .unwrap_or_else(|| panic!("no popout on screen:\n{}", screen()));
+    let x1 = (x0 + 1..buf.area.width)
+        .find(|&x| sym(buf, x, y0) == "┐")
+        .unwrap_or_else(|| panic!("popout top border has no ┐:\n{}", screen()));
+    let mut y1 = y0 + 1;
+    while y1 < buf.area.height && sym(buf, x0, y1) == "│" {
+        assert_eq!(
+            sym(buf, x1, y1),
+            "│",
+            "popout right border broken on row {y1}:\n{}",
+            screen()
+        );
+        y1 += 1;
+    }
+    assert!(
+        y1 < buf.area.height && sym(buf, x0, y1) == "└" && sym(buf, x1, y1) == "┘",
+        "popout bottom border broken at row {y1}:\n{}",
+        screen()
+    );
+    for x in x0 + 1..x1 {
+        // `▼` marks lines hidden below the popout.
+        assert!(
+            matches!(sym(buf, x, y1), "─" | "▼"),
+            "popout bottom border overdrawn at column {x}:\n{}",
+            screen()
+        );
+    }
+    Rect::new(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+}
+
+/// Every row of the screen with the popout's cells masked out.
+fn outside_popout(buf: &Buffer, p: Rect) -> Vec<String> {
+    (0..buf.area.height)
+        .map(|y| {
+            if y < p.y || y >= p.bottom() {
+                row(buf, y)
+            } else {
+                format!(
+                    "{}#{}",
+                    cells(buf, y, 0, p.x),
+                    cells(buf, y, p.right(), buf.area.width)
+                )
+            }
+        })
+        .collect()
+}
+
+/// Content row `line` of the popout (inside its border).
+fn popout_row(buf: &Buffer, p: Rect, line: u16) -> String {
+    cells(buf, p.y + 1 + line, p.x + 1, p.right() - 1)
+}
+
+/// Assert the cursor sits inside the popout's content area.
+fn cursor_in_popout(shot: &Shot, p: Rect, what: &str) -> Position {
+    let c = shot
+        .cursor
+        .unwrap_or_else(|| panic!("{what}: cursor hidden"));
+    assert!(
+        c.x > p.x && c.x < p.right() - 1 && c.y > p.y && c.y < p.bottom() - 1,
+        "{what}: cursor {c:?} outside popout content {p:?}"
+    );
+    c
+}
+
+const LONG_VALUE: &str =
+    "ZEBRA one two three four five six seven eight nine ten eleven twelve QUOKKA\nsecond line YAK";
+
+/// Words of `LONG_VALUE` that appear nowhere else on the form.
+const VALUE_WORDS: [&str; 10] = [
+    "ZEBRA", "three", "seven", "eight", "eleven", "twelve", "QUOKKA", "second", "YAK", "lines]",
+];
+
+fn assert_value_only_inside_popout(app: &App, what: &str) {
+    let shot = shoot(app, 80, 24);
+    let p = popout(&shot);
+    for (y, text) in outside_popout(&shot.buf, p).iter().enumerate() {
+        for word in VALUE_WORDS {
+            assert!(
+                !text.contains(word),
+                "{what}: `{word}` drawn outside the popout on row {y}: {text:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn open_popout_hides_the_textarea_value_from_its_row() {
+    // make_app: title, count, origin, then the `notes` textarea with no
+    // callout and nothing taller than one row above it.
+    let mut app = make_app();
+    set_value(&mut app, "notes", LONG_VALUE);
+    focus(&mut app, 4, "notes");
+    handle_key(&mut app, key(KeyCode::Enter));
+    assert!(app.form_state.as_ref().unwrap().textarea_open);
+    assert_value_only_inside_popout(&app, "textarea without callout");
+}
+
+#[test]
+fn open_popout_hides_the_callout_textarea_value_from_its_rows() {
+    for described in [false, true] {
+        // make_app_callout: title, then the `notes` textarea with a callout.
+        let mut app = make_app_callout();
+        if described {
+            select_described_preset(&mut app);
+        }
+        set_value(&mut app, "notes", LONG_VALUE);
+        focus(&mut app, 2, "notes");
+        handle_key(&mut app, key(KeyCode::Enter));
+        assert_value_only_inside_popout(
+            &app,
+            &format!("callout textarea, preset description: {described}"),
+        );
+    }
+}
+
+#[test]
+fn closing_the_popout_brings_the_row_preview_back() {
+    let mut app = entry_app();
+    set_value(&mut app, "body", "first line\nsecond");
+    focus(&mut app, BODY, "body");
+    handle_key(&mut app, key(KeyCode::Enter));
+    handle_key(&mut app, key(KeyCode::Esc));
+    assert!(!app.form_state.as_ref().unwrap().textarea_open);
+
+    let shot = shoot(&app, 80, 24);
+    // preset 0, title 1, aside 2-3, body 4.
+    assert!(
+        row(&shot.buf, 3 + 4).contains("Body : first line [2 lines] [v]"),
+        "got: {:?}",
+        row(&shot.buf, 3 + 4)
+    );
+}
+
+/// `lead` text fields followed by a `tail` textarea, so the textarea sits on
+/// list row `lead + 1`.
+fn bottom_textarea_app(lead: usize) -> App {
+    let mut toml = String::from(
+        "[vault]\nbase_path = \"/tmp/vault\"\n\n[modules.long]\nmode = \"create\"\npath = \"long.md\"\n",
+    );
+    for i in 0..lead {
+        toml.push_str(&format!(
+            "\n[[modules.long.fields]]\nname = \"f{i}\"\nfield_type = \"text\"\nprompt = \"Field {i}\"\n"
+        ));
+    }
+    toml.push_str(
+        "\n[[modules.long.fields]]\nname = \"tail\"\nfield_type = \"textarea\"\nprompt = \"Tail\"\n",
+    );
+    let mut app = app_from(&toml, "long");
+    set_value(&mut app, "tail", "one\ntwo\nthree");
+    focus(&mut app, lead + 1, "tail");
+    handle_key(&mut app, key(KeyCode::Enter));
+    app
+}
+
+#[test]
+fn footer_does_not_draw_inside_a_popout_at_the_bottom_of_the_form() {
+    // The fields area is 18 rows (0..=17); the textarea lands on rows 15, 16
+    // and 17, its last three.
+    for lead in [14, 15, 16] {
+        let app = bottom_textarea_app(lead);
+        let shot = shoot(&app, 80, 24);
+        let p = popout(&shot); // panics if the footer broke the border
+        for y in p.y + 1..p.bottom() - 1 {
+            let inside = cells(&shot.buf, y, p.x + 1, p.right() - 1);
+            for hint in ["save", "navigate", "clear/back", "───"] {
+                assert!(
+                    !inside.contains(hint),
+                    "textarea on row {}: footer `{hint}` inside the popout on row {y}: {inside:?}",
+                    lead + 1
+                );
+            }
+        }
+        assert!(p.bottom() <= 24, "popout runs off the frame: {p:?}");
+    }
+}
+
+#[test]
+fn rows_under_the_popout_show_nothing_beside_it() {
+    // A textarea first, so nothing above it is taller than one row, and long
+    // values on the rows the popout covers.
+    let toml = r#"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.side]
+mode = "create"
+path = "side.md"
+
+[[modules.side.fields]]
+name = "body"
+field_type = "textarea"
+prompt = "Body"
+
+[[modules.side.fields]]
+name = "mood"
+field_type = "text"
+prompt = "Mood"
+
+[[modules.side.fields]]
+name = "place"
+field_type = "text"
+prompt = "Place"
+"#;
+    let mut app = app_from(toml, "side");
+    set_value(&mut app, "mood", &"m".repeat(75));
+    set_value(&mut app, "place", &"p".repeat(75));
+    set_value(&mut app, "body", "short");
+    focus(&mut app, 1, "body");
+    handle_key(&mut app, key(KeyCode::Enter));
+
+    let shot = shoot(&app, 80, 24);
+    let p = popout(&shot);
+    for y in p.y..p.bottom() {
+        let left = cells(&shot.buf, y, 0, p.x);
+        let right = cells(&shot.buf, y, p.right(), 80);
+        assert!(
+            left.trim().is_empty() && right.trim().is_empty(),
+            "row {y} shows form text beside the popout: left {left:?}, right {right:?}"
+        );
+    }
+}
+
+#[test]
+fn popout_opens_directly_below_the_active_textarea() {
+    // (preset description?, expected list row of the body textarea)
+    // preset 0[-1], title, aside (2 rows), body.
+    for (described, body_row) in [(false, 4u16), (true, 5u16)] {
+        let mut app = entry_app();
+        if described {
+            select_described_preset(&mut app);
+        }
+        set_value(&mut app, "body", "text");
+        focus(&mut app, BODY, "body");
+        handle_key(&mut app, key(KeyCode::Enter));
+
+        let shot = shoot(&app, 80, 24);
+        let p = popout(&shot);
+        assert_eq!(
+            p.y,
+            3 + body_row + 1,
+            "described {described}: popout top border should sit right under the body row"
+        );
+        assert!(
+            row(&shot.buf, 3 + body_row).contains("Body :"),
+            "described {described}: body not on row {body_row}: {:?}",
+            row(&shot.buf, 3 + body_row)
+        );
+    }
+
+    // The preset description alone moves a textarea with nothing taller above.
+    let mut app = entry_app();
+    select_described_preset(&mut app);
+    set_value(&mut app, "aside", "text");
+    focus(&mut app, ASIDE, "aside");
+    handle_key(&mut app, key(KeyCode::Enter));
+    let shot = shoot(&app, 80, 24);
+    let p = popout(&shot);
+    // preset 0-1, title 2, aside header 3.
+    assert_eq!(
+        p.y,
+        3 + 4,
+        "popout top border should sit right under the aside header"
+    );
+    assert!(row(&shot.buf, 3 + 3).contains("Aside :"));
+}
+
+#[test]
+fn single_line_cursor_lands_on_the_active_row_below_tall_rows() {
+    for (described, mood_row) in [(false, 5u16), (true, 6u16)] {
+        let mut app = entry_app();
+        if described {
+            select_described_preset(&mut app);
+        }
+        set_value(&mut app, "mood", "calm");
+        focus(&mut app, MOOD, "mood");
+
+        let shot = shoot(&app, 80, 24);
+        assert!(row(&shot.buf, 3 + mood_row).contains("Mood : calm"));
+        assert_eq!(
+            shot.cursor,
+            Some(Position::new(
+                ("▸ Mood : ".width() + "calm".width()) as u16,
+                3 + mood_row
+            )),
+            "described {described}"
+        );
+    }
+}
+
+#[test]
+fn popout_cursor_tracks_multibyte_and_wide_characters() {
+    let value = "café\n日本 🫘 x\nlast";
+    // (cursor char index, line, cell offset within the line, glyph left of it)
+    let cases: [(usize, u16, u16, Option<&str>); 9] = [
+        (4, 0, 4, Some("é")),
+        (5, 1, 0, None),
+        (6, 1, 2, Some("日")),
+        (7, 1, 4, Some("本")),
+        (8, 1, 5, Some(" ")),
+        (9, 1, 7, Some("🫘")),
+        (11, 1, 9, Some("x")),
+        (12, 2, 0, None),
+        (14, 2, 2, Some("a")),
+    ];
+    for (idx, line, col, before) in cases {
+        let mut app = entry_app();
+        set_value(&mut app, "body", value);
+        focus(&mut app, BODY, "body");
+        handle_key(&mut app, key(KeyCode::Enter));
+        app.form_state.as_mut().unwrap().cursor_position = idx;
+
+        let shot = shoot(&app, 80, 24);
+        let p = popout(&shot);
+        let c = cursor_in_popout(&shot, p, &format!("cursor_position {idx}"));
+        assert_eq!(
+            c,
+            Position::new(p.x + 1 + col, p.y + 1 + line),
+            "cursor_position {idx}"
+        );
+        if let Some(glyph) = before {
+            let w = glyph.width() as u16;
+            assert_eq!(sym(&shot.buf, c.x - w, c.y), glyph, "cursor_position {idx}");
+        }
+    }
+}
+
+/// Assert the cursor's line is on screen in the popout and is `expected`.
+fn assert_cursor_line_visible(app: &App, expected: &str, what: &str) -> Shot {
+    let shot = shoot(app, 80, 24);
+    let p = popout(&shot);
+    let c = cursor_in_popout(&shot, p, what);
+    let text = popout_row(&shot.buf, p, c.y - p.y - 1);
+    assert!(
+        text.trim_end() == expected.trim_end(),
+        "{what}: cursor row shows {text:?}, expected {expected:?}"
+    );
+    shot
+}
+
+#[test]
+fn popout_scrolls_to_keep_the_cursor_line_visible() {
+    let mut app = entry_app();
+    focus(&mut app, BODY, "body");
+    handle_key(&mut app, key(KeyCode::Enter));
+
+    // body sits on row 4, so the popout gets the 10-row maximum: 8 lines.
+    let lines: Vec<String> = (1..=12).map(|n| format!("line {n}")).collect();
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            handle_key(&mut app, key(KeyCode::Enter));
+            assert_cursor_line_visible(&app, "", &format!("Enter before {line}"));
+        }
+        for (j, c) in line.char_indices() {
+            handle_key(&mut app, key(KeyCode::Char(c)));
+            let typed = &line[..j + c.len_utf8()];
+            assert_cursor_line_visible(&app, typed, &format!("typing {line}"));
+        }
+    }
+
+    // Twelve lines in eight rows: hidden above, nothing below.
+    let shot = shoot(&app, 80, 24);
+    let p = popout(&shot);
+    let top = cells(&shot.buf, p.y, p.x, p.right());
+    let bottom = cells(&shot.buf, p.bottom() - 1, p.x, p.right());
+    assert!(top.contains('▲'), "lines hidden above: {top:?}");
+    assert!(!bottom.contains('▼'), "nothing hidden below: {bottom:?}");
+
+    handle_key(&mut app, key(KeyCode::Backspace));
+    assert_cursor_line_visible(&app, "line 1", "Backspace");
+    handle_key(&mut app, key(KeyCode::Char('2')));
+
+    for n in (1..=11).rev() {
+        handle_key(&mut app, key(KeyCode::Up));
+        assert_cursor_line_visible(&app, &format!("line {n}"), "Up");
+    }
+    let shot = shoot(&app, 80, 24);
+    let p = popout(&shot);
+    let top = cells(&shot.buf, p.y, p.x, p.right());
+    let bottom = cells(&shot.buf, p.bottom() - 1, p.x, p.right());
+    assert!(!top.contains('▲'), "nothing hidden above: {top:?}");
+    assert!(bottom.contains('▼'), "lines hidden below: {bottom:?}");
+
+    for n in 2..=12 {
+        handle_key(&mut app, key(KeyCode::Down));
+        assert_cursor_line_visible(&app, &format!("line {n}"), "Down");
+    }
+}
+
+#[test]
+fn cursor_is_visible_when_the_popout_opens_on_a_wide_last_line() {
+    let mut app = entry_app();
+    set_value(&mut app, "body", &format!("short\n{}", "w".repeat(100)));
+    focus(&mut app, BODY, "body");
+    handle_key(&mut app, key(KeyCode::Enter));
+
+    let shot = shoot(&app, 80, 24);
+    let p = popout(&shot);
+    let c = cursor_in_popout(&shot, p, "on open");
+    assert_eq!(c.y, p.y + 2, "cursor on the second line");
+    assert_eq!(sym(&shot.buf, c.x - 1, c.y), "w");
+
+    handle_key(&mut app, key(KeyCode::Up));
+    let shot = shoot(&app, 80, 24);
+    let c = cursor_in_popout(&shot, p, "after Up");
+    assert_eq!(c.y, p.y + 1, "cursor on the first line");
+
+    handle_key(&mut app, key(KeyCode::Down));
+    let shot = shoot(&app, 80, 24);
+    let c = cursor_in_popout(&shot, p, "after Down");
+    assert_eq!(c.y, p.y + 2, "cursor back on the second line");
+}
+
+#[test]
+fn single_line_cursor_counts_display_width_and_the_icon() {
+    // place: "▸ " + "📍 " + "Place" + " " + ": "
+    let prefix = ("▸ ".width() + "📍 Place : ".width()) as u16;
+    let value = "日本 é!";
+    for (idx, cell) in [(0, 0u16), (1, 2), (2, 4), (3, 5), (4, 6), (5, 7)] {
+        let mut app = entry_app();
+        set_value(&mut app, "place", value);
+        focus(&mut app, PLACE, "place");
+        app.form_state.as_mut().unwrap().cursor_position = idx;
+        let shot = shoot(&app, 80, 24);
+        // preset 0, title 1, aside 2-3, body 4, mood 5, place 6.
+        assert_eq!(
+            shot.cursor,
+            Some(Position::new(prefix + cell, 3 + 6)),
+            "cursor_position {idx}"
+        );
+    }
+
+    let mut app = entry_app();
+    set_value(&mut app, "cups", "12");
+    focus(&mut app, CUPS, "cups");
+    let shot = shoot(&app, 80, 24);
+    assert_eq!(
+        shot.cursor,
+        Some(Position::new(("▸ Cups : 12".width()) as u16, 3 + 7))
+    );
+
+    let mut app = habit_app();
+    set_value(&mut app, "water", "=16");
+    focus(&mut app, 2, "water");
+    let shot = shoot(&app, 80, 24);
+    assert_eq!(
+        shot.cursor,
+        Some(Position::new(("▸ Water : =16".width()) as u16, 3 + 2))
+    );
+}
+
+#[test]
+fn long_single_line_value_scrolls_within_its_row() {
+    let long: String = (0..150)
+        .map(|i| char::from(b'a' + (i % 26) as u8))
+        .collect();
+    let title_y = 3 + 1;
+    let prefix = "▸ Title : ".width() as u16;
+
+    let mut short_app = entry_app();
+    set_value(&mut short_app, "title", "short");
+    focus(&mut short_app, TITLE, "title");
+    let baseline = shoot(&short_app, 80, 24);
+
+    let mut app = entry_app();
+    set_value(&mut app, "title", &long);
+    focus(&mut app, TITLE, "title");
+
+    // At the end: the head is hidden, the cursor follows the last char.
+    let shot = shoot(&app, 80, 24);
+    let c = shot.cursor.expect("cursor visible at the end");
+    assert_eq!(c.y, title_y);
+    assert!(c.x < 80);
+    assert_eq!(sym(&shot.buf, c.x - 1, c.y), &long[149..]);
+    assert_eq!(
+        sym(&shot.buf, prefix, title_y),
+        "◂",
+        "{:?}",
+        row(&shot.buf, title_y)
+    );
+    for y in (0..24).filter(|&y| y != title_y) {
+        assert_eq!(row(&shot.buf, y), row(&baseline.buf, y), "row {y} moved");
+    }
+
+    // Arrow back to the start: the tail is hidden, the cursor stays on screen
+    // with the characters on both sides of it.
+    for i in (0..150).rev() {
+        handle_key(&mut app, key(KeyCode::Left));
+        let shot = shoot(&app, 80, 24);
+        let c = shot
+            .cursor
+            .unwrap_or_else(|| panic!("cursor hidden at {i}"));
+        assert_eq!(c.y, title_y);
+        assert_eq!(
+            sym(&shot.buf, c.x, c.y),
+            &long[i..=i],
+            "char under cursor at {i}"
+        );
+        if i > 0 {
+            assert_eq!(
+                sym(&shot.buf, c.x - 1, c.y),
+                &long[i - 1..i],
+                "char before cursor at {i}"
+            );
+        }
+    }
+    let shot = shoot(&app, 80, 24);
+    assert_eq!(shot.cursor, Some(Position::new(prefix, title_y)));
+    assert_eq!(
+        sym(&shot.buf, 79, title_y),
+        "▸",
+        "{:?}",
+        row(&shot.buf, title_y)
+    );
+    for y in (0..24).filter(|&y| y != title_y) {
+        assert_eq!(row(&shot.buf, y), row(&baseline.buf, y), "row {y} moved");
+    }
+}
+
+#[test]
+fn wide_characters_scroll_by_the_cells_they_take() {
+    // Popout: 58 cells of room hold 29 `日`; typing 40 must keep scrolling.
+    let mut app = entry_app();
+    focus(&mut app, BODY, "body");
+    handle_key(&mut app, key(KeyCode::Enter));
+    for i in 1..=40 {
+        handle_key(&mut app, key(KeyCode::Char('日')));
+        let shot = shoot(&app, 80, 24);
+        let p = popout(&shot);
+        let c = cursor_in_popout(&shot, p, &format!("popout, {i} wide chars"));
+        assert_eq!(sym(&shot.buf, c.x - 2, c.y), "日", "popout, {i} wide chars");
+    }
+
+    // Single-line row: 70 cells of room after `▸ Title : `.
+    let mut app = entry_app();
+    focus(&mut app, TITLE, "title");
+    for i in 1..=60 {
+        handle_key(&mut app, key(KeyCode::Char('🫘')));
+        let shot = shoot(&app, 80, 24);
+        let c = shot
+            .cursor
+            .unwrap_or_else(|| panic!("title, {i} wide chars: cursor hidden"));
+        assert_eq!(c.y, 3 + 1);
+        assert!(c.x < 80, "title, {i} wide chars: cursor at {c:?}");
+        assert_eq!(sym(&shot.buf, c.x - 2, c.y), "🫘", "title, {i} wide chars");
+    }
+}
