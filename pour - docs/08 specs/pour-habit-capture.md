@@ -5,7 +5,8 @@ tags:
   - habits
   - frontmatter
 date created: Wednesday, August 5th 2026
-date modified: Thursday, August 6th 2026
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: partial — v1 shipped in v1.1.0; v1.1 date targeting and v2 limits not started
 ---
 
 # Pour habit capture — frontmatter mutation primitives — Spec
@@ -139,6 +140,8 @@ goal = 96          # reach-target; progress renders as 64/96 oz
 
 Two separate mechanisms, deliberately not merged:
 
+*[Not built as of 2026-10-02: neither `rollover` nor `--date` exists in the code. A `rollover` key in config is not rejected, it is silently ignored, because config has no `deny_unknown_fields`. Tracked as v1.1 below.]*
+
 ### 4.1 `rollover` — the 4am boundary
 
 ```toml
@@ -202,6 +205,8 @@ unit = "oz"
 goal = 96
 ```
 
+*[Deviation: the shipped preset has no `rollover` line, because §4.1 is not built.]*
+
 The daily-note template owns the keys and defaults (`cannabis: false`, `water: null`). Same seed-not-mirror caveat as every personal preset ([[pour-roots-and-hooks|roots-and-hooks follow-ups]]): lands in `resources/mads_config.toml`, hand-added to the live stowed config.
 
 *[Deviation: **the field name is the frontmatter key**; pour does not map one to the other. The daily template tracked `water_oz` at the time, and the first live run wrote a stray `water: 15` beside it. Rule now recorded in [[Pour-Types]]: match the template, or change the template. Settled by changing the template — it tracks `water:` as of 2026-08-06, and the module's field is `water` to match. The preset also sets `mobile_visible = false`; the PWA has no toggle/counter widgets yet.]*
@@ -231,6 +236,8 @@ pub fn patch_frontmatter_line(content: &str, key: &str, value: &str) -> PatchOut
 // src/main.rs — one-shot dispatch: `pour <module> <field> [value]` before the TUI branch
 ```
 
+*[Deviation: `write_update` lives in `src/output/update.rs` beside `write_create` and `write_append`, not under the server handlers. The TUI, the one-shot path and `/api/v1/submit` all call it. `patch_frontmatter_line` returns `Result<(String, PatchOutcome), PatchLineError>`, so it can refuse a key whose value spans several lines.]*
+
 ## Scope & phasing
 
 - [x] **v1 — the capture loop.** `update` mode (both transports, §2), `toggle` + `counter` with `goal` (§3), one-shot argv (§5), the mads `habit` preset (§6). Docs: [[field-types]] (new types + keys + the creed), System-Architecture-Overview (transport method + write path), README. *[Shipped 2026-08-06, cycle `habit-capture-v1`: one Inspector blocker and three majors in round 1, APPROVE in round 2, 1051 tests. Smoke-tested live the same day; the API-path §2.3 create-and-retry is still unexercised.]*
@@ -239,7 +246,7 @@ pub fn patch_frontmatter_line(content: &str, key: &str, value: &str) -> PatchOut
 
 ## Open questions
 
-- **Plugin version detection.** How does pour learn the Local REST API is v3-capable — probe response header, or attempt PATCH and fall back on 4xx? *Lean: attempt-and-fall-back; one less handshake.*
-- **TUI shape for `update` modules.** Does `pour habit` (no args) show current values fetched at form-open (read-before-render), and is stale-cache display acceptable on slow reads? *Lean: read at open over transport; this module's read is one file.*
-- **`toggle` false in one-shot.** `pour habit cannabis false` vs `--off` vs both? *Lean: accept `false`/`off` as the value token; no flag.*
-- **Counter floats.** `water 12.5` — allowed? *Lean: yes; parse f64, emit integers bare (matches `number`).*
+- **Plugin version detection.** How does pour learn the Local REST API is v3-capable — probe response header, or attempt PATCH and fall back on 4xx? *Lean: attempt-and-fall-back; one less handshake.* *[Shipped as leaned: a PATCH answered with 400, 405, 415 or 501 degrades to the filesystem path (`classify_patch_status`). A 404 means the note is missing.]*
+- **TUI shape for `update` modules.** Does `pour habit` (no args) show current values fetched at form-open (read-before-render), and is stale-cache display acceptable on slow reads? *Lean: read at open over transport; this module's read is one file.* *[Shipped as leaned: one read at form open. A failed or slow read shows a placeholder and does not block the form.]*
+- **`toggle` false in one-shot.** `pour habit cannabis false` vs `--off` vs both? *Lean: accept `false`/`off` as the value token; no flag.* *[Shipped as leaned, and `no`/`0` also clear it.]*
+- **Counter floats.** `water 12.5` — allowed? *Lean: yes; parse f64, emit integers bare (matches `number`).* *[Shipped as leaned.]*

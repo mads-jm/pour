@@ -5,7 +5,7 @@ tags:
   - mobile
   - pwa
 date created: Sunday, April 26th 2026, 6:06:13 pm
-date modified: Wednesday, April 29th 2026, 5:31:50 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # ADR 005: Local-First PWA Companion via `pour serve`
@@ -48,6 +48,8 @@ __Consequences:__
 - __Negative:__ Binary footprint grows with axum, tower-http, rust-embed, and bundled web assets. The LAN-only design means users who want off-LAN access must configure their own tunnel — this is friction for less technical users, though it is consistent with Pour's target demographic. The options handler loads and saves the cache on every request; under rapid concurrent requests (unusual for a single-user LAN tool) this is nondeterministic. Flagged for Step D follow-up.
 
 - __Mitigations:__ TLS is deferred to Phase 3 with a setup guide for self-signed cert trust on iOS/Android — HTTP on LAN is acceptable for Phase 1 given the single-user, private-network context. The offline submit queue (IndexedDB + service worker drain) is deferred to Phase 2; Phase 1 proves the full engine path before adding the offline complexity layer. The OpenAPI 3.1 spec is hand-written in Phase 1 (`pour - docs/02 references/pour-openapi.yaml`) and replaced in Phase 2 by `utoipa`-derived output from annotated handlers, eliminating drift between the human-readable contract and the runtime types.
+
+__Note (2026-10-02):__ Two details were implemented differently. The server connects one transport when `pour serve` starts and shares it through `AppState`; the submit handler does not call `Transport::connect`. Since v1.1.0 it swaps in `Transport::for_module` for a module with its own root. The OpenAPI spec never moved to `utoipa`: `utoipa` is not a dependency and `pour - docs/02 references/pour-openapi.yaml` is still written by hand. TLS has not shipped either; `pour serve` speaks plain HTTP.
 
 __Related:__
 

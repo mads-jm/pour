@@ -5,8 +5,8 @@ aliases:
   - computed fields
   - field lookup
 date created: Wednesday, April 29th 2026, 5:03:15 pm
-status: draft — not yet scheduled
-date modified: Wednesday, April 29th 2026, 5:31:45 pm
+status: draft — not started
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Pour Lookup / Computed Fields
@@ -242,8 +242,9 @@ When L1 ships, the manual `days_off_roast` field in `resources/mads_config.toml`
 - `pour - docs/02 references/field-types.md` — field type reference (will gain `lookup` when L1 ships).
 - `pour - docs/08 specs/pour-api-contract.md` §7 (field types), §15 (intentional omissions — this leaves §15).
 - `pour - docs/08 specs/pour-pwa-roadmap.md` — Phase 4+ candidate for PWA support (L2 above).
-- [[pour-review-priors]] — shares this spec's frontmatter-read, wikilink-resolution, and trigger-model plumbing; the Priors panel should slot *behind* lookup-fields on the roadmap.
+- [[pour-review-priors]] — shares this spec's frontmatter-read, wikilink-resolution, and trigger-model plumbing; the Priors panel should slot *behind* lookup-fields on the roadmap. *[Deviation: the order flipped. Priors L1 shipped first and built the shared reader (`src/data/frontmatter_read.rs`) and wikilink stripper (`src/data/wikilink.rs`). Both carry a note that lookup-fields L1 will reuse them.]*
 
 ## 14. Change Log
 
+- __2026-10-02__ — Status check: not started. There is no `lookup` field type, no `src/data/lookup.rs`, and no `/api/v1/lookup` endpoint. `days_off_roast` is still a manual field. The frontmatter reader and wikilink stripper this spec needs already exist, built for [[pour-review-priors]] L1.
 - __2026-04-29__ — Initial draft. Concrete trigger: `days_off_roast` derived from bean note's `roast_date`. Spec covers schema, resolution, transforms, UX, API impact, phasing, and edge cases. Status: not yet scheduled — requires roadmap allocation.

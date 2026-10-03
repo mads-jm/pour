@@ -7,7 +7,7 @@ aliases:
   - pour without obsidian
   - non-obsidian pour
 date created: Wednesday, April 29th 2026, 5:15:34 pm
-date modified: Wednesday, April 29th 2026, 5:31:42 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Pour Without Obsidian: A Story for the Curious Outsider
@@ -61,7 +61,7 @@ Yes. Today, with caveats.
 
 - __Filesystem transport__: Pour's fallback mode writes directly to disk. No Obsidian needed. Just set `base_path` to any directory, leave out `api_key` and `api_port`, and Pour writes plain Markdown files there. See [[ADR-001-Hybrid-Transport-Layer]].
 - __Create mode__: Modules like `pour coffee` generate standalone `.md` files with YAML frontmatter. Any tool that reads Markdown + YAML can consume these — Hugo, Jekyll, Logseq, Dendron, a custom script, or just `cat`.
-- __Append mode__: Modules like `pour me` append under a heading in an existing file. This is standard Markdown manipulation — nothing Obsidian-specific about inserting text below `### Journal`. When the API is unreachable mid-append, Pour falls back to an [[Atomic-Note-Fallback|atomic timestamped note]] rather than failing.
+- __Append mode__: Modules like `pour me` append under a heading in an existing file. This is standard Markdown manipulation — nothing Obsidian-specific about inserting text below `### Journal`. Without the API, Pour edits the file on disk and swaps it in with an atomic rename. The file and the heading have to exist already; if either is missing, the capture fails.
 - __Dynamic selects from disk__: Pour scans a directory for `.md` files to populate [[field-types|`dynamic_select`]] options. This is just `readdir` — it doesn't need Obsidian. See [[The-3-Tier-Data-Fallback]] for the read-side pipeline.
 - __Presets and cache__: Stored in `~/.pour/` (config/presets) and `~/.pour/cache/` (ephemeral state), completely independent of any note-taking app. See [[pour-preset-hierarchy]] for the drilldown picker model.
 
@@ -105,11 +105,11 @@ Not much. The architecture is already 90% there.
 
 1. __Wikilinks as an output format option, not an assumption__: Today `wikilink = true` emits `[[brackets]]`. A more general approach: `link_format = "wikilink" | "markdown" | "plain"` — emitting `[[x]]`, `[x](x.md)`, or bare `x` depending on the target ecosystem.
 
-2. __`post_create_command` generalized to hooks__: Instead of firing Obsidian REST API commands specifically, expose a general `post_create_hook` that runs a shell command. Obsidian users configure it to hit the API; others run a script, a webhook, or nothing.
+2. __`post_create_command` generalized to hooks__: Instead of firing Obsidian REST API commands specifically, expose a general `post_create_hook` that runs a shell command. Obsidian users configure it to hit the API; others run a script, a webhook, or nothing. *Half done in v1.1.0: `post_write_shell` runs a shell command after a module's capture is written. Notes created inline from a `dynamic_select` still only get `post_create_command`.*
 
 3. __Language in config and docs__: The word "vault" is everywhere — `vault.base_path`, `vault_path`, "vault connection status." Renaming to something neutral (`workspace`, `root`, `target`) would signal that Pour doesn't require Obsidian. This is cosmetic but meaningful for first impressions.
 
-4. __README and onboarding__: The current README opens with "logs structured data into an Obsidian vault." A non-Obsidian user bounces immediately. Leading with "writes structured Markdown to a folder" and noting Obsidian as one (excellent) consumer would widen the aperture.
+4. __README and onboarding__: The README used to open with "logs structured data into an Obsidian vault." A non-Obsidian user bounces immediately. Leading with "writes structured Markdown to a folder" and noting Obsidian as one (excellent) consumer would widen the aperture. *Done: the README now says pour "writes structured Markdown into your Obsidian vault, or any folder you point it at."*
 
 ## The Honest Answer
 

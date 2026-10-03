@@ -7,7 +7,7 @@ aliases:
   - design spec
   - pour spec
 date created: Tuesday, March 31st 2026, 12:14:29 am
-date modified: Monday, May 4th 2026, 11:17:47 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Project Pour — Design Specification (v0.2)
@@ -31,7 +31,7 @@ The application has two primary execution paths:
 Running the base command opens the main interactive hub.
 
 - __Header:__ Displays vault connection status (🟢 API Connected | 🟡 Direct File Mode).
-- __Body:__ Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). *[Deviation: not implemented in v1 — dashboard shows module list with connection status only.]*
+- __Body:__ Shows a summary of today's stats (e.g., "Poured today: 2 Coffees, 1 Journal"). *[Deviation: the dashboard reads ambient stats from capture history instead of a sentence like this one. A stats row shows the last pour, today and week counts, and a streak. Each module row carries its own count for today, and recent captures and gap indicators sit below the list. See `src/tui/dashboard.rs`.]*
 - __Menu:__ Navigable list to launch specific modules (`me`, `coffee`).
 
 ### __2.2 The Fast Path (`pour <module>`)__
@@ -41,12 +41,14 @@ Bypasses the dashboard and launches directly into a specific data-entry view.
 - `pour me` — Opens the journal appending view.
 - `pour coffee` — Opens the coffee logging form.
 
+*[Deviation: not in the original vision. The capture form shows a read-only priors panel of earlier captures from the same module, to the right of the form or stacked below it on a narrow terminal. It resolves when the form opens and again when a match field changes, never on submit. Ctrl+R collapses it. A module with no `[modules.<name>.priors]` block gets a zero-config panel. TUI only. See [[pour-review-priors]].]*
+
 ### __2.3 Post-Execution Summary__
 
 Upon submitting a form, the app does *not* immediately exit. It transitions to a __Summary View__ displaying:
 
 - A success message with the destination file path.
-- Options: `[Enter]` Main Menu, `[A]` Pour Another → .., `[Q]` Quit, `[O]` Open file in `$EDITOR`. *[Deviation: `[O]` not implemented in v1 — summary supports Enter, A, and Q only.]*
+- Options: `[Enter]` Main Menu, `[A]` Pour Another → .., `[Q]` Quit, `[O]` Open file in `$EDITOR`. *[Deviation: `[O]` opens the written note in Obsidian through an `obsidian://` URI (the `open` crate), not in `$EDITOR`.]*
 
 *[Deviation: not in the original vision. An opt-in tone (`[sound] on_save = true`) plays when the summary shows a success. It is off by default, silent on failure, and TUI-only. See `src/sound.rs` and the Summary section of [[Design-Language]].]*
 
@@ -59,6 +61,8 @@ Pour uses a dual-pronged approach to writing data:
 1. __Primary (API):__ Attempts a fast local HTTPS request via [[reqwest]] to the [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs). *[Deviation: originally spec'd as HTTP; implementation uses HTTPS with `danger_accept_invalid_certs`.]*
 2. __Fallback (File System):__ If the connection is refused, it gracefully falls back to `std::fs` to write directly to the absolute vault path defined in the configuration.
 
+*[Deviation: the root is no longer one path. `[vault.platform]` overrides `base_path` per OS. A module can set its own `base_path` (plus `[modules.<name>.platform]`) to write outside the vault, and such a module always writes over the filesystem, because the API only reaches the vault it serves. See [[pour-roots-and-hooks]].]*
+
 __API Authentication:__ The REST API plugin requires a Bearer token. Pour resolves the key in this order (first found wins):
 
 1. `POUR_API_KEY` environment variable.
@@ -67,7 +71,7 @@ __API Authentication:__ The REST API plugin requires a Bearer token. Pour resolv
 
 ### __3.2 Dynamic Data Fetching & Caching__
 
-3-tier fallback with async background refresh. The three data source tiers are: (1) transport layer (API or FS scan), (2) JSON cache (`~/.pour/cache/state.json`), (3) empty vector — which causes the field to accept freetext. Freetext is a UI mode, not a data source, which is why the count is three rather than four. See also [[The-3-Tier-Data-Fallback]].
+3-tier fallback with async background refresh. *[Deviation: there is no background refresh. The form waits for `fetch_options`, which tries the transport first and reads the cache only when that fails or returns nothing. See ADR-003.]* The three data source tiers are: (1) transport layer (API or FS scan), (2) JSON cache (`~/.pour/cache/state.json`), (3) empty vector — which causes the field to accept freetext. Freetext is a UI mode, not a data source, which is why the count is three rather than four. See also [[The-3-Tier-Data-Fallback]].
 
 #### Inline Creation (`allow_create`)
 
@@ -109,6 +113,8 @@ __Keybindings:__
 - `Left/Right` on the preset selector row — cycle through `<none>` and saved presets
 - `Ctrl+Left/Right` — reorder presets
 
+*[Deviation: delete works only with the preset row focused, where plain `d` does the same as `Ctrl+D`. Plain `s` on the preset row or the submit button also opens the save dialog. When the module sets `preset_axes`, Left/Right does not cycle and `p` opens the hierarchical picker instead. Full list in [[keyboard-shortcuts]].]*
+
 A preset selector row appears at the top of every form. Applying a preset is deterministic: fields present in the preset are populated; fields absent from the preset reset to their config defaults.
 
 __`preset_exclude`__ — a boolean field-level config key (`Option<bool>`, default `false`). When `true`, the field is excluded from both preset capture and preset application. Intended for notes, observations, or any value that changes on every entry. `composite_array` fields are implicitly excluded regardless of this flag.
@@ -118,6 +124,8 @@ __`preset_exclude`__ — a boolean field-level config key (`Option<bool>`, defau
 Append vs. create modes, and how fields map to frontmatter/body.
 
 *[Deviation: a third mode, `update`, shipped 2026-08-06 (habit-capture v1). It rewrites the frontmatter keys a module names on a note that already exists and touches nothing else, on both transports. The three modes are now three kinds of pour; [[Pour-Types]] says which kind a signal gets, [[pour-habit-capture]] has the mechanism and its guard rails. Two frontmatter-only field types came with it, `toggle` and `counter`, plus a one-shot argv grammar (`pour <module> <field> [value]`) that skips the TUI for them.]*
+
+*[Deviation: v1.1.0 also added per-module output keys. `[modules.<name>.frontmatter]` merges static keys in after the captured fields, `frontmatter_date_format` shapes the auto-injected `date`, and `post_write_shell` runs a shell command after a successful write, with a 30 s timeout. A capture submitted over `pour serve` skips the hook unless `post_write_shell_on_serve = true`. See [[pour-roots-and-hooks]].]*
 
 ### __3.6 Mobile Visibility (`mobile_visible`)__
 
@@ -143,7 +151,7 @@ When `wikilink = true` on a `text`, `static_select`, or `dynamic_select` field, 
 
 Full TOML schema, field type reference, and validation rules — see config schema section.
 
-> __FieldType set is frozen at v1.0.0__ — the `FieldType` enum (text, textarea, number, static_select, dynamic_select, composite_array, plus the template-driven variants) is the canonical, closed set for this major version. Adding a new variant requires shotgun surgery across config validation, app state, configure render, form render, form key handling, and output partitioning. The Pragmatic-Programmer-correct fix (a `FieldType` trait with per-variant `render`/`key`/`validate`/`to_yaml`) is deliberately deferred to v2.0.0. Until then, the enum is closed; new field shapes go through `composite_array` columns or `create_template` sub-forms. *[Deviation: original spec assumed extensibility was free.]*
+> __FieldType set is frozen at v1.0.0__ — the `FieldType` enum (text, textarea, number, static_select, dynamic_select, composite_array, plus the template-driven variants) is the canonical, closed set for this major version. Adding a new variant requires shotgun surgery across config validation, app state, configure render, form render, form key handling, and output partitioning. The Pragmatic-Programmer-correct fix (a `FieldType` trait with per-variant `render`/`key`/`validate`/`to_yaml`) is deliberately deferred to v2.0.0. Until then, the enum is closed; new field shapes go through `composite_array` columns or `create_template` sub-forms. *[Deviation: original spec assumed extensibility was free.]* *[Deviation: v1.1.0 added two variants anyway, `toggle` and `counter`, for `update` mode. The enum-over-trait choice holds. The set did not stay closed.]*
 
 ### __4.1 `config_version`__
 
@@ -152,6 +160,8 @@ An optional top-level string field in `config.toml` that declares the schema ver
 ```toml
 config_version = "1.0.0"
 ```
+
+*[Deviation: this example no longer loads. The schema is at `0.4.0` (`Config::CURRENT_CONFIG_VERSION`), and pour rejects `1.0.0` as newer than the build. The constant read `1.0.0` from The Freeze until v1.1.0, which put it back on its own track. While the major is 0, the minor is the breaking axis: a config with a higher minor than the build (0.5.0 against 0.4.0) fails to load with an "update Pour" error, and an older or equal one always loads. From 1.0.0 on, only a higher major would be refused. The schema stays on 0.x on purpose, since a new `WriteMode` or `FieldType` variant is a parse error on any older binary. Optional keys added since 0.4.0 (`[modules.<name>.priors]`, `[sound] on_save`) did not bump it, because an older binary ignores them. See `validate_config_version` in `src/config.rs`.]*
 
 - __Format:__ Semver string (e.g. `"1.0.0"`). Non-semver values are rejected at config load.
 - __Default:__ When absent, Pour treats the file as `"0.1.0"` — all existing configs without this field continue to work unchanged.
@@ -169,7 +179,8 @@ config_version = "1.0.0"
 | `0.1.0` | Initial schema. |
 | `0.2.0` | Added `mobile_token` to `secrets.toml`, `pour serve` command, `/api/health` endpoint (Step A). |
 | `0.3.0` | Added `mobile_visible` module-level key. Bumped alongside `/api/v1/config` (Step B). |
-| `1.0.0` | Major-version freeze marker. No on-disk schema additions or removals; existing `0.x.y` configs load unchanged. Foundation work shipped under this version: 18 atomic-write blocks collapsed via `Config::edit`, generic `JsonStore<T>` introduced, three god-modules decomposed, and the Open Bugs list from `[[v1.0.0-pre-release-assessment]]` closed (path traversal, Windows atomicity, char-indexed cursor, strftime injection, expect discipline, surfaced silent persistence failures). See `[[pour-v1-decomposition]]` and `[[ADR-006-V1-Lock-In-Patterns]]`. |
+| `1.0.0` | *[Deviation: never a real schema. No config declared it, and v1.1.0 reset the constant to `0.4.0`. The row records what the constant read at The Freeze.]* Major-version freeze marker. No on-disk schema additions or removals; existing `0.x.y` configs load unchanged. Foundation work shipped under this version: 18 atomic-write blocks collapsed via `Config::edit`, generic `JsonStore<T>` introduced, three god-modules decomposed, and the Open Bugs list from `[[v1.0.0-pre-release-assessment]]` closed (path traversal, Windows atomicity, char-indexed cursor, strftime injection, expect discipline, surfaced silent persistence failures). See `[[pour-v1-decomposition]]` and `[[ADR-006-V1-Lock-In-Patterns]]`. |
+| `0.4.0` | v1.1.0. Module roots and write hooks: module-level `base_path` and `[modules.<name>.platform]`, `[modules.<name>.frontmatter]`, `frontmatter_date_format`, `post_write_shell`, `post_write_shell_on_serve`, and the `{{slug}}` / `{{slug_or_time}}` path tokens. Habit capture in the same release: `mode = "update"`, the `toggle` and `counter` field types, and the counter-only `unit` and `goal` keys. `[vault.platform]` landed shortly before, while configs still declared `0.3.0`. |
 
 ### __4.2 File-Size Budget (CI-enforced)__
 
@@ -193,6 +204,7 @@ Files annotated as oversized at v1.0.0 (`src/app.rs`, `src/config.rs`, `src/tui/
 - __Time:__ [[chrono]] (for file formatting and timestamps)
 - __URL encoding:__ `percent-encoding` — encodes vault paths containing spaces in REST API request URLs
 - __Shell open:__ `open` — cross-platform crate for opening a file or URL in the system default handler (used for "Open in Obsidian" via `obsidian://` URI)
+- __Server:__ `axum` and `tower-http` run `pour serve`, `rust-embed` puts the PWA in the binary, `qrcode` prints the startup QR code, and `subtle` does the constant-time token compare. *[Deviation: not in the original stack, which was terminal-only. See §7.]*
 - __Audio:__ `cpal`, which plays the opt-in completion tone. On Linux it links ALSA (`libasound.so.2`), and the binary needs that library to start. On macOS it needs 14.2 or later, and the release binary declares that floor.
 
 ## __6. Scope — v0.1__
@@ -200,7 +212,7 @@ Files annotated as oversized at v1.0.0 (`src/app.rs`, `src/config.rs`, `src/tui/
 The following are explicitly __in scope__ for v0.1:
 
 - Dashboard with connection status and module menu
-- `pour me` (append mode with Templater integration + [[Atomic-Note-Fallback|atomic note fallback]])
+- `pour me` (append mode with Templater integration + atomic note fallback) *[Deviation: the atomic note fallback was never built. Both transports splice the entry under the heading in place, and a missing note or heading fails the write. [[pour-append-target-recovery]] specs the recovery path; it is not started.]*
 - `pour coffee` (create mode with frontmatter generation)
 - [[ADR-001-Hybrid-Transport-Layer|Hybrid transport layer]] (API → filesystem fallback)
 - [[The-3-Tier-Data-Fallback|Dynamic data fetching]] (API → disk scan → cache → freetext)
@@ -270,7 +282,11 @@ Nine endpoints under `/api/v1/`, all responding with `Cache-Control: no-store`. 
 | `POST` | `/api/v1/presets/:module` | Save a preset |
 | `PUT` | `/api/v1/presets/:module/reorder` | Reorder presets |
 
+*[Deviation: the preset rows above are the early sketch. The router in `src/server/routing.rs` serves `PUT /api/v1/presets/:module/:name` to save or overwrite one preset, `DELETE /api/v1/presets/:module/:name` to delete it, and `PUT /api/v1/presets/:module/order` to reorder. [[pour-api-contract]] §6.7 to §6.10 has the shapes.]*
+
 The submit handler is the same call sequence as the TUI's `handle_submit` — `autocreate` → `write_create` / `write_append` → `History::record` — driven by JSON request body instead of TUI state.
+
+*[Deviation: the write step also dispatches `write_update` for `update` modules, and runs `post_write_shell` after the write only when the module sets `post_write_shell_on_serve = true`. See `src/server/handlers/submit/write_step.rs`.]*
 
 ### __7.4 Embedded PWA__
 
@@ -281,6 +297,8 @@ Phase 1 (shipped): module list as tappable tiles, per-module forms rendered dyna
 Why vanilla JS and not a Rust→WASM framework: see [[Rust-WASM-Frontend-Tradeoffs]].
 
 *[Deviation: the plan sketched ~300 LOC. Shipped closer to ~600. The form rendering is fully data-driven from the config JSON, so the delta is mostly defensive handling and mobile UX polish.]*
+
+*[Deviation: Phase 2 grew it well past that. `web/` now holds about 6,000 lines, `app.js` alone about 3,750. The PWA has no widget for `toggle` or `counter`, so the seed `habit` module in `resources/mads_config.toml` sets `mobile_visible = false`.]*
 
 ### __7.5 Offline-Correctness Foundations__
 

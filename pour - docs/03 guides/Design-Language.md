@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Wednesday, April 29th 2026, 5:31:54 pm
+date modified: Friday, October 2nd 2026, 11:30:00 pm
 ---
 
 # Pour Design Language
@@ -43,10 +43,10 @@ Lowercase. Terse. Imperative. Almost command-line dry.
 ### Dashboard Header
 
 ```ts
-▽ pour   [local]
+▽ pour  ›  main                 14:32                 v1.1.0  [API]
 ```
 
-The front door. One branded mark, module list below as a clean launcher, transport badge as system state.
+The front door. One branded mark, module list below as a clean launcher, transport badge as system state. The vault's folder name sits after the mark, a clock in the middle, the version and badge on the right. The badge reads `[API]` in green or `[File System]` in yellow.
 
 Empty state: `no modules configured. add modules to config.toml.`
 
@@ -56,7 +56,24 @@ Empty state: `no modules configured. add modules to config.toml.`
 ▽ pour coffee — Brew Log
 ```
 
-The strongest expression of the product. The `▽` anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads `[ submit ]` — lowercase, tool-voiced.
+The strongest expression of the product. The `▽` anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads `[ pour ]` — lowercase, tool-voiced.
+
+The footer names the keys the focused field answers to. Most fields show `Enter interact`. A toggle shows `space flip`, and a counter shows `0-9 add` and `= set`. A hint that names a dead key is worse than no hint.
+
+Text that doesn't fit stays in its row. A long single-line value scrolls sideways, with a dark gray `◂` or `▸` at the edge that hides text. The textarea popout uses the same marks for long lines and puts `▲`/`▼` on its border when lines are hidden above or below. While the popout is open, the field row shows only `[^]`, so the value is never drawn twice.
+
+### Priors Panel
+
+```ts
+┌ bean · method · rating desc ─┐
+│dose_g  time_s                │
+│18  165                       │
+│repeat: 18 · 165              │
+│3 of 12 captures              │
+└──────────────────────────────┘
+```
+
+Read-only reference, so it stays quiet. Dark gray border and column names, white rows, and dark gray rows for captures that lack the `rank_by` value. The `repeat:` line is cyan. The title names the fields that matched, then the ranking when every row has a value for it. Collapsed with `Ctrl+R`, it shrinks to one cyan line: `▸ repeat: 18 · 165 — ^R for rows`. With no match it draws nothing, not an empty box.
 
 ### Summary
 
@@ -73,8 +90,10 @@ Body labels are terse and lowercase:
 
 ```ts
   path: 02-Logbook/2026-04-01-brew.md
-  transport: api
+  transport: API
 ```
+
+The value after `transport:` is the mode's display name, `API` or `File System`, and is not lowercased.
 
 ### Configure Header
 
@@ -89,8 +108,8 @@ Intentionally more utilitarian than the form. Module key only — display name o
 | Role | Color | Usage |
 |---|---|---|
 | Brand / active | Cyan | Headers, active field labels, selected items |
-| Success | Green | `▽ saved`, submit button |
-| Interaction | Yellow | Key hints, transport badge, [modified] tag, browser borders |
+| Success | Green | `▽ saved`, submit button, `[API]` badge |
+| Interaction | Yellow | Key hints, `[File System]` badge, summary transport value, [modified] tag, browser borders |
 | Failure | Red | `! error`, validation messages |
 | Scaffolding | Dark Gray | Inactive labels, subtitles, kind hints |
 | Content | White | Active field values, body text |

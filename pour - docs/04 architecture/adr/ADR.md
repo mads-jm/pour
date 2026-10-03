@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, April 7th 2026, 3:14:07 am
-date modified: Wednesday, April 29th 2026, 5:31:40 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Architecture Decision Records
@@ -15,6 +15,8 @@ Chronological log of significant architectural decisions.
 - [[ADR-002-Custom-YAML-Serialization]] — Write custom YAML frontmatter generation instead of `serde_yaml` to guarantee Obsidian Properties compatibility.
 - [[ADR-003-Synchronous-TUI-Async-Operations]] — Block the UI thread during network operations in v1; true async TUI is deferred.
 - [[ADR-004-API-Append-Read-Modify-Write]] — Replace heading-targeted PATCH append with a GET + in-memory splice + PUT cycle to eliminate the unwanted `***` separator inserted by the API plugin.
+- [[ADR-005-PWA-Companion]] — Ship a local-first PWA as a second front door in the same binary: `pour serve`, axum on the existing tokio runtime, assets embedded with `rust-embed`, LAN-only with bearer-token auth.
+- [[ADR-006-V1-Lock-In-Patterns]] — Make three patterns the v1.0.0 floor: transactional `Config::edit`, generic `JsonStore<T>`, and a CI-enforced 800-line file-size budget.
 - [[ADR-007-Frontmatter-Reader]] — Hand-roll the frontmatter *reader* (companion to ADR-002), scoped to Pour's constrained subset with graceful degradation on richer YAML; no new dependency.
 
 ## Index

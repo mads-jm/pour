@@ -4,7 +4,8 @@ tags:
   - presets
   - tui
 date created: Monday, April 27th 2026, 11:23:20 pm
-date modified: Wednesday, April 29th 2026, 5:31:45 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: shipped — TUI picker in v0.3.0; PWA drilldown not started
 ---
 
 # Pour Preset Hierarchy — Spec
@@ -124,8 +125,8 @@ A second Enter proceeds. Any keystroke clears the confirm state.
 
 ## Known Limitations
 
-- __Picker scroll viewport__: the viewport is hardcoded to 20 rows in the key handler (`Down` key clamps at `viewport_offset + 20`). On terminals shorter than ~25 rows the lower portion of long preset lists becomes keyboard-unreachable. Tracked for follow-up; the fix is to compute window height from the terminal area at key-handling time rather than using a constant.
+- __Picker scroll viewport__: the viewport is hardcoded to 20 rows in the key handler (`Down` key clamps at `viewport_offset + 20`). On terminals shorter than ~25 rows the lower portion of long preset lists becomes keyboard-unreachable. Tracked for follow-up; the fix is to compute window height from the terminal area at key-handling time rather than using a constant. *[Still open as of 2026-10-02: the `Down` handler in `src/tui/form/overlays/preset_picker.rs` still clamps at `viewport_offset + 20`.]*
 
 ## PWA Forward-Compatibility
 
-The `preset_axes` config key is per-module in `config.toml` and is included in `GET /api/v1/config` responses when the PWA roll-forward is implemented. The data shape (a flat list of `PresetEntry` with their `values` map) is forward-compatible with a mobile drilldown — the same config drives both surfaces. PWA drilldown is a separate plan; this spec gates it.
+The `preset_axes` config key is per-module in `config.toml` and is included in `GET /api/v1/config` responses when the PWA roll-forward is implemented. The data shape (a flat list of `PresetEntry` with their `values` map) is forward-compatible with a mobile drilldown — the same config drives both surfaces. PWA drilldown is a separate plan; this spec gates it. *[Not started as of 2026-10-02. `GET /api/v1/config` does not include `preset_axes`, and the PWA shows presets as a flat chip row.]*

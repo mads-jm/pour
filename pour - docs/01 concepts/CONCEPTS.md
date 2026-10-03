@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, April 7th 2026, 3:14:07 am
-date modified: Wednesday, April 29th 2026, 5:31:40 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Concepts
@@ -11,7 +11,7 @@ Atomic concept notes — durable, reusable knowledge about the patterns, mental 
 
 ## Atomic Concepts
 
-- [[The-3-Tier-Data-Fallback]] — How [[field-types|`dynamic_select`]] populates without perceived latency: transport → cache → empty/freetext. The read side of the dynamic-data pipeline.
+- [[The-3-Tier-Data-Fallback]] — How [[field-types|`dynamic_select`]] still populates when the transport can't list the folder: transport → cache → empty/freetext. The read side of the dynamic-data pipeline.
 - [[Inline-Note-Creation]] — The write side of the same pipeline: novel values entered into [[field-types|`dynamic_select`]] fields auto-create stub or template-driven notes in the vault before the parent capture is written.
 - [[Pour-Types]] — The three kinds of pour, one per write mode: entry (`append`), event (`create`), ambient state (`update`). Carries the creed that decides which kind a signal gets, and why the field name must equal the frontmatter key.
 
@@ -31,7 +31,7 @@ Some core Pour concepts live in [[ARCHITECTURE|ADRs]] or [[SPECS|specs]] rather 
 Unresolved wikilinks below are intentional — they mark concepts worth promoting to atomic notes when the next mention lands. Click any of them in [[index|Obsidian's graph]] to scaffold the note.
 
 - [[Capture-Reflex]] — The ethos: capture must be a reflex, not a workflow. Sub-second latency from intent to written file.
-- [[Atomic-Note-Fallback]] — When [[ADR-001-Hybrid-Transport-Layer|the API is down]] in append mode, Pour writes a timestamped standalone note instead of failing — zero data loss as a non-negotiable.
+- [[Atomic-Note-Fallback]] — Not built. The idea: when an append target is missing, write a timestamped standalone note instead of failing. Today a missing note or heading fails the capture on both transports, and [[pour-append-target-recovery]] specs a different fix.
 - [[Sub-Form-Overlay]] — The modal form that opens inside a parent form for [[Inline-Note-Creation|template-driven creation]]. Preserves keyboard flow; never spawns a separate process or window.
 - [[Conditional-Visibility]] — `show_when` rules and the [[System-Architecture-Overview|`visible_field_indices`]] discipline that keeps navigation, validation, and output bounded to visible fields.
 - [[Idempotency-Key]] — How the [[ADR-005-PWA-Companion|PWA]] survives offline replay without duplicating captures. See [[pour-api-contract]].

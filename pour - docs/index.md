@@ -2,7 +2,7 @@
 tags:
   - index
 date created: Tuesday, March 31st 2026, 12:12:23 am
-date modified: Monday, May 4th 2026, 11:17:44 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Pour Documentation
@@ -26,9 +26,9 @@ date modified: Monday, May 4th 2026, 11:17:44 pm
 | `01 concepts/`     | [[CONCEPTS]]     | Atomic concept notes and durable project knowledge                          |
 | `02 references/`   | [[REFERENCES]]   | Library API references and external docs                                    |
 | `03 guides/`       | [[GUIDES]]       | Developer workflow and implementation guides                                |
-| `04 architecture/` | [[ARCHITECTURE]] | Design spec, ADRs                                                           |
+| `04 architecture/` | [[ARCHITECTURE]] | System overview, ADRs                                                       |
 | `05 notes/`        | [[NOTES]]        | Legacy fleeting notes and pre-atomic working notes                          |
-| `06 reports/`      | -                | Sprint reports and progress snapshots                                       |
+| `06 reports/`      | -                | Release reports and assessments (frozen)                                    |
 | `07 stories/`      | [[STORIES]]      | Vision and manifesto                                                        |
 | `08 specs/`        | [[SPECS]]        | Feature and component specifications                                        |
 | `09 milestones/`   | -                | Release and milestone summaries — [[v0.2.0-Foundation]], [[v1.0.0-Release]] |
@@ -72,7 +72,8 @@ cargo fmt                # format
 | Area | File |
 |------|------|
 | Entry point | `src/main.rs` |
-| Config schema | `~/.pour/config.toml` |
+| Config schema | `~/.pour/config.toml` (override with `POUR_CONFIG`) |
+| State root | `~/.pour/` (override with `POUR_HOME`) |
 | Cache | `~/.pour/cache/state.json` |
 
 ---
@@ -81,15 +82,15 @@ cargo fmt                # format
 
 Pour writes to Obsidian via a [[ADR-001-Hybrid-Transport-Layer|__hybrid transport layer__]]:
 1. __API__ — HTTPS via [[reqwest]] to [[obsidian-local-rest-api|Obsidian Local REST API]] (`https://127.0.0.1:27124`, accepts self-signed certs)
-2. __File System__ — Direct `std::fs` fallback if API unavailable. In append mode, this fallback materialises as an [[Atomic-Note-Fallback|atomic timestamped note]] rather than a destructive in-place write. Update mode is the one place pour edits a note in place, on either transport, behind a stat-before-read guard and an atomic replace. See [[Pour-Types]].
+2. __File System__ — Direct `std::fs` fallback if API unavailable. Append mode splices the entry under its heading on either transport (on disk via a temp file and an atomic rename), and fails if the note or heading is missing. Update mode changes one frontmatter key at a time: a `PATCH` over the API, or on disk a one-line edit behind a stat-before-read guard and an atomic replace. See [[Pour-Types]].
 
 ### Dynamic Data Fetching ([[The-3-Tier-Data-Fallback|3-tier fallback]])
 
-API query -> disk scan -> `~/.pour/cache/state.json` cache -> freetext input. Novel values entered into [[field-types|`dynamic_select`]] fields trigger [[Inline-Note-Creation|inline note creation]] back into the vault.
+Folder listing over the active transport (API, or disk when the API is down) -> `~/.pour/cache/state.json` cache -> freetext input. The form waits for the listing; the cache is a fallback, not a first paint. Novel values entered into [[field-types|`dynamic_select`]] fields trigger [[Inline-Note-Creation|inline note creation]] back into the vault.
 
 ---
 
-__Last Updated__: 2026-04-29
+__Last Updated__: 2026-10-02
 __Documentation Version__: v0.1.0
 
 

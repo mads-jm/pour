@@ -9,7 +9,8 @@ aliases:
   - pour mobile api
   - api spec
 date created: 2026-04-25
-status: ratified — Steps B-G implement against this contract
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: ratified — shipped in v0.3.0, amended through v1.1.0; deviations annotated
 ---
 
 # Pour HTTP API — Contract Specification
@@ -162,6 +163,8 @@ Liveness + capabilities probe. Already implemented in Step A; this section docum
 - `vault_base_path` — for display only. Phone never reads vault files directly.
 - `capabilities` — feature flags so future PWA versions can detect older servers.
 
+*[Deviation: the `capabilities` list has not changed since v0.3.0. It does not advertise `update` mode or the `toggle`/`counter` field types added in v1.1.0, so a client cannot detect them from `/health`.]*
+
 ### 6.2 `GET /api/v1/config` — LOCKED
 
 Returns the full module/field/template schema. The PWA renders forms from this.
@@ -204,6 +207,8 @@ Returns the full module/field/template schema. The PWA renders forms from this.
 - `mobile_visible` defaults to `true`. A module with `mobile_visible = false` in `config.toml` is omitted from this response entirely (not included with the flag set false). The PWA cannot reveal hidden modules. **Note: `mobile_visible` is NOT echoed in the module object** — it controls inclusion, not data. Clients must not depend on its presence.
 - `module_order` echoes only the keys that survive the `mobile_visible` filter. A hidden module is removed from both `modules` AND `module_order`. This guarantees the rendering order has no phantom keys.
 - `field_type` strings are the lowercase `snake_case` enum names: `"text"`, `"textarea"`, `"number"`, `"static_select"`, `"dynamic_select"`, `"composite_array"`.
+
+*[Deviation: since v1.1.0, `mode` can also be `"update"` and `field_type` can also be `"toggle"` or `"counter"`. The field object does not carry the counter-only `unit` and `goal` keys. The bundled PWA has no widget for either type, which is why the `habit` preset sets `mobile_visible = false`.]*
 - `target` is `"frontmatter"` or `"body"` or `null` (use field-type default).
 - `show_when` rules ship verbatim — the client evaluates them (see §8).
 
@@ -238,6 +243,8 @@ Resolves the 3-tier fallback for a `dynamic_select` field. Used by the PWA when 
 ### 6.4 `POST /api/v1/submit/{module}` — LOCKED (the keystone)
 
 Executes a form submit. Reuses the engine's `autocreate::run` + `output::write_create` / `output::write_append` + `History::record` pipeline.
+
+*[Deviation: since v1.1.0 the pipeline also calls `output::write_update` for `update` modules, then runs the module's `post_write_shell` hook, but only when `post_write_shell_on_serve = true`. A module with a `base_path` or `platform` root override always writes over the filesystem, and the 201 reports `transport_mode: "FileSystem"` for it.]*
 
 **Auth:** required.
 
@@ -329,6 +336,8 @@ Executes a form submit. Reuses the engine's `autocreate::run` + `output::write_c
 | 500 | `write_error` | Engine returned an error from `write_create`/`write_append`. `details.engine_error` carries the underlying message. |
 | 502 | `transport_error` | API + filesystem both unreachable. |
 
+*[Deviation: the submit handler never returns 502. Any engine failure, transport failures included, comes back as `500 write_error` with `details.engine_error`. Unknown field names are not rejected either: values for fields the module does not declare, or that `show_when` hides, are dropped before validation. A novel value on a `create_template` field with no matching `auto_create_inputs` entry returns `400 validation_failed` with `details.code = "auto_create_input_required"`.]*
+
 **Synthetic 202 (PWA service worker only — round 6 amendment):**
 
 The HTTP status `202 Accepted` is NOT produced by this server endpoint. It is a **client-side construct** emitted exclusively by the PWA service worker to its own page when a submit is queued for offline replay. No server-side handler ever returns 202 from `/api/v1/submit/*`.
@@ -353,6 +362,8 @@ The synthetic 202 body from the service worker is: `{ "queued": true, "queue_id"
   ...
 }
 ```
+
+*[Deviation: warning codes in use on a 201 are `autocreate_failed`, `history_record_failed`, `frontmatter_update_notice` (an `update` capture added a key the note was missing) and `post_write_shell_failed`.]*
 
 ### 6.5 `GET /api/v1/history` — AMENDED 2026-04-26
 
@@ -500,6 +511,8 @@ The `field_type` enum on the wire matches the Rust `FieldType` enum (snake_case)
 ```
 text | textarea | number | static_select | dynamic_select | composite_array
 ```
+
+*[Deviation: v1.1.0 added `toggle` and `counter`. See §6.2.]*
 
 ### 7.2 Field config object (in `/api/v1/config`)
 
@@ -685,3 +698,4 @@ All future deviations require an amendment to this contract committed before the
 - **2026-04-26** — idempotency cacheability amendment (round 5). §9: only **2xx terminal successes** are stored in the idempotency cache. **4xx and 5xx responses are NOT cached.** Earlier wording said "final response" without disambiguating, which led to an implementation that cached every status — meaning a `400 validation_failed` would replay for 5 minutes, blocking users from fixing a field and retrying within the form session. The amendment makes recoverable errors retryable while preserving the duplicate-write protection that idempotency exists to provide.
 - **2026-04-27** — synthetic-202 clarification (round 6). §6.4: added a note that `202 Accepted` is a PWA service-worker–only construct emitted to the page when a submit is queued offline. The server **never** returns 202 from `/api/v1/submit/*`. Clients bypassing the service worker (future MCP companion, direct `curl`) see 201 on success or 4xx/5xx on failure only. No server-side change; documentation only.
 - **2026-04-27** — reserved name "order" (round 8). §6.8: the name `"order"` (case-insensitive) is reserved and must not be used as a preset name. The `/presets/{module}/order` fixed segment (§6.10) is registered before `/{name}` in the router, making a preset literally named "order" permanently unreachable via single-preset endpoints. Server rejects the name in `put_handler` with `400 validation_failed { code: "reserved_name" }` as a belt-and-suspenders guard. Clients must also reject "order" (case-insensitive) in name-input validation before sending any request. Three regression tests added to `tests/server_presets.rs`.
+- **2026-10-02** — docs sync, no amendment. Deviations from the shipped server are annotated inline in §6.1, §6.2, §6.4 and §7.1. Most come from v1.1.0 (`update` mode, `toggle`/`counter`, `post_write_shell`, root overrides), which changed the server without a round entry here. The per-field codes in §5.2 were already updated at that time.

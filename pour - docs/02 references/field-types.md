@@ -4,7 +4,7 @@ tags:
   - config
   - fields
 date created: Wednesday, April 1st 2026, 10:49:25 pm
-date modified: Monday, May 4th 2026, 11:17:48 pm
+date modified: Friday, October 2nd 2026, 11:30:00 pm
 ---
 
 # Field Types Reference
@@ -72,7 +72,7 @@ match_on = [{ field = "roaster", mode = "wikilink" }]
 show     = ["dose_g", { field = "water_temp_c", agg = "mean" }]
 ```
 
-**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state.
+**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state. The captures come from the folder part of the module's `path` (everything before the last `/`), read as written: a strftime or `{{field}}` token there, as in `Coffee/%Y/%Y-%m-%d-{{bean}}.md`, is not expanded, so that module finds no priors. Each resolve reads at most 500 notes.
 
 ## Field Config Keys
 
@@ -91,8 +91,8 @@ Every field in a module's `[[modules.<name>.fields]]` array supports these keys:
 | `sub_fields` | array | conditional | Required for `composite_array`; column definitions |
 | `callout` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). When set on a `textarea` field targeting body, the output is wrapped in `> [!type]` blockquote syntax. |
 | `callout_title` | string | no | Default title rendered on the callout line: `> [!type] <callout_title>`. Only used when `callout` is set. In the TUI, press `t` while focused on the textarea row (editor closed) to edit the title for the current entry — an empty title clears it. A `t title` hint appears in the footer bar when the hotkey is available. Bare `t` is used rather than `Ctrl+T` because some IDEs/terminals intercept Ctrl-letter chords before they reach the TUI. |
-| `allow_create` | bool | no | Only valid on `dynamic_select`. When `true`, the user can type characters to filter options and enter a completely novel value if nothing matches. Defaults to `false` (closed list). |
-| `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Applies to `text`, `static_select`, and `dynamic_select` fields. No-ops if the value is already wrapped. Defaults to `false`. |
+| `allow_create` | bool | no | Only valid on `static_select` and `dynamic_select`. When `true`, the user can type characters to filter options and enter a completely novel value if nothing matches. On `static_select` the new value is appended to the field's `options` in `config.toml`; on `dynamic_select` it creates a note in the `source` directory (see [[#Auto-create Behavior]]). Defaults to `false` (closed list). |
+| `wikilink` | bool | no | If `true`, wraps the output value in Obsidian wikilink syntax: `[[value]]`. Meant for `text`, `static_select`, and `dynamic_select` fields. Config load does not check the type, so it wraps any field it is set on. No-ops if the value is already wrapped. Defaults to `false`. |
 | `create_template` | string | no | Only valid on `dynamic_select` fields with `allow_create = true`. References a template name from `[templates.<name>]`. When set, typing a novel value opens a sub-form overlay to fill in the template's fields before creating the note. Without this key, novel values create a bare stub note. |
 | `post_create_command` | string | no | Obsidian command ID to execute after template-driven note creation (e.g. `"templater:run"`). Only valid when `create_template` is set. Fires via the REST API `/commands/` endpoint; silently skipped on filesystem transport. |
 | `show_when` | object | no | Conditional visibility rule. When present, the field is only rendered and navigable if the condition is satisfied. If the condition becomes false while the field is focused, focus moves to the nearest visible field. See __Conditional Visibility__ below. |
@@ -187,7 +187,7 @@ prompt = "Bean origin"
 ```
 
 __TUI__: Inline text input with cursor. Accepts any characters. A value wider than its row scrolls sideways within that row, keeping the cursor and the two characters after it on screen; `◂` and `▸` mark text hidden to the left and right. The cursor position counts display width per glyph as the terminal draws it, so CJK and emoji line up, including emoji built from several characters such as `❤️` and `👍🏽`. `number` and `counter` inputs behave the same way.
-__Output__: Value written as-is to frontmatter (or body if overridden). If `wikilink = true`, the value is wrapped in `[[...]]` before output.
+__Output__: Value written to frontmatter (or body if overridden). In frontmatter it is double-quoted only when YAML would misread it bare: a value that parses as a number, a YAML word (`true`, `false`, `null`, `yes`, `no`, `on`, `off`, any case), a leading `-`, a line break, or a special character such as `:` `#` `[` `,` `"`. If `wikilink = true`, the value is wrapped in `[[...]]` before output.
 
 ## `textarea`
 
@@ -242,8 +242,14 @@ default = "3"
 ```
 
 __TUI__: Inline text input, filtered to numeric characters only.
-__Output__: Written to frontmatter as an unquoted YAML number (if parseable as integer or float). Falls back to quoted string if the value contains non-numeric content.
-__Validation__: Non-numeric characters are rejected at input time, not at submit time.
+__Output__: Depends on the write mode.
+
+- `create` modules write the value as a **quoted string**: `rating: "4"`, `dose_g: "15"`. A number field goes through the same scalar quoting as `text`, and that quoting wraps anything that parses as a number so YAML keeps it a string. This holds for the TUI and for `pour serve` captures alike, since both call the same create writer.
+- `update` modules write a bare YAML number: `rating: 4`. Integral values drop the `.0`.
+- `append` modules substitute the value into the template text exactly as typed.
+
+Two related cases: `number` cells in a `composite_array` are written bare, and `number` fields in a `[templates.<name>]` sub-form are quoted like create-mode fields.
+__Validation__: Non-numeric characters are rejected as you type. On submit, a non-empty value must also parse as a number (`1-2` or `.` fails), in the TUI and over `pour serve` (`invalid_number`).
 
 ## `static_select`
 
@@ -279,7 +285,7 @@ __TUI__: Same dropdown interaction as `static_select`. Options are populated via
 When `allow_create = true`, the user can type characters directly into the field to filter the dropdown options (case-insensitive substring match). If typing produces no matching options, `Enter` accepts the typed text as a novel value. `Backspace` trims the typed text. `Esc` clears the search buffer before closing the dropdown. Navigating away (Tab/Shift-Tab) discards any unsaved search text.
 
 __Output__: Selected (or typed) string written to frontmatter. If `wikilink = true`, the value is wrapped in `[[...]]` before output.
-__Validation__: `source` must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or `..` traversal paths). Config load fails otherwise. `allow_create` is only valid on `dynamic_select`; using it on any other field type fails config validation.
+__Validation__: `source` must be present and must be a vault-relative path (no absolute, drive-qualified, UNC, or `..` traversal paths). Config load fails otherwise. `allow_create` is only valid on `dynamic_select` and `static_select`; using it on any other field type fails config validation.
 __Source path__: Relative to the vault root. Example: `"Coffee/Beans"` resolves to `<vault_base_path>/Coffee/Beans/`.
 
 ### Auto-create Behavior
@@ -296,7 +302,7 @@ date: YYYY-MM-DD
 
 __With `create_template`__ — a sub-form overlay appears in the TUI, prompting the user to fill in the template's fields. The created note gets full frontmatter from the template. See [[#Template-Driven Creation]] below.
 
-The filename is sanitized: characters invalid on any platform (`:`  `?`  `*`  `<`  `>`  `|`  `"`  `\`  `/`) are replaced with `-`, consecutive dashes are collapsed, and Windows reserved device names (`CON`, `NUL`, `COM1`–`COM9`, etc.) are rejected. If the value sanitizes to an empty or reserved string, auto-creation is skipped silently.
+The filename is sanitized: characters invalid on any platform (`:`  `?`  `*`  `<`  `>`  `|`  `"`  `\`  `/`) are replaced with `-`, consecutive dashes are collapsed, and Windows reserved device names (`CON`, `NUL`, `COM1`–`COM9`, etc.) are rejected. If the value sanitizes to an empty or reserved string, auto-creation is skipped and a one-line note is printed to stderr after the TUI exits.
 
 The new entry is appended to the in-memory cache so the next dropdown opens with the value available immediately. Creation is best-effort — a transport failure is logged to stderr but does not block form submission.
 
@@ -389,9 +395,11 @@ roaster: Onyx
 origin: Ethiopia
 process: Washed
 roast_level: Light
-bag_weight_g: 250
+bag_weight_g: "250"
 ---
 ```
+
+The `number` value comes out quoted, as it does for create-mode `number` fields (see [[#`number`]]).
 
 Then `post_create_command` fires `templater:run`, which can add body content (brew log table, tasting notes section, metadata) via an Obsidian Templater template.
 
@@ -408,7 +416,7 @@ prompt = "Partaken?"
 
 __TUI__: Renders as `[x]` / `[ ]`; **space** flips it, and the footer says so (`space flip`) whenever the row is focused. Typing does nothing — there is no text buffer. On an `update` module the checkbox is seeded from the note's current value when the form opens. If the note holds something that is *not* a boolean word (a hand-edit, a value from before the field existed), the field is left unseeded and renders `[?]`: pour will not guess `false` on your behalf, and an unflipped `[?]` is skipped on submit so the note's value survives.
 __One-shot__: `pour habit cannabis` sets `true`; `pour habit cannabis false` (or `off`) clears it. Also accepts `on`/`yes`/`1` and `no`/`0`.
-__Output__: A bare YAML boolean — `cannabis: true`, never `"true"`.
+__Output__: On an `update` module, a bare YAML boolean: `cannabis: true`, never `"true"`. On a `create` module the value goes through the text quoting rules instead, so it is written as `cannabis: "true"`.
 
 ## `counter`
 
@@ -434,14 +442,14 @@ __Semantics__ (`update` mode):
 
 __TUI__: Inline input filtered to digits, `.`, `-`, and `=`. The footer spells out which is which (`0-9 add`, `= set`) whenever the row is focused, since a bare number and an `=`-prefixed one do opposite things. On an `update` module the row also shows the note's current state — `now 64/96 oz` — read once when the form opens. A failed or slow read renders `now —/96 oz` rather than blocking the form.
 __Echo__: every write echoes the resulting state, `water: 64/96 oz`, which is simultaneously the confirmation, the correction prompt, and the progress display.
-__Output__: A bare YAML number.
+__Output__: On an `update` module, a bare YAML number. On a `create` module the typed token is written as a quoted string (`water: "16"`), with no reading of a prior value.
 
 > [!note] Reserved for v2
 > `limit` and `limit_period` are reserved on `counter` for periodic stay-under targets (the inverse of `goal`). They are **not implemented** — nothing reads them today.
 
 ## `composite_array`
 
-Tabular data entry with multiple columns (sub-fields). Renders as a YAML array of objects in frontmatter or a Markdown table in body.
+Tabular data entry with multiple columns (sub-fields). With the default `frontmatter` target it is written twice: as a YAML array of objects in frontmatter and as a Markdown table in the body. With `target = "body"` only the table is written.
 
 ```toml
 [[modules.recipe.fields]]
@@ -466,17 +474,17 @@ prompt = "Unit"
 options = ["g", "ml", "oz", "cups", "tbsp", "tsp"]
 ```
 
-__TUI__: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter adds a new row. Escape closes the overlay. Empty rows are stripped on output. Inside the overlay, `s` saves the current rows as a per-field preset, `l` opens a picker over saved presets, and `p` cycles through them in place — see "Per-field presets" below.
-__Output (frontmatter)__: Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers.
+__TUI__: Enter opens a bordered table editor overlay. Navigate cells with arrow keys. Tab advances to next cell. Enter inserts a new row below the current one, and Delete removes the current row. Space cycles a `static_select` cell. Escape closes the overlay. Empty rows are stripped on output. Inside the overlay, `s` saves the current rows as a per-field preset, `l` opens a picker over saved presets, and `p` cycles through them in place — see "Per-field presets" below. Those three keys are always taken by the preset actions, so a lowercase `s`, `l`, or `p` cannot be typed into a cell.
+__Output (frontmatter)__: Serialized as a YAML array of objects. Number sub-fields are written as unquoted YAML numbers. Other cells follow the text quoting rules, so plain words stay bare.
 
 ```yaml
 ingredients:
-  - item: "flour"
+  - item: flour
     amount: 200
-    unit: "g"
-  - item: "milk"
+    unit: g
+  - item: milk
     amount: 250
-    unit: "ml"
+    unit: ml
 ```
 
 __Output (body)__: Rendered as a Markdown table.
@@ -534,7 +542,7 @@ These keys are set on the module itself, not on individual fields:
 | `append_template` | string | no | Template for append-mode content. Supports `{{time}}`, `{{date}}`, `{{callout}}`, and field name placeholders. A multi-line value on a line that starts with `>` gets `> ` on every continuation line, so `> {{body}}` keeps a multi-paragraph body inside the callout |
 | `callout_type` | string | no | Obsidian callout type (e.g. `"note"`, `"tip"`). Resolved as `{{callout}}` in `append_template` |
 | `icon` | string | no | Unicode emoji shown in the TUI dashboard and written to frontmatter in create-mode output |
-| `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note |
+| `daily_link` | boolean | no | When `true`, create-mode output includes a `daily` frontmatter key linking to today's daily note, named with `[vault].date_format` (default `%Y%m%d`): `daily: "[[20260405]]"` |
 | `append_shallow` | boolean | no | When `true` (append mode only), treats any subsequent heading as a section boundary — prevents sub-headings from being absorbed into the append target |
 | `mobile_visible` | boolean | no | When `false`, this module is hidden from the mobile PWA (`/api/v1/config` omits it entirely). Defaults to `true`. Togglable from the module configure screen. |
 | `base_path` | string | no | Per-module root override. When set, this module's `path` resolves against it instead of `[vault].base_path`. **Absolute only — `~` is not expanded** (Pour expands it nowhere). Absent → the vault, exactly as before. See [[#Per-module root (`base_path`)]]. |
@@ -665,9 +673,9 @@ post_write_shell = "git add '{{rel_path}}' && git commit -q -m 'capture: {{slug_
 
 | Token | Value |
 |---|---|
-| `{{base_path}}` | the module's resolved root |
+| `{{base_path}}` | the module's resolved root (the vault path when the module sets no `base_path`) |
 | `{{rel_path}}` | written file, relative to `base_path` |
-| `{{abs_path}}` | written file, absolute |
+| `{{abs_path}}` | written file, absolute: `base_path` and `rel_path` joined with `/` on every OS |
 | `{{slug}}` | kebab-cased `title` field, dash-prefixed (`-my-title`); empty when untitled |
 | `{{slug_or_time}}` | bare slug (`my-title`), or a `%Y%m%d-%H%M%S` timestamp when untitled |
 
@@ -680,6 +688,7 @@ Semantics:
 - **Best-effort, never fatal.** The note is on disk before the hook runs. A non-zero exit, a spawn failure, or a 30s timeout surfaces as a warning (TUI summary message, or a `post_write_shell_failed` warning on the 201) — the capture is never lost.
 - The child gets **null stdin and piped stdout/stderr**: a command that prompts fails fast instead of hanging behind the TUI, and its output cannot corrupt the terminal.
 - **`post_write_shell_on_serve` defaults to `false`.** A LAN capture does not run commands unless the module opts in. (The wire DTO cannot carry config keys at all, so this is a second gate, not the only one.)
+- One-shot capture (`pour <module> <field> [value]`) never runs the hook. Only TUI saves and, when opted in, `pour serve` captures do.
 
 > [!danger] This is arbitrary command execution from config
 > It is safe to interpolate without quoting **only because no token can carry raw user text** — the slug is `[a-z0-9-]` by construction. If a hook ever needs a token that *can* carry user text, that is the trigger to move to argv-style execution, **not** to extend the token list. Note also that a hook which auto-commits and pushes makes a bad capture public history.
@@ -701,11 +710,12 @@ title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `config_version` | string | Optional semver string declaring the config schema version (e.g. `"1.0.0"`). Defaults to `"0.1.0"` when absent. Non-semver values and unsupported major versions are rejected at load. Current version: `"1.0.0"`. Existing `0.x.y` configs continue to load unchanged. |
+| `config_version` | string | Optional semver string declaring the config schema version. Defaults to `"0.1.0"` when absent. Current version: `"0.4.0"`. It must be `major.minor.patch` with numeric segments and no leading zeros. A config newer than the build is rejected at load with an "update Pour" message. While the major is `0`, the minor decides that, so a `0.5.0` config fails on a `0.4.0` build. Older versions always load. The schema version is separate from the app version in `Cargo.toml`. |
 | `[vault].base_path` | string | Absolute path to the Obsidian vault root |
+| `[vault.platform]` | table | Per-OS overrides for `base_path`, keyed by `std::env::consts::OS` (`linux`, `macos`, `windows`). A key matching the running OS wins; otherwise `base_path` is used. |
 | `[vault].api_port` | integer | REST API port (default: `27124`) |
 | `[vault].api_key` | string | Bearer token for API auth (overridden by `POUR_API_KEY` env var). Prefer `~/.pour/secrets.toml` over storing here. |
-| `[vault].date_format` | string | strftime format string used to expand the `{{date}}` placeholder in module `path` and `append_template` values. Defaults to `"%Y%m%d"` when absent. Example: `"%Y-%m-%d"` produces `2026-04-21`. |
+| `[vault].date_format` | string | strftime format string used to expand the `{{date}}` placeholder in module `path` values. Also names the `daily_link` target and the file pour generates when a create-mode `path` has no extension. Defaults to `"%Y%m%d"` when absent. Example: `"%Y-%m-%d"` produces `2026-04-21`. It does not apply to `append_template`, where `{{date}}` is always `%Y-%m-%d`. |
 | `module_order` | string[] | Optional dashboard display ordering. Modules not listed appear alphabetically after listed ones |
 | `[sound].on_save` | boolean | Play one short synthesized tone when a TUI capture saves (the summary reads `▽ saved`). Default `false`, and when off pour opens no audio device. Never plays on `! error`, for one-shot capture, or for `pour serve`. Saves during a tone queue and play in turn. If playback fails (no output device, an SSH session), a one-line status toast says so and the capture is unaffected. That toast shows at most once per session and never replaces another toast. |
 
@@ -720,7 +730,7 @@ It's a table rather than a bare key because of where TOML puts things. A top-lev
 
 ### `date_format` Example
 
-`date_format` controls what `{{date}}` resolves to in path and template strings. It does not affect strftime tokens (`%Y`, `%m`, `%d`) — those always expand using the standard strftime rules.
+`date_format` controls what `{{date}}` resolves to in a module `path`. It does not affect strftime tokens (`%Y`, `%m`, `%d`) — those always expand using the standard strftime rules. In `append_template`, `{{date}}` ignores `date_format` and is always `%Y-%m-%d`; write strftime tokens in the template if you want another shape.
 
 ```toml
 [vault]
@@ -728,7 +738,7 @@ base_path = "/path/to/vault"
 date_format = "%Y-%m-%d"   # {{date}} → "2026-04-21" (default: "%Y%m%d" → "20260421")
 ```
 
-Use `{{date}}` in a path or append template:
+Use `{{date}}` in a path:
 
 ```toml
 [modules.note]
@@ -737,8 +747,8 @@ path = "Notes/%Y/%m/{{date}}-{{title}}.md"
 
 [modules.journal]
 mode = "append"
-path = "Daily/%Y%m%d.md"
-append_template = "- {{date}} {{time}} | {{body}}"
+path = "Daily/{{date}}.md"
+append_template = "- {{time}} | {{body}}"   # {{date}} here would be %Y-%m-%d
 ```
 
 `date_format` is editable from the dashboard via vault settings (`v` → date_format field).
@@ -763,6 +773,7 @@ Templates define the note structure created when a `dynamic_select` field with `
 | `prompt` | string | yes | Label shown in the sub-form overlay |
 | `options` | string[] | conditional | Required for `static_select` |
 | `default` | string | no | Pre-filled value. If the user leaves a field empty and no default exists, the key is omitted from frontmatter. |
+| `allow_create` | bool | no | Only valid on `static_select` template fields. Accepts a typed value outside `options` and appends it to the field's `options` in `config.toml` after the note is written. See [[#Template Fields and `allow_create`]]. |
 
 ### How Pour Templates Relate to Obsidian Templater
 
@@ -784,7 +795,8 @@ This means Pour handles *data capture* and Templater handles *presentation* — 
 ### Validation Rules
 
 - Template `path` must contain `{{name}}`
-- Template `path` must not contain `..` segments
+- Template `path` must be vault-relative: no absolute, drive-qualified, or UNC paths, and no `..` segments
+- A template must have at least one field
 - `static_select` template fields require non-empty `options`
 - Template field names must be unique within a template
 - Field names `date` and `name` are reserved (auto-generated in frontmatter)
@@ -793,6 +805,13 @@ This means Pour handles *data capture* and Templater handles *presentation* — 
 - Referenced template names must exist in `[templates]`
 
 ### Module Validation Rules (root, frontmatter, hooks)
+
+- Every module must have at least one field, and field names must be unique within a module
+- `module.path` must be vault-relative (no absolute, drive-qualified, UNC, or `..` paths)
+- `append` modules require `append_under_header`
+- `update` modules reject `append_under_header`, `append_template`, `append_shallow`, `daily_link`, and any field that is `composite_array`, `list = true`, or targets the body
+- `list = true` is only valid on `text`, `static_select`, and `dynamic_select`
+- `unit` and `goal` are only valid on `counter` fields
 
 - `base_path` and every `[modules.<name>.platform]` value must be **absolute** and must not start with `~`
 - `module.path` must stay root-relative even when `base_path` is set (no absolute, drive-qualified, UNC, or `..` paths)

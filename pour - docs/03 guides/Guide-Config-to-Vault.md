@@ -5,7 +5,7 @@ tags:
   - vault
   - onboarding
 date created: Sunday, April 5th 2026, 9:34:22 pm
-date modified: Wednesday, April 29th 2026, 5:31:50 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Guide: Adapting Pour to Your Vault
@@ -36,14 +36,24 @@ __API (optional)__: If you run the [Obsidian Local REST API](https://github.com/
 
 ```toml
 api_port = 27124
-api_key = "your-key"   # or set POUR_API_KEY env var
+api_key = "your-key"   # or put it in ~/.pour/secrets.toml, or set POUR_API_KEY
+```
+
+__Several machines__: If the vault mounts at a different path on each machine, keep `base_path` as the default and add per-OS overrides under `[vault.platform]`. The key is the OS name (`linux`, `macos`, `windows`), and a matching key wins over `base_path`.
+
+```toml
+[vault]
+base_path = "/home/you/Vault"
+
+[vault.platform]
+windows = "D:/Vault"
 ```
 
 ---
 
 ## 2. Understand Write Modes
 
-Every module is either __append__ or __create__. This is the most important design decision per module.
+Every module is __append__, __create__, or __update__. This is the most important design decision per module. [[Pour-Types]] explains which kind of signal belongs in which mode.
 
 ### Append Mode
 
@@ -60,7 +70,7 @@ append_under_header = "## Log"             # must match an existing heading
 append_template = "#### {{time}}\n{{body}}" # {{time}}, {{field_name}} placeholders
 ```
 
-__Key constraint__: The note must already exist with the target heading. Pour doesn't create the file in append mode — it finds the heading and inserts below it. Daily note plugins (Templater, Periodic Notes) typically handle file creation.
+__Key constraint__: The note must already exist with the target heading. Pour doesn't create the file in append mode — it finds the heading and inserts below it. If the note or the heading is missing, the capture fails on both transports. Daily note plugins (Templater, Periodic Notes) typically handle file creation.
 
 __Mapping to your vault__: Open your daily note template. Find the heading you want to append under. Copy it exactly (including any wikilinks or formatting).
 
@@ -78,6 +88,29 @@ path = "Coffee/%Y/%Y-%m-%d-{{bean}}.md"   # {{field_name}} interpolation
 ```
 
 __Mapping to your vault__: Decide where these notes should live. Use existing folder structures. The path supports both strftime tokens (`%Y`, `%m`, `%d`) and field value interpolation (`{{field_name}}`).
+
+### Update Mode
+
+Changes frontmatter keys on a note that already exists. Best for:
+- Daily habits, a yes/no for the day or a running total
+- Any property your periodic note template already defines
+
+```toml
+[modules.habit]
+mode = "update"
+path = "Journal/%Y/%Y-%m-%d.md"            # the note must already exist
+
+[[modules.habit.fields]]
+name = "water"                             # must match the frontmatter key exactly
+field_type = "counter"
+prompt = "Water"
+unit = "oz"
+goal = 96
+```
+
+__Key constraint__: Pour never creates the note and never touches its body. The field name is the frontmatter key it writes, with no mapping in between, so match your template's property names. Every field must target frontmatter. A field that targets the body (a `textarea` does by default), a `composite_array`, or `list = true` fails validation, and so do the append-only keys (`append_under_header`, `append_template`, `append_shallow`) and `daily_link`.
+
+Update modules also have a one-shot form that skips the TUI: `pour habit water 16` adds 16 to the current value, and `pour habit water =64` sets it. See [[field-types#`update` mode]] for the full rules.
 
 ---
 
@@ -156,6 +189,12 @@ Is it multi-line text?
 
 Is it tabular / multi-row data?
   → composite_array (sub_fields define columns)
+
+Is it a yes/no property?
+  → toggle
+
+Is it a total that grows through the day?
+  → counter (meant for update mode)
 
 Otherwise:
   → text
@@ -290,18 +329,19 @@ prompt = "Origin"
 options = ["Ethiopia", "Colombia", "Guatemala", "Kenya", "Brazil"]
 ```
 
-__Path routing with fields__: Template paths can interpolate template field values. This is useful for sorting new notes into subfolders:
+__Path tokens__: A template path substitutes `{{name}}` (the typed value, cleaned up for use as a filename) and strftime tokens (`%Y`, `%m`, `%d`). The path must contain `{{name}}`. Template field values are not substituted into the path, so `Coffee/Brewers/{{category}}/{{name}}.md` keeps `{{category}}` as written. To sort new notes into subfolders, give each subfolder its own template and point each conditional select at the matching one:
 
 ```toml
-[templates.brewer]
-path = "Coffee/Brewers/{{category}}/{{name}}.md"
+[templates.brewer_pour_over]
+path = "Coffee/Brewers/Pour Over/{{name}}.md"
 
-[[templates.brewer.fields]]
-name = "category"
-field_type = "static_select"
-prompt = "Brewer category"
-options = ["Pour Over", "Espresso", "Immersion"]
+[[templates.brewer_pour_over.fields]]
+name = "brand"
+field_type = "text"
+prompt = "Brand"
 ```
+
+`date` and `name` are reserved template field names, because Pour writes both into the new note's frontmatter itself.
 
 ### Coordinating with Obsidian Templater
 
@@ -325,9 +365,11 @@ append_template = "#### {{time}}\n> [!{{callout}}] {{title}}\n> {{body}}"
 
 Available placeholders:
 - `{{time}}` — current time (HH:MM format)
-- `{{date}}` — current date
+- `{{date}}` — current date as `YYYY-MM-DD` (`date_format` does not apply here)
 - `{{callout}}` — value of `callout_type` on the module
 - `{{field_name}}` — any field's value by name
+
+strftime tokens such as `%A` also expand in an append template.
 
 __Matching your daily note structure__: Your template's output should be consistent with the note's existing format. If your daily note uses callout blocks under headings, design the append template to match.
 
@@ -339,7 +381,7 @@ __Matching your daily note structure__: Your template's output should be consist
 module_order = ["me", "todo", "note", "coffee"]
 ```
 
-Controls dashboard display order. Modules not listed appear alphabetically after listed ones. Put your most-used modules first for quick access.
+Controls dashboard display order. Modules not listed appear alphabetically after listed ones. Put your most-used modules first for quick access. `Ctrl+Up` / `Ctrl+Down` on the dashboard moves the selected module and writes the new order back to `module_order`.
 
 ---
 
@@ -387,12 +429,12 @@ Presets let you save a snapshot of a module's current field values and restore t
 
 ### How Presets Work
 
-Each module maintains its own preset list, stored in `~/.pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form.
+Each module maintains its own preset list, stored in `~/.pour/presets.json`. Presets are per-module — a coffee preset won't appear in the journal form. The phone PWA ([[Guide-Phone-Capture]]) reads and writes the same file.
 
 At the top of every module form, Pour shows a preset row:
 
 ```
-[ No preset ]   ◂ ▸ to cycle
+▸ Preset: ◂ <none> ▸
 ```
 
 When you apply a preset, Pour resets __all non-excluded fields__ to the preset's saved values. Fields absent from the preset receive their configured `default`. This is deterministic: applying the same preset always produces the same starting state.
@@ -401,10 +443,11 @@ When you apply a preset, Pour resets __all non-excluded fields__ to the preset's
 
 | Key | Action |
 |-----|--------|
-| `Left` / `Right` on the preset row | Cycle through saved presets |
-| `Ctrl+S` | Save the current field values as a new preset |
-| `Ctrl+D` | Delete the currently selected preset |
-| `Ctrl+Left` / `Ctrl+Right` | Reorder presets (move selected preset left or right) |
+| `Left` / `Right` on the preset row | Cycle through saved presets (only when the module has no `preset_axes`) |
+| `s` on the preset row or the submit button, or `Ctrl+S` from any field | Save the current field values as a preset |
+| `d` on the preset row | Delete the selected preset (asks `y/n`) |
+| `Ctrl+Left` / `Ctrl+Right` on the preset row | Reorder presets (move selected preset left or right) |
+| `p` on the preset row, or `Ctrl+P` from any field | Open the drilldown picker (needs `preset_axes`) |
 
 The preset row is always at the top of the form. Navigate to it with `Up` from the first field, or `Down` from the preset row to enter the form.
 
@@ -419,9 +462,20 @@ Name: V60 - KUltra
 Desc: Afternoon pour over — standard 1:15 ratio
 ```
 
-Use `Tab` (or `Up`/`Down`) to switch between the name and description inputs. `Enter` saves; `Esc` cancels. The description is optional — leave it blank and nothing extra is written to `presets.json`. Legacy preset files (no `description` key) continue to load unchanged.
+Use `Tab` (or `Up`/`Down`) to switch between the name and description inputs. `Enter` saves; `Esc` cancels. Saving under a name that already exists asks before overwriting it. The description is optional — leave it blank and nothing extra is written to `presets.json`. Legacy preset files (no `description` key) continue to load unchanged.
 
 For an example `presets.json`, see `resources/presets.json` in the repo.
+
+### Drilldown Picker
+
+Cycling a flat list stops working past a dozen presets. Set `preset_axes` on the module to an ordered list of field names, and Pour groups presets by those fields' values. `p` opens a picker that drills down one axis at a time, and the save dialog suggests a name built from the axis values.
+
+```toml
+[modules.coffee]
+preset_axes = ["brew_method", "brewer"]
+```
+
+See [[pour-preset-hierarchy]] for the full behavior.
 
 ### When to Use Presets
 
@@ -457,7 +511,7 @@ MyVault/
 Your config might be:
 
 ```toml
-config_version = "0.3.0"
+config_version = "0.4.0"
 module_order = ["journal", "recipe", "note"]
 
 [vault]
@@ -506,9 +560,7 @@ target = "frontmatter"
 
 [[modules.recipe.fields.sub_fields]]
 name = "item"
-field_type = "dynamic_select"   # ERROR: sub_fields don't support dynamic_select
-# Use text instead:
-# field_type = "text"
+field_type = "text"   # sub_fields take text, number, or static_select only
 prompt = "Item"
 
 [[modules.recipe.fields.sub_fields]]
@@ -549,25 +601,32 @@ target = "body"
 After editing your config, test it:
 
 ```bash
-cargo run                        # opens dashboard — catches parse errors
-cargo run -- <module_name>       # test a specific module form
+pour                        # opens dashboard; config errors print and exit
+pour <module_name>          # test a specific module form
 ```
 
+From a source checkout, `cargo run` and `cargo run -- <module_name>` do the same. Pour validates the whole config on load and lists every problem at once. Once the config loads, the dashboard opens with a warnings overlay if a `dynamic_select` source folder is missing, or if an append or update target is missing and its path has no date or field tokens.
+
 Common errors:
-- __"field requires source"__ — `dynamic_select` is missing `source` path
-- __"options must not be empty"__ — `static_select` is missing `options`
-- __"path is not vault-relative"__ — path starts with `/`, `C:\`, `\\`, or contains `..`
-- __"circular show_when dependency"__ — field A depends on B which depends on A
-- __"unknown template reference"__ — `create_template` names a template that doesn't exist in `[templates]`
+- __"dynamic_select requires 'source'"__: `dynamic_select` is missing `source` path
+- __"static_select requires 'options'"__ or __"static_select 'options' must not be empty"__: `static_select` has no options
+- __"append mode requires 'append_under_header'"__: an append module has no target heading
+- __"path must be vault-relative"__: path starts with `/`, `C:\`, or `\\`; a path containing `..` gets __"path must not contain '..' traversal"__
+- __"Circular show_when dependency detected"__: field A depends on B which depends on A
+- __"create_template references unknown template"__: `create_template` names a template that doesn't exist in `[templates]`
+- __"path must contain the {{name}} placeholder"__: a template path has no `{{name}}`
+- __"is not valid on update mode modules"__: an update module uses a key or field shape that belongs to another mode
+- __"Config version … is not supported by this version of Pour"__: `config_version` is newer than your build; update Pour
 
 ---
 
 ## Checklist: New Module
 
-- [ ] Decide mode: `append` (add to existing note) or `create` (new file)
+- [ ] Decide mode: `append` (add to existing note), `create` (new file), or `update` (change properties on an existing note)
 - [ ] Set `path` using vault-relative path with strftime tokens and/or `{{field}}` interpolation
 - [ ] For append: set `append_under_header` matching an exact heading in the target note
 - [ ] For append: design `append_template` matching the note's existing format
+- [ ] For update: name each field exactly like the frontmatter key it changes
 - [ ] Define fields top-to-bottom: selectors → conditional → universal → wrap-up
 - [ ] For dynamic_selects: verify source folders exist in vault with `.md` files
 - [ ] For allow_create: add `[templates.<name>]` section with path and fields
@@ -576,4 +635,4 @@ Common errors:
 - [ ] Set `icon` on key fields for form display
 - [ ] Mark notes/textarea fields with `preset_exclude = true` if they shouldn't be part of presets
 - [ ] Add module to `module_order` for dashboard positioning
-- [ ] Test with `cargo run -- <module>`
+- [ ] Test with `pour <module>`

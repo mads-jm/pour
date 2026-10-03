@@ -4,14 +4,14 @@ This file helps LLM agents (Claude, GPT, Copilot, etc.) assist users in creating
 
 ## What Pour Does
 
-Pour is a TUI capture tool that writes structured data into an Obsidian vault. All behavior is defined in `~/.config/pour/config.toml`. There is no hardcoded module logic — the config IS the product.
+Pour is a TUI capture tool that writes structured data into an Obsidian vault. All behavior is defined in `~/.pour/config.toml` (`POUR_CONFIG` overrides the file, `POUR_HOME` the whole state directory). There is no hardcoded module logic — the config IS the product.
 
-## Config Schema (v0.3.0)
+## Config Schema (v0.4.0)
 
 ### Top-Level Structure
 
 ```toml
-config_version = "0.3.0"
+config_version = "0.4.0"
 module_order = ["me", "todo", "note", "coffee"]   # dashboard order
 
 [vault]
@@ -21,13 +21,14 @@ api_key = "key"                                     # optional, or POUR_API_KEY 
 
 [modules.<name>]          # each becomes a `pour <name>` command
 [templates.<name>]        # inline creation templates referenced by dynamic_select fields
+[sound]                   # optional; on_save = true plays a tone when a TUI capture saves
 ```
 
 ### Module Config
 
 ```toml
 [modules.<name>]
-mode = "append" | "create"
+mode = "append" | "create" | "update"
 path = "vault-relative/path/%Y-%m-%d.md"      # strftime + {{field_name}} interpolation
 display_name = "Human Name"                     # optional
 append_under_header = "## Heading"              # required for append mode
@@ -39,6 +40,10 @@ callout_type = "note"                           # optional, resolves as {{callou
 
 **Create mode**: Generates a new file. Path supports strftime tokens (`%Y`, `%m`, `%d`, `%H`, `%M`, `%S`) and field interpolation (`{{field_name}}`).
 
+**Update mode**: Rewrites named frontmatter keys on a note that already exists, usually a daily note. Pour never creates the note and never touches the body. Fields must target frontmatter; `composite_array`, `list = true`, and the append- and create-only keys (`append_under_header`, `append_template`, `append_shallow`, `daily_link`, `frontmatter_date_format`, `[modules.<name>.frontmatter]`) are rejected. Built for `toggle` and `counter` fields.
+
+Other module keys (`icon`, `daily_link`, `append_shallow`, `mobile_visible`, `preset_axes`, `base_path`, `[modules.<name>.platform]`, `[modules.<name>.frontmatter]`, `frontmatter_date_format`, `post_write_shell`, `post_write_shell_on_serve`, `[modules.<name>.priors]`) are documented in `pour - docs/02 references/field-types.md`.
+
 ### Field Types
 
 | Type | Config keys | Default target | Notes |
@@ -49,6 +54,8 @@ callout_type = "note"                           # optional, resolves as {{callou
 | `static_select` | `options` (required) | frontmatter | Fixed dropdown |
 | `dynamic_select` | `source` (required) | frontmatter | Vault folder scan. See below |
 | `composite_array` | `sub_fields` (required) | frontmatter | Table editor. Sub-fields: text, number, static_select only |
+| `toggle` | — | frontmatter | Boolean. Space flips it in the TUI |
+| `counter` | `unit`, `goal` (optional) | frontmatter | Accumulates: `16` adds, `=16` sets. `unit` and `goal` are display-only, never written |
 
 Every field supports: `name`, `field_type`, `prompt`, `required`, `default`, `target`, `show_when`.
 
@@ -66,7 +73,7 @@ create_template = "bean"               # opens sub-form overlay for structured c
 post_create_command = "templater:run"  # fires Obsidian command after note creation
 ```
 
-**3-tier fallback**: API directory listing → filesystem scan → JSON cache → freetext input.
+**3-tier fallback**: directory listing over the active transport (API if connected, otherwise a filesystem scan) → JSON cache → freetext input.
 
 **Source folder**: Must exist in the vault. Pour lists `.md` files and strips extensions to get option names. Subdirectories are excluded.
 
@@ -209,10 +216,11 @@ path = "Coffee/Beans/{{name}}.md"
 
 Before presenting a config to the user, verify:
 
-- [ ] `config_version = "0.3.0"` is present
+- [ ] `config_version = "0.4.0"` is present
 - [ ] `vault.base_path` is an absolute path
 - [ ] Every module has at least one field
 - [ ] Append modules have `append_under_header`
+- [ ] Update modules have no body-target, `composite_array`, or `list = true` fields, and no append- or create-only keys
 - [ ] All paths are vault-relative (no `/`, `C:\`, `\\`, `..`)
 - [ ] `static_select` fields have non-empty `options`
 - [ ] `dynamic_select` fields have `source`
@@ -222,7 +230,7 @@ Before presenting a config to the user, verify:
 - [ ] `equals` is not empty string; `one_of` is not empty array
 - [ ] No circular `show_when` dependencies
 - [ ] `create_template` references an existing `[templates.<name>]`
-- [ ] `allow_create` is only on `dynamic_select` fields
+- [ ] `allow_create` is only on `dynamic_select` or `static_select` fields
 - [ ] `post_create_command` requires `create_template`
 - [ ] Template paths contain `{{name}}`
 - [ ] Template field names are not `date` or `name`
@@ -234,5 +242,5 @@ Before presenting a config to the user, verify:
 - `pour - docs/02 references/field-types.md` — exhaustive field type reference
 - `pour - docs/08 specs/pour-design-spec.md` — product design spec
 - `pour - docs/03 guides/Guide-Config-to-Vault.md` — human-readable vault adaptation guide
-- `resources/default_config.toml` — default config with all field types demonstrated
-- `resources/mads_config.toml` — real-world config with advanced patterns (show_when, templates, composite_array)
+- `resources/default_config.toml` — default config demonstrating every field type except `toggle` and `counter`
+- `resources/mads_config.toml` — real-world config with advanced patterns (show_when, templates, composite_array, and an `update`-mode `habit` module with `toggle`/`counter` fields)

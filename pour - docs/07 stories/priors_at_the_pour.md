@@ -10,7 +10,7 @@ aliases:
   - priors at the pour
   - review at capture
 date created: Monday, July 13th 2026, 2:00:00 pm
-date modified: Monday, July 13th 2026, 2:00:00 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Priors at the Pour
@@ -98,4 +98,4 @@ See [[pour-review-priors]] for the spec.
 
 ---
 
-**Revision (2026-10-02).** First real use changed the payload. The `repeat:` line of medians turned out to describe a recipe nobody brewed, and the panel rarely found similar brews on a small corpus. The panel is now reference, not a target: one column per real prior brew, rows lined up with the form, scored by similarity. See [[pour-review-priors]] §8.1 and §10 (L1.5).
+**Revision (2026-10-02).** First real use changed the payload. The `repeat:` line of medians turned out to describe a recipe nobody brewed, and the panel rarely found similar brews on a small corpus. The spec now makes the panel reference, not a target: one column per real prior brew, rows lined up with the form, scored by similarity. See [[pour-review-priors]] §8.1 and §10 (L1.5). L1.5 is specced, not built; the panel that ships is still L1, `repeat:` line included.

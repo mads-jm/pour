@@ -1,10 +1,11 @@
 ---
 date created: Monday, April 27th 2026, 5:43:51 pm
-date modified: Wednesday, April 29th 2026, 5:31:46 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: not started
 ---
 # Pour — PWA Contract-typing via JSDoc + OpenAPI Codegen
 
-__Status:__ Drafted 2026-04-27. Not yet scheduled. Intended to branch off `main` when picked up.
+__Status:__ Drafted 2026-04-27. Not yet scheduled. Intended to branch off `main` when picked up. *[Still not started as of 2026-10-02: no `package.json`, `tsconfig.json` or `web/types/`, no `// @ts-check` in `web/`, and no `web-typecheck` CI job. `app.js` is now about 3750 lines.]*
 
 ## Context
 

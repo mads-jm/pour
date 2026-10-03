@@ -7,7 +7,7 @@ aliases:
   - pour types
   - capture shapes
 date created: Thursday, August 6th 2026
-date modified: Thursday, August 6th 2026
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Pour Types
@@ -22,7 +22,7 @@ There are three kinds of pour, one per write mode. Which kind a signal gets is d
 
 ## Entry
 
-Something happened in the flow of the day and belongs in the day's note. A timestamp and some text under a heading. The note is the container; the entry has no identity of its own and nothing will ever link to it. When the API is down, pour writes an [[Atomic-Note-Fallback|atomic timestamped note]] instead of editing the daily note blind.
+Something happened in the flow of the day and belongs in the day's note. A timestamp and some text under a heading. The note is the container; the entry has no identity of its own and nothing will ever link to it. The note and its heading must already exist. Both transports splice the entry in under the heading, and if either is missing the capture fails rather than landing somewhere else.
 
 ## Event
 

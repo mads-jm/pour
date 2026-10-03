@@ -1,4 +1,16 @@
+---
+tags:
+  - spec
+  - serve
+  - tui
+date created: Wednesday, April 29th 2026
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: shipped — v0.3.0, with deviations
+---
+
 # Pour TUI ↔ Serve Handoff
+
+> __Status:__ Shipped in v0.3.0 (2026-04-29). Divergences from the plan are listed under "Implementation Notes" at the bottom.
 
 ## Goal
 
@@ -107,6 +119,8 @@ match tokio::time::timeout(Duration::from_secs(5), server_fut).await {
 ```
 
 The TUI handoff applies this wrapping; the `pour serve` CLI path keeps blocking indefinitely on Ctrl+C (current behavior).
+
+*[Deviation (bug): this wrapping bounds the whole server run, not only the drain. `tokio::time::timeout` starts its 5 s clock when it is called, and the shipped `Action::Serve` arm in `src/tui/loop_.rs` calls it on the full `run_with_shutdown` future before the server has served anything. So the handoff server stops about 5 s after it starts, with no Ctrl+C, and the dashboard shows "server did not drain within 5s; forced exit." Reproduced 2026-10-02 by driving the TUI in a pty: port 8421 was listening at 4 s and closed at 5 s. The snippet above has the same shape. The fix is to start the timeout only after the shutdown signal fires.]*
 
 ### Banner extraction
 

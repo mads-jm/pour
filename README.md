@@ -174,10 +174,11 @@ Each of these is optional and documented in the [field and config reference](pou
 - **Eight field types.** `text`, `number`, `textarea`, `static_select`, `dynamic_select` (options read from a vault folder), `composite_array` (repeatable rows, like the stages of a pour-over recipe), `toggle`, and `counter`.
 - **Conditional fields.** `show_when` hides a field until another field has a given value. Hidden fields skip validation and stay out of the note.
 - **New notes from inside the form.** Type a bean that doesn't exist yet and `allow_create` opens a sub-form, writes `Coffee/Beans/<name>.md` from a template, and carries on with your brew.
-- **Presets.** `Ctrl+S` saves the current form, `←`/`→` cycles through saved ones. With `preset_axes` set, `p` opens a picker that drills down by method, then bean. Composite fields keep their own presets, so a favorite recipe can be replayed on its own.
+- **Presets.** `Ctrl+S` saves the current form, `←`/`→` cycles through saved ones. Set `preset_axes` and `p` opens a picker instead, drilling down by method, then bean. Composite fields keep their own presets, so a favorite recipe can be replayed on its own.
 - **Paths that fill themselves in.** strftime tokens, `{{field_name}}`, and `{{slug}}` in the filename: `inbox/%Y%m%d-%H%M%S{{slug}}.md`.
 - **Fixed frontmatter per module.** `tags`, `cssclasses`, a custom `date` format.
 - **Captures outside the vault.** A module can set its own `base_path` and write to a notes repo or anywhere else on disk.
+- **Your past captures beside the form.** The TUI shows a read-only panel of earlier captures from the same module, matched on fields like bean and method, with a median line for the numbers. `[modules.<name>.priors]` decides what counts as similar. Without the block, pour matches on the first select or `wikilink` field. `Ctrl+R` collapses the panel.
 - **Post-write hooks.** `post_write_shell` runs a command after a save, for example to commit and push a note.
 - **A completion sound.** `[sound] on_save = true` plays one short tone when a capture saves in the TUI. It's off by default, and when it's off pour never opens an audio device.
 
@@ -212,7 +213,7 @@ With Obsidian and the [Local REST API](https://github.com/coddingtonbear/obsidia
 api_key = "your-key-here"
 ```
 
-If the API isn't reachable, pour falls back to writing files directly, and it reports which one it used on every save. Dropdowns follow the same idea: they render instantly from cache, then refresh from the API or a disk scan in the background. More in [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
+If the API isn't reachable, pour falls back to writing files directly, and it reports which one it used on every save. Dropdowns work the same way. Pour lists the source folder through whichever path is live and caches the result, so if the vault can't be read, the last known list still shows up. With no list at all, the field takes free text. More in [Pour Without Obsidian](pour%20-%20docs/07%20stories/pour_without_obsidian.md).
 
 ## Built with
 

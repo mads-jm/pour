@@ -4,7 +4,7 @@ tags:
   - adr
   - data
 date created: Monday, July 13th 2026, 3:00:00 pm
-date modified: Monday, July 13th 2026, 3:00:00 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # ADR 007: Hand-Rolled Frontmatter Reader (companion to ADR-002)
@@ -30,5 +30,7 @@ __Consequences:__
 - A reader/writer asymmetry now exists but is bounded: both are hand-rolled, both target the same constrained subset, and their escape/unescape logic is a mirror pair.
 - Full YAML-spec coverage is explicitly out of scope. If a future feature needs to read arbitrary YAML frontmatter faithfully, this decision should be revisited (and a maintained crate reconsidered) — flagged here so that trigger is visible.
 - Shared foundation: `src/data/frontmatter_read.rs` and `src/data/wikilink.rs` are general utilities reused by [[pour-review-priors]] (L1) and [[pour-lookup-fields]] (next), not private to either.
+
+__Note (2026-10-02):__ This ADR was written on the priors branch in July. By the time priors merged on 2026-10-02, habit capture (v1.1.0) had already added a second hand-rolled reader, `output::frontmatter::read_frontmatter`, which returns top-level scalars as strings for `update` mode. So the Context's "for the first time" no longer holds. The two readers are separate code: priors uses `data::frontmatter_read`, update mode uses `output::frontmatter`. The decision itself, hand-rolled with no YAML crate, holds for both.
 
 See also [[ADR-002-Custom-YAML-Serialization]], [[pour-review-priors]], [[System-Architecture-Overview]].

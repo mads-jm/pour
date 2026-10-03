@@ -1,8 +1,11 @@
 ---
 date created: Monday, April 27th 2026, 6:16:25 am
-date modified: Wednesday, April 29th 2026, 5:31:49 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: not started
 ---
 # Spec: Append Target Recovery (missing Daily notes)
+
+> __Status:__ Not started as of 2026-10-02. There is no `create_note` transport method, no dashboard `⚠ missing` indicator, no `c` hotkey and no `TargetMissing` error. Append to a missing daily note still hard-fails on both transports, and `Config::check_paths` still skips paths containing `{{` or `%`. The line references below are from April 2026 and have drifted. The handler they name in `src/main.rs` now lives in `src/tui/loop_.rs`. For comparison, `update` mode ([[pour-habit-capture]] §2.3) took a different line on a missing note. Over the API it fires the `daily-notes` command and retries once, and over the filesystem it fails loudly. It never creates the note itself.
 
 ## Context
 

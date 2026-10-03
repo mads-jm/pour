@@ -4,7 +4,7 @@ tags:
   - adr
   - tui
 date created: Tuesday, March 31st 2026, 10:03:30 pm
-date modified: Wednesday, April 29th 2026, 5:31:53 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # ADR 003: Blocking UI During Async Transport
@@ -21,7 +21,9 @@ For v1, `fetch_dynamic_options` and `handle_submit` calls are `await`ed inline, 
 __Consequences:__  
 Acceptable tradeoff for v1 velocity. Filesystem writes are near-instantaneous, and API calls enforce a strict 5-second timeout. True non-blocking UI is deferred to a future epic.
 
-See also [[System-Architecture-Overview]], [[ratatui]], and [[sprint-6-integration-report]].
+__Note (2026-10-02):__ Still in force after v1. The inline awaits now also include `fetch_current_values` and `resolve_priors` at form open, and the `post_write_shell` hook inside `handle_submit`. The hook has a 30-second timeout, so a slow hook can hold the UI far longer than the 5-second API timeout this ADR assumed. The completion sound plays on its own thread and does not block.
+
+See also [[System-Architecture-Overview]], [[ratatui]], and [[v0.1.0-report]] (sprint 6).
 
 
 

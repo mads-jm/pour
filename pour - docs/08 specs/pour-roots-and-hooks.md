@@ -8,7 +8,8 @@ aliases:
   - pour-lyra-capture
   - roots and hooks
 date created: Friday, June 19th 2026
-date modified: Wednesday, August 5th 2026
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: partial — Part 1 shipped in v1.1.0 with deviations; Part 2 file picker not started
 ---
 
 # Pour roots & write hooks — capture beyond the vault — Spec
@@ -180,7 +181,7 @@ Part 2 adds a stateful TUI widget + filesystem traversal + an `import` write pat
 
 - [x] **v1 — typed capture into an external root.** Per-module `base_path` (§1.1) + the inbox module shape (§1.2). *[Shipped 2026-07-16, together with v1.1.]*
 - [x] **v1.1 — `post_write_shell`** (§1.3). The friction-killer: capture → auto-commit+push. Includes the serve-path gates. *[Shipped 2026-07-16.]*
-- [ ] **v2 — file picker** (Part 2): `file_select` field + browser widget; then `import` mode + `disposition`.
+- [ ] **v2 — file picker** (Part 2): `file_select` field + browser widget; then `import` mode + `disposition`. *[Not started as of 2026-10-02.]*
 
 ## Resolved questions
 
@@ -190,6 +191,6 @@ Part 2 adds a stateful TUI widget + filesystem traversal + an `import` write pat
 
 ## Follow-ups
 
-- `deny_unknown_fields` / real config version gating — an older binary **silently ignores** `post_write_shell`. `config_version` was bumped `0.3.0` → `0.4.0` in both resource files, but this is **documentary only and gates nothing**: `CURRENT_CONFIG_VERSION` is `"1.0.0"` and `validate_config_version` checks **major** only. Reconcile the drift.
+- `deny_unknown_fields` / real config version gating — an older binary **silently ignores** `post_write_shell`. `config_version` was bumped `0.3.0` → `0.4.0` in both resource files, but this is **documentary only and gates nothing**: `CURRENT_CONFIG_VERSION` is `"1.0.0"` and `validate_config_version` checks **major** only. Reconcile the drift. *[Version half resolved in v1.1.0: `CURRENT_CONFIG_VERSION` went back to `0.4.0`, and while the major is 0 the guard now rejects a config with a higher minor, so a 0.5.0 config fails on a 0.4.0 build. Unknown keys are still ignored silently, since there is no `deny_unknown_fields`.]*
 - Document that `resources/mads_config.toml` is a **seed, not a mirror** — `~/.pour/config.toml` symlinks to the stow package, so `allow_create` writes land only in the live file and the repo copy drifts. Structural, not accidental.
 - *Preset upkeep (mads' vault, outside this repo):* keep the inbox preset's editor-side Templater in slug/stamp parity with §1.2, and hand-add preset changes to the live stowed config — the seed never propagates itself.

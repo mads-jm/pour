@@ -4,8 +4,8 @@ tags:
   - decomposition
   - v1
 date created: Wednesday, April 29th 2026
-date modified: Wednesday, April 29th 2026
-status: phase-4-complete
+date modified: Friday, October 2nd 2026, 11:00:00 pm
+status: complete — phases 0–8 done, shipped in v1.0.0
 ---
 
 # Pour v0.3 → v1.0 Decomposition Plan
@@ -21,7 +21,7 @@ User decisions (2026-04-29):
 
 ## Status
 
-**Phases 0 – 4 landed (2026-04-29).** Phase 5 remains.
+**Phases 0 – 4 landed (2026-04-29).** Phase 5 remains. *[Superseded: Phases 0–8 all landed and shipped as v1.0.0 "The Freeze" on 2026-04-29. See the table below and `CHANGELOG.md`.]*
 
 | Phase | Slices | State |
 |-------|--------|-------|
@@ -65,6 +65,8 @@ User decisions (2026-04-29):
 
 ## Phase 5 — Lock-in (remaining)
 
+*[Done. Both slices shipped in v1.0.0, with the deviations noted below.]*
+
 These are the v1.0.0 surface-freeze deliverables. Both block the v1 tag.
 
 ### Slice 8 — `Config::edit()` transactional entry point
@@ -90,6 +92,8 @@ These are the v1.0.0 surface-freeze deliverables. Both block the v1 tag.
 
 **Sites to migrate** (all in `src/config.rs` post-Slice-3): the methods that currently call `Self::write_atomic(...)` directly. Grep `Self::write_atomic` for the canonical list.
 
+*[Deviation: `edit` shipped as an associated function, `Config::edit(path: &Path, f)`, in `src/config_edit.rs`, not a `&mut self` method. The closure gets a `ConfigDraft { doc, parsed }`: the `toml_edit` document to mutate and a parsed snapshot taken at the start, for lookups. 15 public `*_on_disk` mutators route through it, not 32, and they are still `pub` at v1.1.0.]*
+
 ### Slice 17 — Curate `lib.rs` public surface
 
 **Goal:** lock the v1.0.0 public surface. Currently every `mod X` in `src/lib.rs` is `pub mod X`, leaking server internals, transport internals, DTOs, etc.
@@ -100,6 +104,8 @@ These are the v1.0.0 surface-freeze deliverables. Both block the v1 tag.
 - Demote most `pub mod` to `pub(crate) mod` in `src/lib.rs`.
 - Add `pub use` re-exports for items external integration tests legitimately need (`tests/*.rs` will reveal these — each test import becomes either an accepted leak or a `pub use`).
 - Gate test-only items (`ApiClient::base_url`, `FsWriter::base_path`, similar) behind `#[cfg(any(test, feature = "test-utils"))]`.
+
+*[Deviation: no `test-utils` feature was added. `FsWriter::base_path` stays `pub` with a doc comment saying it is test-only (Phase 7 below). The demotion to `pub(crate)` landed for `config_updates`, `transport::atomic`, `server::{dto,routing,static_assets}` and `tui::{loop_,render}`.]*
 
 **Risk:** Will surface accidental coupling in `tests/*.rs`. That's the point.
 
@@ -131,6 +137,8 @@ Enforced by `scripts/check-file-size.sh`, wired into the `file-size` job in `.gi
 | `src/tui/loop_.rs` | 1547 | event loop + 21 handlers colocated; per-handler split deferred to v1.1 |
 
 The annotation count is itself a v1.0.0 → v1.1 health metric. Drop them as their files come under budget.
+
+*[As of 2026-10-02 (v1.1.0 plus unreleased work) the same four files carry the annotation, and all four have grown: `app.rs` 1104, `config.rs` 3301, `tui/configure/render.rs` 1059, `tui/loop_.rs` 1786. `config.rs` did not drop under budget after Phase 5.]*
 
 ---
 
@@ -188,6 +196,8 @@ The annotation count is itself a v1.0.0 → v1.1 health metric. Drop them as the
 
 Inspector audit (2026-04-29) of the `decomp` branch identified **6 merge-blockers** orthogonal to the decomposition. None are fixed by Slice 8 or 17. All must close before tagging v1.0.0.
 
+*[All six closed in v1.0.0. See `CHANGELOG.md` "Fixed — v1 hardening". The line numbers below are from before the fixes.]*
+
 ### Merge blockers
 
 1. **FS-transport path traversal on the write path** — `src/transport/fs.rs::resolve_path:31` has zero `..` rejection. `create_file:43`, `append_to_file:65`, `append_under_heading:105`, **and the new `read_file:332`** (decomposition added a fourth unchecked surface) all use it. Fix: ~10-line rejection of `..` and absolute paths in `resolve_path`, plus 4 tests (one per public method). Carry-over from v0.2.0; Gate 1 blocker.
@@ -209,6 +219,8 @@ Inspector audit (2026-04-29) of the `decomp` branch identified **6 merge-blocker
 
 These were flagged by the inspector audit as acceptable to defer past the merge but should land before the v1.0.0 tag. Each needs a scoping call.
 
+*[All four resolved before the tag. Persistence failures now surface as a 5-second status-bar toast. The standards doc is [[pour-project-standards]]. ADR-006 is [[ADR-006-V1-Lock-In-Patterns]]. The PWA test-infra gap was accepted as a known gap in [[v1.0.0-Release]].]*
+
 - **Silent persistence failure UX** — sites at `src/tui/loop_.rs:402, 429, 451, 646, 793` and `src/data/history.rs:79, 138, 156` swallow save errors via `let _ = ...`. `app.deferred_stderr` exists as the outlet but loop_.rs doesn't use it. Decision needed: surface as a status-bar toast on next render? Plumb to a dedicated overlay? Skip until v1.1?
 - **Project-standards doc** at `pour - docs/08 specs/pour-project-standards.md` — Gate 3 deliverable. Suggested scope: (a) error-handling policy (`?` everywhere; `// SAFETY:` for the surviving `expect`s); (b) `pub` discipline post-Slice-17; (c) the 800-LOC ceiling + LINTOK escape hatch; (d) `Config::edit` + `JsonStore<T>` + `transport::atomic::atomic_replace` as the only sanctioned write paths; (e) test-mirroring convention (`tests/<module>.rs` not inline `#[cfg(test)]`). One-page deliverable.
 - **ADR-006** covering this decomposition's load-bearing decisions: `Config::edit()` transactional entry, `JsonStore` migration hook, file-size budget CI policy. Or fold into project-standards doc rather than spinning up a new ADR.
@@ -217,9 +229,11 @@ These were flagged by the inspector audit as acceptable to defer past the merge 
 ### Trailing housekeeping (low priority)
 
 - LINTOK-annotated oversized files (`src/app.rs`, `src/config.rs`, `src/tui/configure/render.rs`, `src/tui/loop_.rs`) — drop annotations as files come under budget; the count is a v1 → v1.1 health metric.
-- `list_directory` and `list_directory_all` in `transport/fs.rs` use the weaker `contains("..")` substring guard rather than the new `resolve_path_validated`'s component-split approach. Inconsistency, not a bug.
+- `list_directory` and `list_directory_all` in `transport/fs.rs` use the weaker `contains("..")` substring guard rather than the new `resolve_path_validated`'s component-split approach. Inconsistency, not a bug. *[Still true as of 2026-10-02.]*
 
 ### v1.0.0 milestone gate status (post-Phase-5 projected)
+
+*[All three gates closed and v1.0.0 was tagged on 2026-04-29. The test-only `pub` audit in Gate 2 never happened. See [[v1.0.0-Release]].]*
 
 - **Gate 1 (Stability):** blocked on Hardening #1, #2, #5.
 - **Gate 2 (Shape Lock-in):** closes when Slice 17 lands + FieldType freeze decision is recorded.

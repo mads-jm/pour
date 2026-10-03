@@ -9,8 +9,8 @@ aliases:
   - mobile roadmap
   - pwa phases
 date created: Monday, April 27th 2026, 4:34:59 pm
-status: living document — updated as Phase 1.5/2/3 work lands
-date modified: Wednesday, April 29th 2026, 5:31:48 pm
+status: living document — Phases 1, 1.5 and 2 shipped in v0.3.0; Phase 3 and utoipa not started
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Pour PWA Roadmap
@@ -18,6 +18,8 @@ date modified: Wednesday, April 29th 2026, 5:31:48 pm
 > The mobile/PWA companion landed in Phase 1 (Steps A–G2 of the `web` branch). This doc tracks the gaps surfaced during real-device test-drive, the Phase 2 deferral list locked in [[ADR-005-PWA-Companion]], and the Phase 3+ horizon. Companion to [[pour-api-contract]] (binding wire shape) and [[pour-design-spec]] §7 (architecture intent).
 
 ## 1. Status as of 2026-04-27
+
+*[Update 2026-10-02: the `web` branch merged to `main` and shipped as v0.3.0 (2026-04-29), along with the TUI ↔ serve handoff ([[pour-tui-serve-handoff]]). Nothing from Phase 3 (§4) or the utoipa migration (§5) has started. The PWA has not kept up with later TUI features. It has no widget for the `toggle` and `counter` field types from v1.1.0, so the `habit` preset sets `mobile_visible = false`. It has no preset drilldown ([[pour-preset-hierarchy]]) and no priors panel ([[pour-review-priors]] L2).]*
 
 `web` branch is feature-complete for Phase 1 + Phase 1.5 + Phase 1.5++. Test suite ~774 passing (run `cargo test` for the live count).
 
@@ -114,11 +116,11 @@ The original deferral list per the plan and [[ADR-005-PWA-Companion]] §Decision
 
 ### 3.1 Offline Submit Queue (the Festival case) — DONE (2026-04-27)
 
-- __TASK-2.1.1__ — IDB schema: `pour-queue` DB, `pending_submits` store, auto-increment `id`, indexes on `module_key` + `queued_at`. Schema in `web/queue.js` (page context) and inlined in `web/sw.js` (SW context). Migration rule: NEVER `deleteObjectStore('pending_submits')` — data loss = capture loss. Each record carries: `id, module_key, body, idempotency_key, auth_header, queued_at, attempt_count, last_error`.
+- __TASK-2.1.1__ — IDB schema: `pour-queue` DB, `pending_submits` store, auto-increment `id`, indexes on `module_key` + `queued_at`. Schema in `web/queue.js` (page context) and inlined in `web/sw.js` (SW context). Migration rule: NEVER `deleteObjectStore('pending_submits')` — data loss = capture loss. Each record carries: `id, module_key, body, idempotency_key, auth_header, queued_at, attempt_count, last_error`. *[Deviation: `auth_header` was removed from the record by the Stream A post-inspector fix (4). The drain asks an open page for a fresh token instead.]*
 - __TASK-2.1.2__ — SW intercepts `POST /api/v1/submit/*`. Network unreachable or 5xx → queue + synthetic 202. 4xx → pass through (client-fixable, never queued). Synthetic 202 body: `{ queued, queue_id, captured_at }`. `Idempotency-Key` captured at queue time, reused on every drain retry. `captured_at` from original body, never drain time. `QuotaExceededError` → 507 "queue full" response to page.
 - __TASK-2.1.3__ — Background Sync drain (`pour-queue-drain` tag). FIFO by `queued_at` ASC, tiebreak by `id` ASC. On 2xx: delete record, postMessage page `DRAINED`. On 4xx: keep, increment `attempt_count`, set `last_error` (code only — §14). On 5xx/network: keep, reschedule. Safari fallback: page fires `DRAIN_NOW` postMessage on `window.online`. Both paths call identical `drainQueue()`.
 - __TASK-2.1.4__ — "Queued (n)" badge in header (hidden when n=0). Tap → expandable panel listing pending records: module key + relative `queued_at` only (no field values, §14). Panel shows Retry/Edit/Discard actions per record. SW postMessages update badge without polling.
-- __TASK-2.1.5__ — Conflict UX: Discard (single tap confirm), Retry now (triggers drain), Edit (pre-fills form with queued body, retains `Idempotency-Key`). If resubmit returns `Idempotency-Replay: true`, shows "This was already saved — showing the original." `captured_at` stays original on edit. IDB record cleaned up after successful 201.
+- __TASK-2.1.5__ — Conflict UX: Discard (single tap confirm), Retry now (triggers drain), Edit (pre-fills form with queued body, retains `Idempotency-Key`). If resubmit returns `Idempotency-Replay: true`, shows "This was already saved — showing the original." `captured_at` stays original on edit. *[Deviation: it does not. `handleSubmit` in `web/app.js` sets `captured_at` to the current time on every submit, including the resubmit of an edited queued capture.]* IDB record cleaned up after successful 201.
 
 ### 3.2 Service Worker — App-shell Cache — DONE (2026-04-27)
 
@@ -132,7 +134,7 @@ The original deferral list per the plan and [[ADR-005-PWA-Companion]] §Decision
 - TASK-2.3.2: Template fields rendered from `/api/v1/config` `templates.<name>.fields[]`. `text`/`number` → standard inputs; `static_select` → inline cycling control with ◂ ▸ chevrons (`role="combobox"` + hidden `<ul role="listbox">` for a11y). Up/Down navigate fields; Left/Right cycle static_select options. Default values prefill. Required validation with per-field error pills. Overlay header shows parent field prompt + typed novel value.
 - TASK-2.3.3: Confirm wires `auto_create_inputs[field]` into `_pendingAutoCreateInputs`. Parent submit includes map when non-empty. Novel-value check mirrors `src/autocreate.rs is_existing_option` (case-insensitive, trimmed). If user edits parent field back to an existing option, the map entry is dropped before submit. Map cleared on form reset and 2xx success.
 - TASK-2.3.4: Cancel reverts parent input to its open-time value. Map entry dropped. Focus returns to parent input.
-- TASK-2.3.5: Server 400 `auto_create_input_required` → overlay re-opens with top-level banner. Server `validation_failed` with template-field names → overlay re-opens with per-field errors pinned. 201 with `warnings[].code === "autocreate_failed"` → summary view shows non-fatal warning chip ("Saved, but note creation failed: …"). No user content logged (contract §14).
+- TASK-2.3.5: Server 400 `auto_create_input_required` → overlay re-opens with top-level banner. Server `validation_failed` with template-field names → overlay re-opens with per-field errors pinned. *[Deviation: the Stream B post-inspector fix (1) routes every `validation_failed` field error to the parent form instead.]* 201 with `warnings[].code === "autocreate_failed"` → summary view shows non-fatal warning chip ("Saved, but note creation failed: …"). No user content logged (contract §14).
 
 ### 3.4 Preset Mutation UI — DONE (2026-04-27)
 
@@ -181,6 +183,8 @@ __Cursor discipline:__ Always `next_cursor` from server; never derived from `ent
 - Documented intent only — no implementation slot until the HTTP API has stabilized in production usage
 
 ## 5. Phase 2 Utoipa Migration — SCHEDULED
+
+*[Not started as of 2026-10-02. `utoipa` is not a dependency, and `pour - docs/02 references/pour-openapi.yaml` is still hand-written. The contract has changed since Phase 2, most recently in v1.1.0 for the `invalid_toggle`/`invalid_counter` codes.]*
 
 Per [[pour-api-contract]] §15.1: replace the hand-written `pour-openapi.yaml` with `utoipa`-derived output once we're confident the contract is stable. Annotate handlers with `#[utoipa::path(…)]` and types with `#[derive(ToSchema)]`. The hand-written YAML deletes in the same PR.
 

@@ -4,7 +4,7 @@ tags:
   - standards
   - v1
 date created: Friday, May 1st 2026, 6:12:10 am
-date modified: Monday, May 4th 2026, 11:17:47 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 status: active
 ---
 
@@ -23,7 +23,7 @@ Maintainer reference for code discipline, workflow, and release process. Audienc
 let head = parts.first().unwrap();
 ```
 
-__Boundary errors__ (user input, transport, filesystem, config parse) get typed enum variants so callers can match exhaustively. The model is `ConfigError` at `src/config.rs:327` — typed variants, `Display`, `std::error::Error`, no lossy string conversion at the boundary.
+__Boundary errors__ (user input, transport, filesystem, config parse) get typed enum variants so callers can match exhaustively. The model is `ConfigError` at `src/config.rs:581` — typed variants, `Display`, `std::error::Error`, no lossy string conversion at the boundary.
 
 __Programmer errors__ (violated preconditions, logic bugs that should never reach production) get `panic!` directly with a clear message. Do not paper over them with `unwrap_or_default`.
 
@@ -37,7 +37,7 @@ Default visibility is `pub(crate)`. Escalate to `pub` only when there is a named
 
 `lib.rs` re-exports are intentional. Demoting one is a breaking change (patch-or-minor depending on context) and requires a deliberate decision, not an incidental cleanup.
 
-Test-only public items carry a doc comment saying so. Example — `FsWriter::base_path` at `src/transport/fs.rs:27` is `pub` to allow integration test assertions; its doc comment says "Exposed for tests." Do not remove it silently.
+Test-only public items carry a doc comment saying so. Example — `FsWriter::base_path()` in `src/transport/fs.rs` is `pub` to allow integration test assertions; its doc comment says "Exposed for tests." Do not remove it silently. *[The comment now reads "Test-only accessor — no production caller."]*
 
 ---
 
@@ -145,6 +145,8 @@ __Pre-release tags__ (`-alpha.N`, `-beta.N`, `-rc.N`) are allowed for v1.0.0 its
 
 __`config_version` is decoupled from app version.__ They start aligned at `1.0.0` but drift on purpose — schema lives at a different cadence than the app. Patch digits float freely (`1.0.x` schema vs `1.0.y` app, no required correspondence). Minor digits track each domain's own additive changes. Major digits bump together when a breaking schema change ships in a major app release. The schema constant lives at `Config::CURRENT_CONFIG_VERSION` in `src/config.rs`. See [[pour-design-spec]] §4.1 "Versioning policy" for the full rule.
 
+*[Deviation: the two numbers did not start aligned. The 1.0.0 release bumped `CURRENT_CONFIG_VERSION` to `1.0.0` along with the crate, but no shipped config ever declared it. v1.1.0 moved it back to the schema track at `0.4.0`, which is what every shipped config declares, while the app is at 1.1.0. While the schema major is 0, a higher minor counts as breaking and the guard rejects it. From 1.0.0 on, only a higher major is rejected.]*
+
 ---
 
 ## 8. AI-Assisted Development
@@ -155,7 +157,7 @@ User preferences that survive across sessions live in the memory files at `~/.cl
 
 Branch/slice plans for AI-driven work live as `pour - docs/08 specs/pour-<topic>.md` per the `feedback_plans_in_repo` convention. An AI assistant that is handed a task should look for an existing spec doc before asking for requirements.
 
-ADR-006 (being drafted concurrently) captures the architectural decision behind this standards document's scope. See `pour - docs/04 architecture/adr/ADR-006-*` once merged.
+ADR-006 (being drafted concurrently) captures the architectural decision behind this standards document's scope. See `pour - docs/04 architecture/adr/ADR-006-*` once merged. *[Landed as [[ADR-006-V1-Lock-In-Patterns]].]*
 
 ---
 

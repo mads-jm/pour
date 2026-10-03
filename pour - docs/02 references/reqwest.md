@@ -6,13 +6,13 @@ tags:
 aliases:
   - reqwest
 date created: Tuesday, March 31st 2026, 12:14:41 am
-date modified: Wednesday, April 29th 2026, 5:31:54 pm
+date modified: Friday, October 2nd 2026, 11:00:00 pm
 ---
 
 # Reqwest - HTTP Client Reference
 
 > __Source:__ <https://docs.rs/reqwest/latest/reqwest/>
-> __Crate:__ `reqwest` (with `json` feature)
+> __Crate:__ `reqwest` 0.12, default features off, with `json` and `rustls-tls`
 
 ## Role in Pour
 

@@ -7,7 +7,7 @@ aliases:
   - obsidian-local-rest-api
   - obsidian rest api
 date created: Tuesday, March 31st 2026, 12:14:49 am
-date modified: Wednesday, April 29th 2026, 5:31:55 pm
+date modified: Friday, October 2nd 2026, 11:30:00 pm
 ---
 
 # Obsidian Local REST API - Reference
@@ -280,13 +280,15 @@ Error codes are 5-digit numbers unique to each error type.
 
 ## Key Endpoints for Pour
 
-Based on the [[pour-design-spec|project spec]], these are the most relevant endpoints:
+These are the endpoints `src/transport/api.rs` calls:
 
 1. __`GET /`__ - Check if API is available (connectivity test)
 2. __`PUT /vault/{filename}`__ - Create new notes (coffee logs, music sets)
-3. __`PATCH /vault/{filename}`__ - Append under headers (journal entries)
-4. __`GET /vault/{dirpath}/`__ - List files in directory (populate dynamic dropdowns)
-5. __`POST /search/`__ - Dataview queries for dynamic selects by tag
+3. __`GET` then `PUT /vault/{filename}`__ - Append under headers (journal entries). Pour reads the note, splices the entry under the heading itself, and writes the whole note back. It does not use `PATCH` with `Target-Type: heading`.
+4. __`PATCH /vault/{filename}`__ with `Operation: replace`, `Target-Type: frontmatter`, `Create-Target-If-Missing: true`, and a JSON body - `update` mode, one request per key
+5. __`GET /vault/{dirpath}/`__ - List files in directory (populate dynamic dropdowns)
+6. __`GET /vault/{filename}`__ with `Accept: application/vnd.olrapi.note+json` - Read a past capture's parsed frontmatter and `stat.mtime` for the priors panel. Pour lists the module's folder with item 5, then fetches each note this way. `api.rs` also has a `POST /search/` JsonLogic call (`search_jsonlogic`), but nothing calls it at runtime yet. The priors resolver filters in-process
+7. __`POST /commands/{commandId}/`__ - Run `post_create_command` after inline note creation, and `daily-notes` when an `update` target note is missing
 
 
 

@@ -6,8 +6,8 @@ aliases:
   - pour review
   - review panel spec
 date created: Monday, July 13th 2026, 2:05:00 pm
-status: shipped — L1 (coffee, TUI); L1.5 reference columns (TUI)
-date modified: Friday, October 2nd 2026, 12:00:00 pm
+status: partial — L1 and L1.5 shipped (TUI, unreleased); L2/L3 not started
+date modified: Friday, October 2nd 2026, 11:30:00 pm
 ---
 
 # Pour Review / Priors Panel
@@ -160,6 +160,8 @@ Two-tier, matching the existing transport fallback:
    ```
 2. **API down** — filesystem scan of the module's `source`/output directory: `list_directory_entries` → `read_file` with `Accept: application/vnd.olrapi.note+json` semantics (frontmatter parse) → filter/rank in-process. Bounded: stop once `limit` matches are found per tier.
 
+*[Deviation: L1 never calls `POST /search/`. Both paths list the module folder (`list_directory_entries`), then read every note in it: the API path as `note+json`, the FS path from disk. The resolver filters in-process (see Resolved #1). The fetch stops at 500 notes, not at `limit` matches per tier. The folder is the module `path` up to its last `/`, taken literally, so a strftime or `{{field}}` token in the folder part, like the default config's `Coffee/%Y/`, points at a folder that doesn't exist and the panel stays empty.]*
+
 **Why not the in-memory history log?** `HistoryEntry` (`src/data/history.rs`) stores only `id`, `module_key`, `timestamp`, `vault_path`, `first_field` — **not** field values. The heatmap's "pure in-memory view" trick does not apply; the corpus must be read from the notes. (Enriching `history.jsonl` with field values is a *possible* future fast-path — see §11 — but deliberately out of L1 to avoid a log-schema change.)
 
 New transport surface: a `search(module, predicate) -> Vec<CaptureFrontmatter>` method wrapping `/search/` with the FS-scan fallback. `read_file` and `list_directory_entries` already exist; **a YAML frontmatter *reader* and a wikilink *stripper* do NOT** — the codebase writes frontmatter (`src/output/frontmatter.rs`) and *wraps* wikilinks but has no reader/stripper and no YAML-parser crate (ADR-002 hand-rolls YAML *writing*). Both are built as shared `src/data/`-style foundation in L1 (see §10) and reused by [[pour-lookup-fields]]. On the API path, Obsidian returns pre-parsed frontmatter via `application/vnd.olrapi.note+json`, so the reader is exercised only on the FS-fallback path.
@@ -304,7 +306,7 @@ Replaces L1's row panel with the column layout. Driven by first real use (2026-1
 ## 13. Cross-references
 
 - [[priors_at_the_pour]] — the story / vision framing.
-- [[pour-lookup-fields]] — shares frontmatter-read + wikilink-resolution + trigger-model plumbing; slot this behind it.
+- [[pour-lookup-fields]] — shares frontmatter-read + wikilink-resolution + trigger-model plumbing; slot this behind it. *[Deviation: priors shipped first. Lookup-fields has not started, so L1 built the shared reader and stripper itself.]*
 - [[history_heatmap_dashboard]] — sibling review surface (cadence vs. content).
 - [[ADR-001-Hybrid-Transport-Layer]] — the API→FS fallback this data path mirrors.
 - [[obsidian-local-rest-api]] — `POST /search/` DQL/JsonLogic contract.
