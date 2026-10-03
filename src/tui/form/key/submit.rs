@@ -66,6 +66,8 @@ pub(super) fn handle_enter_textarea(
         let form_state = app.form_state.as_mut().unwrap();
         form_state.textarea_open = true;
         form_state.cursor_position = val_len;
+        // A last line wider than the popout would leave the cursor off-screen.
+        super::text::sync_scroll(form_state, field_name);
     }
     FormAction::None
 }

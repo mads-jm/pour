@@ -183,7 +183,7 @@ field_type = "text"
 prompt = "Bean origin"
 ```
 
-__TUI__: Inline text input with cursor. Accepts any characters.
+__TUI__: Inline text input with cursor. Accepts any characters. A value wider than its row scrolls sideways within that row, keeping the cursor and the two characters after it on screen; `◂` and `▸` mark text hidden to the left and right. The cursor position counts display width per glyph as the terminal draws it, so CJK and emoji line up, including emoji built from several characters such as `❤️` and `👍🏽`. `number` and `counter` inputs behave the same way.
 __Output__: Value written as-is to frontmatter (or body if overridden). If `wikilink = true`, the value is wrapped in `[[...]]` before output.
 
 ## `textarea`
@@ -198,7 +198,7 @@ prompt = "What's on your mind?"
 target = "body"
 ```
 
-__TUI__: Opens a bordered overlay editor on Enter. Supports multi-line editing. Escape closes the overlay.
+__TUI__: Opens a bordered overlay editor on Enter, directly below the field's row. While it is open the row shows only `[^]`, after the `[!type]` header on a callout field, so the value is not drawn twice. Supports multi-line editing. The editor is 4 to 10 rows tall; near the bottom of the form it covers the footer. A value with more lines than the editor scrolls to keep the cursor's line on screen, with `▲` and `▼` on the border when lines are hidden above or below. Long lines scroll sideways, all lines by the same amount, with `◂` and `▸` marking hidden text. Escape closes the overlay.
 __Output__: Defaults to Markdown body. Can be overridden to frontmatter.
 __Callout wrapping__: When `callout = "note"` (or any Obsidian callout type) is set, the body output is automatically wrapped in blockquote callout syntax. This applies in both create mode (`partition_fields`) and append mode (template `{{field}}` substitution). Every line of the value gets `> `, and a blank line between paragraphs is written as `> ` so the callout does not end at the gap. `\r\n` line endings are treated like `\n`, and a single trailing newline is dropped.
 

@@ -12,6 +12,11 @@ tags:
 
 # Inbox
 
+- [ ] Select dropdown and composite editor open one row too high below a preset description or callout textarea — `render_select_options` and `render_composite_editor` still use the field index as the screen row. An `allow_create` select covers its own search field.
+- [ ] Long-form editor cycle: sticky viewport on both axes — the textarea popout and single-line rows recompute scroll from the cursor each frame, so Up/Left slide the text under a still cursor instead of moving the cursor first.
+- [ ] Form text editing moves by char, not by glyph — Left, Right and Backspace step through a multi-char glyph one char at a time, so a press can do nothing visible and Backspace after `❤️` strips only the variation selector.
+- [ ] Pasted control chars go straight into form values — `\t`, `\r`, and `\n` in a single-line field, since paste arrives as key presses and `handle_char` does no filtering. Some terminals send pasted line breaks as `\r`.
+- [ ] Configure screen counts chars as cells — `tui/configure/render.rs` cursor placement uses `cursor_position - scroll_offset` as a column, so CJK and emoji in a setting value drift. Reuse the form's per-glyph cell count.
 - [ ] Preset save/delete only on preset/submit screen
 - [ ] Review text entry across mads.modules (textarea/popover for notes)
 - [ ] Handle missing file in append mode (template fallback)
@@ -25,7 +30,6 @@ tags:
 - [ ] Icon validation (length, grapheme, control chars)
 - [ ] TUI test coverage for icon rendering
 - [ ] `secrets.toml` file permissions on Unix
-- [ ] Form value-side cursor uses byte offset; CJK/emoji in field *values* can drift (prompt-side fixed in v0.2.1)
 - [ ] `App.deferred_stderr` not drained on panic — autocreate diagnostics may be lost
 - [ ] `render_append_template` hardcodes `%Y-%m-%d` for `{{date}}` (only `path` rendering honors `date_format`)
 - [ ] `required` + `show_when` — clear value on hide or preserve for toggle-back?
@@ -46,6 +50,7 @@ tags:
 
 # Done
 
+- [x] Form value-side cursor uses byte offset; CJK/emoji in field *values* can drift (prompt-side fixed in v0.2.1). Textarea popout and single-line rows now place the cursor by display width.
 - [x] Text area double newline in blockquote output
 - [x] Priors / review panel **L1** (coffee, TUI) — config-declared read-back of best prior captures at capture time; shared frontmatter reader + wikilink stripper foundation. Spec: [[pour-review-priors]] (shipped). Story: [[priors_at_the_pour]]. ADR: [[ADR-007-Frontmatter-Reader]].
 

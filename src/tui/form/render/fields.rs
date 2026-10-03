@@ -5,11 +5,13 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
-use unicode_width::UnicodeWidthStr;
 
 use crate::app::FormState;
 use crate::config::{FieldConfig, FieldType};
+use crate::tui::form::cells::str_cells;
 use crate::visibility::visible_field_indices;
+
+use super::clip::{clip_line, single_line_skip};
 
 /// Render the vertical list of form fields plus a submit button row.
 ///
@@ -97,6 +99,9 @@ pub(super) fn render_fields(
     };
 
     let mut items: Vec<ListItem> = vec![preset_item];
+    // Column of the terminal cursor on an active single-line input, set while
+    // that row is built.
+    let mut cursor_x: Option<usize> = None;
 
     // --- Real fields (offset: visible index vi maps to active_field vi+1) ---
     items.extend(visible_indices.iter().enumerate().map(|(vi, &ci)| {
@@ -185,28 +190,23 @@ pub(super) fn render_fields(
                     } else {
                         format!("[!{c}] {title}")
                     };
-                    let header_with_chevron = if is_active {
-                        if form_state.textarea_open {
-                            format!("{header} [^]")
-                        } else {
-                            format!("{header} [v]")
-                        }
+                    if is_active && form_state.textarea_open {
+                        // The popout shows the value; the preview row goes
+                        // away so the text is not on screen twice.
+                        format!("{header} [^]")
+                    } else if is_active {
+                        // Marker used below to split header vs body across two lines.
+                        format!("{header} [v]\n{content_preview}")
                     } else {
-                        header
-                    };
-                    // Marker used below to split header vs body across two lines.
-                    format!("{header_with_chevron}\n{content_preview}")
-                } else {
-                    let label = content_preview;
-                    if is_active {
-                        if form_state.textarea_open {
-                            format!("{label} [^]")
-                        } else {
-                            format!("{label} [v]")
-                        }
-                    } else {
-                        label
+                        format!("{header}\n{content_preview}")
                     }
+                } else if is_active && form_state.textarea_open {
+                    // The popout shows the value, so the row shows none of it.
+                    "[^]".to_string()
+                } else if is_active {
+                    format!("{content_preview} [v]")
+                } else {
+                    content_preview
                 }
             }
             FieldType::CompositeArray => {
@@ -320,15 +320,28 @@ pub(super) fn render_fields(
             ]);
             ListItem::new(Text::from(vec![header_line, body_line]))
         } else {
-            let line = Line::from(vec![
-                Span::styled(format!("{indicator} "), prompt_style),
-                Span::styled(
-                    format!("{icon_prefix}{}{}: ", field.prompt, required_marker),
-                    prompt_style,
-                ),
-                Span::styled(value_display, value_style),
-            ]);
-            ListItem::new(line)
+            let indicator_text = format!("{indicator} ");
+            let label = format!("{icon_prefix}{}{}: ", field.prompt, required_marker);
+            let prefix = str_cells(&indicator_text) + str_cells(&label);
+            let mut spans = vec![
+                Span::styled(indicator_text, prompt_style),
+                Span::styled(label, prompt_style),
+            ];
+            if is_active && is_single_line_input(&field.field_type) {
+                // A value wider than the row scrolls sideways inside it. The
+                // cursor is a char index into the value, which leads
+                // `value_display` (a counter appends `   now …` after it).
+                let room = (area.width as usize).saturating_sub(prefix);
+                let cursor = form_state.cursor_position;
+                let skip = single_line_skip(&value_display, cursor, room);
+                let (value_spans, cell) =
+                    clip_line(&value_display, skip, room, cursor, value_style);
+                cursor_x = Some(prefix + cell);
+                spans.extend(value_spans);
+            } else {
+                spans.push(Span::styled(value_display, value_style));
+            }
+            ListItem::new(Line::from(spans))
         }
     }));
 
@@ -348,6 +361,17 @@ pub(super) fn render_fields(
     )])));
 
     let item_count = items.len();
+    // Screen rows above the active item and the rows it takes. Items are not
+    // one row each: a preset description and a callout textarea add a row.
+    let active_top: usize = items
+        .iter()
+        .take(form_state.active_field)
+        .map(ListItem::height)
+        .sum();
+    let active_bottom = active_top
+        + items
+            .get(form_state.active_field)
+            .map_or(1, ListItem::height);
     let list = List::new(items).block(Block::default().borders(Borders::NONE));
     frame.render_widget(list, area);
     crate::tui::render_overflow_hints(frame, area, item_count, 0);
@@ -363,24 +387,13 @@ pub(super) fn render_fields(
         None
     };
 
-    // Place the terminal block cursor for text/textarea/number fields
-    if !submit_active
-        && !on_preset_row
-        && let Some(field) = active_config_field
-    {
-        let is_text_input = matches!(
-            field.field_type,
-            FieldType::Text | FieldType::Number | FieldType::Counter
-        );
-        if is_text_input {
-            // prefix: "▸ " (2 cols) + prompt (display width) + required_marker (1) + ": " (2)
-            let prefix_len = 2 + UnicodeWidthStr::width(field.prompt.as_str()) + 1 + 2;
-            let cursor_x = area.x + prefix_len as u16 + form_state.cursor_position as u16;
-            // active_field is the visual row index (preset row at 0, fields at 1+).
-            let cursor_y = area.y + form_state.active_field as u16;
-            if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
-                frame.set_cursor_position(Position::new(cursor_x, cursor_y));
-            }
+    // Place the terminal block cursor for text/number/counter fields. The
+    // column was worked out when the row was built.
+    if let Some(x) = cursor_x {
+        let x = area.x as usize + x;
+        let y = area.y as usize + active_top;
+        if x < area.right() as usize && y < area.bottom() as usize {
+            frame.set_cursor_position(Position::new(x as u16, y as u16));
         }
     }
 
@@ -411,7 +424,7 @@ pub(super) fn render_fields(
         && let Some(field) = active_config_field
         && field.field_type == FieldType::Textarea
     {
-        render_textarea_editor(frame, area, field, form_state);
+        render_textarea_editor(frame, area, active_bottom, field, form_state);
     }
 
     // If active field is a composite_array AND the overlay is open, render the table editor
@@ -465,6 +478,14 @@ pub(crate) fn counter_progress(
         Some(unit) => format!("{rendered} {unit}"),
         None => rendered,
     }
+}
+
+/// Field types edited on the form row itself, with the terminal cursor in it.
+fn is_single_line_input(field_type: &FieldType) -> bool {
+    matches!(
+        field_type,
+        FieldType::Text | FieldType::Number | FieldType::Counter
+    )
 }
 
 /// Render a scrollable options list for select fields.
@@ -640,9 +661,13 @@ fn render_select_options(
 }
 
 /// Render a bordered text editor overlay for textarea fields.
+///
+/// `below_row` is the first row under the active field, counted from the top
+/// of `area`.
 fn render_textarea_editor(
     frame: &mut Frame,
     area: Rect,
+    below_row: usize,
     field: &FieldConfig,
     form_state: &FormState,
 ) {
@@ -652,79 +677,97 @@ fn render_textarea_editor(
         .map(|s| s.as_str())
         .unwrap_or("");
 
-    // Position below the active field row, fill available space
-    let y_offset = (form_state.active_field as u16 + 1).min(area.height.saturating_sub(1));
+    // Open directly below the active field, as tall as the rest of the fields
+    // area allows, held between 4 and 10 rows. Near the bottom of the form that
+    // runs over the footer, which `render` draws first so the popout paints
+    // over it. If it would run off the frame, it moves up instead.
+    let frame_bottom = frame.area().bottom();
+    let top = (area.y as usize + below_row).min(u16::MAX as usize) as u16;
+    let height = area
+        .bottom()
+        .saturating_sub(top)
+        .clamp(4, 10)
+        .min(frame_bottom.saturating_sub(area.y));
     let editor_area = Rect {
         x: area.x + 4,
-        y: area.y + y_offset,
+        y: top.min(frame_bottom.saturating_sub(height)),
         width: area.width.saturating_sub(8).min(60),
-        height: area.height.saturating_sub(y_offset).clamp(4, 10),
+        height,
     };
 
     if editor_area.height < 3 {
         return;
     }
 
-    // Find the line and column from the flat cursor_position
+    let raw_lines: Vec<&str> = value.split('\n').collect();
+
+    // Line and column (in chars) of the flat char-index cursor_position.
     let mut remaining = form_state.cursor_position;
-    let mut cursor_line: u16 = 0;
-    let mut cursor_col: usize = 0;
-    for line in value.split('\n') {
-        if remaining <= line.len() {
-            cursor_col = remaining;
+    let mut cursor_line = 0;
+    let mut cursor_col = 0;
+    for (i, line) in raw_lines.iter().enumerate() {
+        let len = line.chars().count();
+        cursor_line = i;
+        cursor_col = remaining.min(len);
+        if remaining <= len {
             break;
         }
-        remaining -= line.len() + 1; // +1 for the newline
-        cursor_line += 1;
+        remaining -= len + 1; // +1 for the newline
     }
 
-    // Horizontal scroll: inner editor width minus borders
+    // Horizontal scroll: inner editor width minus borders. The key handlers
+    // keep the offset in step with the cursor (`key::sync_textarea_scroll`).
     let avail = editor_area.width.saturating_sub(2) as usize;
     let scroll = form_state.textarea_scroll_offset;
 
-    // Render all lines with the same horizontal scroll offset applied
-    let raw_lines: Vec<&str> = if value.is_empty() {
-        vec![""]
-    } else {
-        value.split('\n').collect()
-    };
+    // Vertical scroll: the cursor's line stays on screen, on the bottom row
+    // once it is past the first screenful.
+    let rows = editor_area.height.saturating_sub(2) as usize;
+    let top_line = cursor_line.saturating_sub(rows.saturating_sub(1));
 
+    // Render the visible lines with the same horizontal scroll offset applied
     let lines: Vec<Line> = raw_lines
         .iter()
-        .map(|l| {
-            let char_count = l.chars().count();
-            let left_clipped = scroll > 0 && char_count > 0;
-            let right_clipped = char_count > scroll + avail;
-            let content_take = avail.saturating_sub(left_clipped as usize + right_clipped as usize);
-            let slice: String = l.chars().skip(scroll).take(content_take).collect();
-
-            let mut spans: Vec<Span> = Vec::new();
-            if left_clipped {
-                spans.push(Span::styled("◂", Style::default().fg(Color::DarkGray)));
-            }
-            spans.push(Span::raw(slice));
-            if right_clipped {
-                spans.push(Span::styled("▸", Style::default().fg(Color::DarkGray)));
-            }
-            Line::from(spans)
-        })
+        .skip(top_line)
+        .take(rows)
+        .map(|l| Line::from(clip_line(l, scroll, avail, 0, Style::default()).0))
         .collect();
-
-    let editor = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" {} ", field.prompt))
-            .border_style(Style::default().fg(Color::Yellow)),
+    let (_, cursor_cell) = clip_line(
+        raw_lines[cursor_line],
+        scroll,
+        avail,
+        cursor_col,
+        Style::default(),
     );
-    frame.render_widget(Clear, editor_area);
+
+    let hint_style = Style::default().fg(Color::DarkGray);
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" {} ", field.prompt))
+        .border_style(Style::default().fg(Color::Yellow));
+    if top_line > 0 {
+        block = block.title_top(Line::styled("▲", hint_style).right_aligned());
+    }
+    if top_line + rows < raw_lines.len() {
+        block = block.title_bottom(Line::styled("▼", hint_style).right_aligned());
+    }
+    let editor = Paragraph::new(lines).block(block);
+    // Clear the popout's rows edge to edge, so no form row shows beside it.
+    frame.render_widget(
+        Clear,
+        Rect {
+            x: area.x,
+            y: editor_area.y,
+            width: area.width,
+            height: editor_area.height,
+        },
+    );
     frame.render_widget(editor, editor_area);
 
-    // Place cursor: +1 for border, cursor_col adjusted by scroll, +1 if left indicator shown
-    let left_indicator: u16 = if scroll > 0 { 1 } else { 0 };
-    let viewport_col = cursor_col.saturating_sub(scroll) as u16;
-    let cx = editor_area.x + 1 + left_indicator + viewport_col;
-    let cy = editor_area.y + 1 + cursor_line;
-    if cx < editor_area.x + editor_area.width - 1 && cy < editor_area.y + editor_area.height - 1 {
-        frame.set_cursor_position(Position::new(cx, cy));
+    // Place cursor: +1 for the border
+    let cx = editor_area.x as usize + 1 + cursor_cell;
+    let cy = editor_area.y as usize + 1 + (cursor_line - top_line);
+    if cx < editor_area.right() as usize - 1 && cy < editor_area.bottom() as usize - 1 {
+        frame.set_cursor_position(Position::new(cx as u16, cy as u16));
     }
 }

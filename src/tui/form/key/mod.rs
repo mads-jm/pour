@@ -4,6 +4,7 @@ pub(super) mod select;
 pub(super) mod submit;
 pub(super) mod text;
 
+use crate::tui::form::cells::char_cells;
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{App, FormState};
@@ -64,8 +65,10 @@ pub(super) fn cycle_select_filtered(
 
 /// Sync textarea horizontal scroll so the cursor stays visible.
 ///
-/// `cursor_position` is a char-index. Line lengths are measured in chars to
-/// stay consistent.
+/// `cursor_position` is a char-index and the offset counts chars, but the
+/// room on screen is measured in terminal cells, counted per glyph as
+/// ratatui draws them, so a CJK or emoji line scrolls by what it takes to
+/// draw.
 pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avail_width: u16) {
     if avail_width == 0 {
         return;
@@ -73,13 +76,15 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
     let avail = avail_width as usize;
     const MARGIN: usize = 2;
 
-    // Walk lines in chars to find the cursor column on its line.
+    // Walk lines in chars to find the cursor's line and column.
     let mut remaining = form_state.cursor_position;
     let mut cursor_col: usize = 0;
+    let mut cells: Vec<usize> = Vec::new();
     for line in value.split('\n') {
         let line_char_len = line.chars().count();
         if remaining <= line_char_len {
             cursor_col = remaining;
+            cells = char_cells(line);
             break;
         }
         remaining -= line_char_len + 1;
@@ -87,13 +92,31 @@ pub(super) fn sync_textarea_scroll(form_state: &mut FormState, value: &str, avai
 
     let scroll = form_state.textarea_scroll_offset;
 
-    let right_edge = scroll + avail.saturating_sub(MARGIN + 1);
-    if cursor_col >= right_edge {
-        form_state.textarea_scroll_offset =
-            cursor_col.saturating_sub(avail.saturating_sub(MARGIN + 1));
+    // Cells the text between the scroll offset and the cursor may take: the
+    // row less a `◂` cell, a `▸` cell and one cell for the cursor. No margin
+    // is kept on this side; the cursor rides the right edge.
+    let max_cells = avail.saturating_sub(3);
+    if let Some(before_cursor) = cells.get(scroll..cursor_col) {
+        let mut used: usize = before_cursor.iter().sum();
+        let mut s = scroll;
+        while s < cursor_col && used > max_cells {
+            used -= cells[s];
+            s += 1;
+            // Never start the row partway through a multi-char glyph.
+            while s < cursor_col && cells[s] == 0 {
+                s += 1;
+            }
+        }
+        form_state.textarea_scroll_offset = s;
     }
+    // Scrolling back left keeps `MARGIN` chars before the cursor, moved back
+    // to the start of the glyph they land in.
     if cursor_col < scroll + MARGIN && scroll > 0 {
-        form_state.textarea_scroll_offset = cursor_col.saturating_sub(MARGIN);
+        let mut s = cursor_col.saturating_sub(MARGIN);
+        while s > 0 && cells.get(s) == Some(&0) {
+            s -= 1;
+        }
+        form_state.textarea_scroll_offset = s;
     }
     if form_state.textarea_scroll_offset > cursor_col {
         form_state.textarea_scroll_offset = 0;
@@ -241,6 +264,7 @@ pub(super) fn dispatch(
                         .unwrap_or_default();
                     let cursor = form_state.cursor_position;
                     form_state.cursor_position = move_cursor_vertically(&value, cursor, -1);
+                    text::sync_scroll(form_state, fname);
                 }
                 FormAction::None
             } else {
@@ -286,6 +310,7 @@ pub(super) fn dispatch(
                         .unwrap_or_default();
                     let cursor = form_state.cursor_position;
                     form_state.cursor_position = move_cursor_vertically(&value, cursor, 1);
+                    text::sync_scroll(form_state, fname);
                 }
                 FormAction::None
             } else {
