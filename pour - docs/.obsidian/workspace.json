@@ -6,10 +6,28 @@
       {
         "id": "b52dacafa0aa8581",
         "type": "tabs",
+        "dimension": 30.886075949367086,
         "children": [
+          {
+            "id": "bf127f3b2d8f0afb",
+            "type": "leaf",
+            "pinned": true,
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "README.md",
+                "mode": "source",
+                "source": false
+              },
+              "pinned": true,
+              "icon": "lucide-file",
+              "title": "README"
+            }
+          },
           {
             "id": "6c2879caa85fe5ed",
             "type": "leaf",
+            "pinned": true,
             "state": {
               "type": "markdown",
               "state": {
@@ -17,27 +35,160 @@
                 "mode": "source",
                 "source": false
               },
+              "pinned": true,
               "icon": "lucide-file",
               "title": "index"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       },
       {
-        "id": "8f56dd01486da436",
-        "type": "tabs",
+        "id": "717fe9cb05333e99",
+        "type": "split",
+        "dimension": 69.11392405063292,
         "children": [
           {
-            "id": "f72cad0926777938",
-            "type": "leaf",
-            "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "New tab"
-            }
+            "id": "63ea3d4e0432be11",
+            "type": "tabs",
+            "dimension": 62.26851851851852,
+            "children": [
+              {
+                "id": "60d4fe06c0c0b9e5",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "graph",
+                  "state": {},
+                  "pinned": true,
+                  "icon": "lucide-git-fork",
+                  "title": "Graph view"
+                }
+              }
+            ]
+          },
+          {
+            "id": "1511da2542179ab8",
+            "type": "tabs",
+            "dimension": 37.73148148148148,
+            "children": [
+              {
+                "id": "64822a1973a704ec",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "01 concepts/CONCEPTS.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "CONCEPTS"
+                }
+              },
+              {
+                "id": "aa2a8ce040130f0c",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "03 guides/GUIDES.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "GUIDES"
+                }
+              },
+              {
+                "id": "e0d0c0121d8cab89",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "04 architecture/ARCHITECTURE.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "ARCHITECTURE"
+                }
+              },
+              {
+                "id": "04e6e135295af7fd",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "04 architecture/adr/ADR.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "ADR"
+                }
+              },
+              {
+                "id": "5a5e8238953490cb",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "05 notes/NOTES.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "NOTES"
+                }
+              },
+              {
+                "id": "1f280a1a4cbcc80a",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "07 stories/STORIES.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "STORIES"
+                }
+              },
+              {
+                "id": "68487abaa49d749e",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "08 specs/SPECS.md",
+                    "mode": "source",
+                    "source": false
+                  },
+                  "pinned": true,
+                  "icon": "lucide-file",
+                  "title": "SPECS"
+                }
+              }
+            ],
+            "currentTab": 6
           }
-        ]
+        ],
+        "direction": "horizontal"
       }
     ],
     "direction": "vertical"
@@ -57,7 +208,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -103,18 +256,7 @@
       {
         "id": "fcb1d4b43c31bc60",
         "type": "tabs",
-        "dimension": 31.238273921200754,
         "children": [
-          {
-            "id": "9ecf195dd71bc4ea",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
-            }
-          },
           {
             "id": "0432df2be126b337",
             "type": "leaf",
@@ -190,108 +332,61 @@
             }
           }
         ]
-      },
-      {
-        "id": "fa7861038d6e1bf6",
-        "type": "tabs",
-        "dimension": 68.76172607879924,
-        "children": [
-          {
-            "id": "6629666eed5eef8f",
-            "type": "leaf",
-            "pinned": true,
-            "state": {
-              "type": "terminal:terminal",
-              "state": {
-                "terminal:terminal": {
-                  "cwd": "D:\\dev\\mads\\pour\\pour - docs",
-                  "focus": false,
-                  "profile": {
-                    "args": [],
-                    "executable": "C:\\Windows\\System32\\cmd.exe",
-                    "followTheme": true,
-                    "name": "",
-                    "platforms": {
-                      "win32": true
-                    },
-                    "pythonExecutable": "python3",
-                    "restoreHistory": false,
-                    "rightClickAction": "copyPaste",
-                    "successExitCodes": [
-                      "0",
-                      "SIGINT",
-                      "SIGTERM"
-                    ],
-                    "terminalOptions": {
-                      "documentOverride": null
-                    },
-                    "type": "integrated",
-                    "useWin32Conhost": true
-                  },
-                  "serial": null
-                }
-              },
-              "pinned": true,
-              "icon": "terminal",
-              "title": "Terminal: cmd"
-            }
-          }
-        ]
       }
     ],
     "direction": "horizontal",
-    "width": 789.5
+    "width": 358.125
   },
   "left-ribbon": {
     "hiddenItems": {
-      "obsidian-git:Open Git source control": false,
-      "templater-obsidian:Templater": false,
-      "webpage-html-export:Export as HTML": false,
       "switcher:Open quick switcher": false,
       "graph:Open graph view": false,
       "canvas:Create new canvas": false,
       "templates:Insert template": false,
       "command-palette:Open command palette": false,
       "bases:Create new base": false,
-      "terminal:Open terminal": false,
       "workspaces:Manage workspace layouts": false,
+      "obsidian-git:Open Git source control": false,
+      "templater-obsidian:Templater": false,
+      "webpage-html-export:Export as HTML": false,
+      "terminal:Open terminal": false,
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "9ecf195dd71bc4ea",
+  "active": "60d4fe06c0c0b9e5",
   "lastOpenFiles": [
-    "04 architecture/System-Architecture-Overview.md",
-    "02 references/field-types.md",
-    "08 specs/pour-design-spec.md",
-    "08 specs/pour-project-standards.md",
-    "00 index/BACKLOG.kanban.md",
-    "08 specs/pour-rust-learning-refactor-audit.md",
     "index.md",
-    "00 index/ADR.base",
-    "00 index/PRS.base",
-    "00 index/CONCEPTS.base",
-    "01 concepts/Inline-Note-Creation.md",
-    "02 references/chrono.md",
-    "02 references/obsidian-local-rest-api.md",
-    "02 references/crossterm.md",
-    "02 references/reqwest.md",
-    "02 references/ratatui.md",
-    "03 guides/Design-Language.md",
-    "02 references/toml-serde.md",
-    "03 guides/Guide-Adding-New-Field-Types.md",
-    "04 architecture/adr/ADR-001-Hybrid-Transport-Layer.md",
-    "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
-    "04 architecture/adr/ADR-003-Synchronous-TUI-Async-Operations.md",
-    "04 architecture/adr/ADR-002-Custom-YAML-Serialization.md",
-    "05 notes/inline-creation-future-phases.md",
-    "04 architecture/v1-implementation-plan.md",
-    "06 reports/v0.1.0-report.md",
-    "08 specs/pour-fit-module-brief.md",
-    "01 concepts/The-3-Tier-Data-Fallback.md",
+    "03 guides/GUIDES.md",
+    "README.md",
+    "08 specs/SPECS.md",
     "07 stories/STORIES.md",
+    "05 notes/NOTES.md",
+    "04 architecture/adr/ADR.md",
+    "01 concepts/CONCEPTS.md",
+    "04 architecture/ARCHITECTURE.md",
+    "07 stories/the_pour_manifesto.md",
+    "05 notes/Rust-WASM-Frontend-Tradeoffs.md",
+    "00 index/CONCEPTS.base",
+    "00 index/ADR.base",
+    "10 PRs/v0.3.0-PWA.md",
+    "10 PRs/PRS.md",
+    "07 stories/history_heatmap_dashboard.md",
+    "06 reports/v1.0.0-pre-release-assessment.md",
+    "06 reports/v0.2.0-report.md",
+    "06 reports/v1.0.0-phase2-closeout.md",
+    "05 notes/inline-creation-future-phases.md",
+    "06 reports/v0.1.0-report.md",
+    "05 notes/clippy-ci-parity.md",
+    "05 notes/PWA-Test-Infra-Gap.md",
+    "04 architecture/v1-implementation-plan.md",
+    "04 architecture/adr/ADR-004-API-Append-Read-Modify-Write.md",
+    "02 references/ratatui.md",
+    "02 references/chrono.md",
+    "02 references/crossterm.md",
+    "00 index/NOTES.base",
+    "00 index/PRS.base",
     "00 index/REFERENCES.base",
     "00 index/SPECS.base",
-    "00 index/NOTES.base",
     "00 index/GUIDES.base",
     "03 guides/GUIDES.md.tmp.34792.1777483083022",
     "09 milestones/v0.2.0-Foundation.md.tmp.34792.1777483064960",

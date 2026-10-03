@@ -6,7 +6,7 @@ tags:
   - phase2
 date created: Monday, April 27th 2026, 3:15:33 pm
 status: open — gap acknowledged, closure deferred
-date modified: Wednesday, April 29th 2026, 5:31:49 pm
+date modified: Saturday, October 3rd 2026, 6:47:38 am
 ---
 
 # PWA Test Infrastructure Gap
@@ -59,7 +59,7 @@ In priority order, if infra existed:
 
 This gap does not justify blocking Phase 2 delivery. Manual verification on a real device is the current quality gate, and that is the same gate that shipped all of Phase 1 and Phase 1.5. The risk is __regression risk__, not initial-correctness risk, because there is no automated harness to run after each change.
 
-## Closure Criteria (for a Future phase)
+## Closure Criteria (For a Future Phase)
 
 This gap is __NOT being closed in Phase 2__. No Jest install, no Playwright, no Vitest. Reasons:
 

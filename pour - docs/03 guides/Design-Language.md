@@ -8,7 +8,7 @@ aliases:
   - pour design language
   - pour icon direction
 date created: Tuesday, March 31st 2026, 11:20:00 pm
-date modified: Wednesday, April 29th 2026, 5:31:54 pm
+date modified: Saturday, October 3rd 2026, 6:47:17 am
 ---
 
 # Pour Design Language
@@ -43,10 +43,10 @@ Lowercase. Terse. Imperative. Almost command-line dry.
 ### Dashboard Header
 
 ```ts
-▽ pour   [local]
+▽ pour  ›  main                 14:32                 v1.1.0  [API]
 ```
 
-The front door. One branded mark, module list below as a clean launcher, transport badge as system state.
+The front door. One branded mark, module list below as a clean launcher, transport badge as system state. The vault's folder name sits after the mark, a clock in the middle, the version and badge on the right. The badge reads `[API]` in green or `[File System]` in yellow.
 
 Empty state: `no modules configured. add modules to config.toml.`
 
@@ -56,7 +56,28 @@ Empty state: `no modules configured. add modules to config.toml.`
 ▽ pour coffee — Brew Log
 ```
 
-The strongest expression of the product. The `▽` anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads `[ submit ]` — lowercase, tool-voiced.
+The strongest expression of the product. The `▽` anchors the command lockup. Display name follows in dark gray as a subtitle. Submit reads `[ pour ]` — lowercase, tool-voiced.
+
+The footer names the keys the focused field answers to. Most fields show `Enter interact`. A toggle shows `space flip`, and a counter shows `0-9 add` and `= set`. A hint that names a dead key is worse than no hint.
+
+Text that doesn't fit stays in its row. A long single-line value scrolls sideways, with a dark gray `◂` or `▸` at the edge that hides text. The textarea popout uses the same marks for long lines and puts `▲`/`▼` on its border when lines are hidden above or below. While the popout is open, the field row shows only `[^]`, so the value is never drawn twice.
+
+### Priors Panel
+
+```ts
+┌ similar · rating desc ─────────┐
+│  4.5       4         3.5       │
+│  ·         Benj Paz  ·         │
+│▸ 6.5       7         6         │
+│  ·         16        ·         │
+│  270       250       280       │
+│  3d        1w        2w        │
+└────────────────────────────────┘
+```
+
+Read-only reference, so it stays quiet. One column per prior capture, and each row sits on the same line as its form field, so the form's labels name the rows. Dark gray border. Cyan `rank_by` values head the columns and dark gray ages sit at the foot. A value that matches the form is a dark gray `·`. A value that differs is yellow, because the differences are what you came to see. A capture without the `rank_by` value keeps its differences dark gray. The active field's row gets a dark gray band and a cyan `▸`. The title reads `similar`, or `no close match`, plus the `rank_by` label when it fits. It never says "best". With `summary = true`, a last cyan column summarizes each number row under an italic label such as `median`.
+
+When there's no room, or after `Ctrl+R`, the panel becomes one cyan line on the bottom row: `▸ priors: similar · rating desc · 3 priors — ^R to expand`. With nothing to show it reads `▸ priors: no prior captures match this form`, not an empty box.
 
 ### Summary
 
@@ -73,8 +94,10 @@ Body labels are terse and lowercase:
 
 ```ts
   path: 02-Logbook/2026-04-01-brew.md
-  transport: api
+  transport: API
 ```
+
+The value after `transport:` is the mode's display name, `API` or `File System`, and is not lowercased.
 
 ### Configure Header
 
@@ -89,8 +112,8 @@ Intentionally more utilitarian than the form. Module key only — display name o
 | Role | Color | Usage |
 |---|---|---|
 | Brand / active | Cyan | Headers, active field labels, selected items |
-| Success | Green | `▽ saved`, submit button |
-| Interaction | Yellow | Key hints, transport badge, [modified] tag, browser borders |
+| Success | Green | `▽ saved`, submit button, `[API]` badge |
+| Interaction | Yellow | Key hints, `[File System]` badge, summary transport value, [modified] tag, browser borders |
 | Failure | Red | `! error`, validation messages |
 | Scaffolding | Dark Gray | Inactive labels, subtitles, kind hints |
 | Content | White | Active field values, body text |

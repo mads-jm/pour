@@ -10,7 +10,7 @@
     "postProcess": true,
     "displayProgress": true,
     "inlineHTML": false,
-    "exportPath": "D:\\dev\\mads\\pour\\docs",
+    "exportPath": "/mnt/primary/dev/mads/pour/docs",
     "filesToExport": [
       "all"
     ],

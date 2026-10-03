@@ -7,7 +7,7 @@ aliases:
   - pour types
   - capture shapes
 date created: Thursday, August 6th 2026
-date modified: Thursday, August 6th 2026
+date modified: Saturday, October 3rd 2026, 6:47:21 am
 ---
 
 # Pour Types
@@ -22,19 +22,19 @@ There are three kinds of pour, one per write mode. Which kind a signal gets is d
 
 ## Entry
 
-Something happened in the flow of the day and belongs in the day's note. A timestamp and some text under a heading. The note is the container; the entry has no identity of its own and nothing will ever link to it. When the API is down, pour writes an [[Atomic-Note-Fallback|atomic timestamped note]] instead of editing the daily note blind.
+Something happened in the flow of the day and belongs in the day's note. A timestamp and some text under a heading. The note is the container; the entry has no identity of its own and nothing will ever link to it. The note and its heading must already exist. Both transports splice the entry in under the heading, and if either is missing the capture fails rather than landing somewhere else.
 
 ## Event
 
 Something with enough nuance to deserve its own file. A coffee has a bean, a ratio, a taste. The frontmatter is the record and the filename is the identity, so later notes can link to it and queries can find it. This is the pour the [[the_pour_manifesto|manifesto]] was written about.
 
-## Ambient state
+## Ambient State
 
 The background hum of a day. Partaken or not. Ounces so far. It has no story beyond its value, so it is not worth a note and not worth a line. It lives as a property on the periodic note, the template owns the key and its default, and pour only ever mutates it.
 
 This is the only pour that edits bytes the user already owns. Every other write adds a file or appends to a section. That is why `update` carries guard rails the other two do not need: stat before read, a single-line edit that never re-emits YAML, and an atomic replace. [[field-types]] has the rules; [[pour-habit-capture]] has the reasoning.
 
-## The creed
+## The Creed
 
 > [!quote] Ambient state gets a property. Novel experience gets a note. Never both for the same signal.
 

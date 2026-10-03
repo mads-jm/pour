@@ -4,7 +4,7 @@ tags:
   - adr
   - output
 date created: Tuesday, March 31st 2026, 10:03:09 pm
-date modified: Wednesday, April 29th 2026, 5:31:53 pm
+date modified: Saturday, October 3rd 2026, 6:47:15 am
 ---
 
 # ADR 002: Custom YAML Frontmatter Generation
@@ -24,7 +24,9 @@ Write a custom `generate_frontmatter` pipeline instead of relying on generic ser
 __Consequences:__  
 Higher initial maintenance for the formatting logic, but guarantees Obsidian-compatible properties without bloating the binary.
 
-See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[sprint-3-output-pipeline-report]].
+__Note (2026-10-02):__ The third bullet changed in v0.2.1. Comma expansion is opt-in: only a field with `list = true` is split into a YAML list, and every other value is written as one escaped string. Since v1.1.0 the injected `date` takes the module's `frontmatter_date_format` (default `%Y-%m-%d`). The same release added `update` mode, which edits existing frontmatter one line at a time with `patch_frontmatter_line` rather than regenerating the block. Pour still never parses YAML and re-emits it.
+
+See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[v0.1.0-report]] (sprint 3).
 
 
 

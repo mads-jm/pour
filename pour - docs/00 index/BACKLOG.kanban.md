@@ -2,7 +2,7 @@
 
 kanban-plugin: board
 date created: Tuesday, April 7th 2026, 2:52:17 am
-date modified: Monday, May 4th 2026, 11:17:46 pm
+date modified: Saturday, October 3rd 2026, 6:47:24 am
 
 tags:
   - feature
@@ -40,7 +40,7 @@ tags:
 
 # Scoping
 
-- [ ] Priors / review panel **L2** — `overlap`/`window` match modes, select/tag `mode` summaries, `me`/`note` recent-N + `#tag` overlap, PWA panel + `POST /api/v1/priors/{module}`. Spec: [[pour-review-priors]] §10 (L2).
+- [ ] Priors / review panel __L2__ — `overlap`/`window` match modes, select/tag `mode` summaries, `me`/`note` recent-N + `#tag` overlap, PWA panel + `POST /api/v1/priors/{module}`. Spec: [[pour-review-priors]] §10 (L2).
 
 # Ready
 
@@ -52,7 +52,7 @@ tags:
 
 - [x] Form value-side cursor uses byte offset; CJK/emoji in field *values* can drift (prompt-side fixed in v0.2.1). Textarea popout and single-line rows now place the cursor by display width.
 - [x] Text area double newline in blockquote output
-- [x] Priors / review panel **L1** (coffee, TUI) — config-declared read-back of best prior captures at capture time; shared frontmatter reader + wikilink stripper foundation. Spec: [[pour-review-priors]] (shipped). Story: [[priors_at_the_pour]]. ADR: [[ADR-007-Frontmatter-Reader]].
+- [x] Priors / review panel __L1__ (coffee, TUI) — config-declared read-back of best prior captures at capture time; shared frontmatter reader + wikilink stripper foundation. Spec: [[pour-review-priors]] (shipped). Story: [[priors_at_the_pour]]. ADR: [[ADR-007-Frontmatter-Reader]].
 
 %% kanban:settings
 

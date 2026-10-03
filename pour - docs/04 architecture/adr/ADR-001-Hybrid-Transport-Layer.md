@@ -4,7 +4,7 @@ tags:
   - adr
   - transport
 date created: Tuesday, March 31st 2026, 10:02:51 pm
-date modified: Wednesday, April 29th 2026, 5:31:53 pm
+date modified: Saturday, October 3rd 2026, 6:47:18 am
 ---
 
 # ADR 001: Hybrid Transport Layer (API with FS Fallback)
@@ -24,7 +24,9 @@ __Consequences:__
 * __Positive:__ Maximum resilience. The user never loses a log entry due to application state.
 * __Negative:__ Feature asymmetry. The API backend returns raw filenames (for example, `latte.md`) while the FS backend returns file stems (`latte`). This requires normalization in [[The-3-Tier-Data-Fallback]].
 
-See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[sprint-2-transport-report]].
+__Note (2026-10-02):__ The fallback is wider and narrower than step 2 says. `Transport::connect` falls back to the filesystem whenever `api_port` or `api_key` is unset, the client fails to build, or the connection check fails, not only on a refused connection. Since v1.1.0, a module with its own `base_path` always writes over the filesystem (`Transport::for_module`), because the Local REST API can only reach the vault it serves. And in `update` mode, a backend that cannot serve the frontmatter PATCH returns `Unsupported`, and `write_update` retries that write over the filesystem.
+
+See also [[System-Architecture-Overview]], [[pour-design-spec]], and [[v0.1.0-report]] (sprint 2).
 
 
 

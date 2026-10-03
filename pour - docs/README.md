@@ -1,6 +1,6 @@
 ---
 date created: Tuesday, March 31st 2026, 12:12:29 am
-date modified: Wednesday, April 29th 2026, 5:31:51 pm
+date modified: Saturday, October 3rd 2026, 6:51:42 am
 ---
 
 # README.md
@@ -13,17 +13,19 @@ __02 references__ - Library API references, external documentation, and OpenAPI 
 
 __03 guides__ - DX guides, developer workflow documentation
 
-__04 architecture__ - Design spec, [[ARCHITECTURE#Architecture Decision Records|ADR]]s and broader architectural decisions
+__04 architecture__ - System overview, [[ADR]]s and broader architectural decisions
 
 __05 notes__ - 'Fleeting' development notes; precursor to atomic notes in persistent vault above
 
-__06 reports__ - Sprint reports and release summaries (frozen historical records — do not edit sprints)
+__06 reports__ - Release reports and assessments (frozen historical records, do not edit)
 
 __07 stories__ - User stories and vision documents
 
-__08 specs__ - Feature and component specifications
+__08 specs__ - Feature and component specifications, including the design spec
 
 __09 milestones__ - Release milestone notes and known limitations per version
+
+__10 PRs__ - Plaintext copies of GitHub PRs with context and links
 
 __99 meta__ -
 - 00 templates - Obsidian templates

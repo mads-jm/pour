@@ -7,7 +7,7 @@ aliases:
   - the pour manifesto
   - manifesto
 date created: Tuesday, March 31st 2026, 12:24:04 am
-date modified: Wednesday, April 29th 2026, 5:31:43 pm
+date modified: Saturday, October 3rd 2026, 6:49:57 am
 ---
 
 # The Pour Manifesto: Why We Build

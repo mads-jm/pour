@@ -8,13 +8,13 @@ aliases:
   - toml
   - serde
 date created: Tuesday, March 31st 2026, 12:14:44 am
-date modified: Wednesday, April 29th 2026, 5:31:54 pm
+date modified: Saturday, October 3rd 2026, 6:47:21 am
 ---
 
 # TOML & Serde - Config Parsing Reference
 
 > __Sources:__ <https://docs.rs/toml/latest/toml/>, <https://docs.rs/serde_yaml/latest/serde_yaml/>
-> __Crates:__ `toml`, `serde`, `serde_json`, `serde_yaml`
+> __Crates:__ `toml` 0.8, `toml_edit` 0.22, `serde`, `serde_json`. Pour does not depend on `serde_yaml`; see the YAML section below.
 
 ## TOML Config Parsing
 
@@ -46,8 +46,7 @@ struct ModuleConfig {
 #[derive(Deserialize)]
 struct FieldConfig {
     name: String,
-    #[serde(rename = "type")]
-    field_type: String,    // "textarea", "dynamic_select", "number", etc.
+    field_type: String,    // the TOML key is `field_type`, no rename    // "textarea", "dynamic_select", "number", etc.
     prompt: String,
     source: Option<String>,
 }
@@ -66,6 +65,8 @@ let config: Config = toml::from_str(&std::fs::read_to_string(path)?)?;
 | `toml::Value` | Dynamic TOML value type |
 
 ## Serde YAML (Frontmatter Generation)
+
+Pour does not use this. Frontmatter is written by hand in `src/output/frontmatter.rs`, which controls key order and quoting, and `update` mode edits single lines rather than re-emitting YAML. The notes below are general `serde_yaml` reference only.
 
 ```rust
 use serde::Serialize;
@@ -108,7 +109,7 @@ let frontmatter = format!("---\n{}---\n", yaml);
 | `serde_yaml::from_str::<T>(s)` | Deserialize YAML string |
 | `serde_yaml::Value` | Dynamic YAML value type |
 
-## Serde JSON (API communication)
+## Serde JSON (API Communication)
 
 ```rust
 use serde_json;

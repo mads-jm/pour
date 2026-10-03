@@ -31,7 +31,7 @@ servers:
     variables:
       host:
         default: "127.0.0.1"
-        description: Bind address for the pour server.
+        description: Host the client connects to. The server binds `0.0.0.0`.
       port:
         default: "8421"
         description: Bind port for the pour server.
@@ -81,7 +81,7 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
               example:
                 ok: true
-                version: "0.2.2"
+                version: "1.1.0"
                 schema_version: "1"
                 transport_mode: "API"
                 vault_base_path: "/Users/joseph/Documents/Vault"
@@ -169,7 +169,7 @@ paths:
                 vault:
                   date_format: "%Y%m%d"
                   transport_mode: API
-                config_version: "0.3.0"
+                config_version: "0.4.0"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -225,7 +225,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Module or field not found.
+          description: >
+            Module or field not found. A module with `mobile_visible = false`
+            counts as not found.
           content:
             application/json:
               schema:
@@ -267,7 +269,7 @@ paths:
                 module_key: coffee
                 timestamp: "2026-04-25T18:30:42Z"
                 vault_path: "Coffee/2026/20260425 18-30-42.md"
-                content: "---\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: 18\n---\n\nBright, blueberry, mid-body.\n"
+                content: "---\ndate: 2026-04-25\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: \"18\"\n---\n\nBright, blueberry, mid-body.\n"
                 transport_mode: API
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -314,7 +316,19 @@ paths:
       description: |
         Executes a full form submission for the given module. Mirrors the TUI's
         `handle_submit` pipeline: field validation → auto-create (best-effort) →
-        `write_create`/`write_append` → history record → 201 response.
+        `write_create`/`write_append`/`write_update` → `post_write_shell`
+        (only when the module sets `post_write_shell_on_serve = true`) →
+        history record → 201 response.
+
+        Field values are strings on the wire. In `create` mode every
+        frontmatter scalar goes through the same quoting rule as a TUI
+        capture, so a numeric-looking value is written quoted
+        (`dose_g: "18"`). `update` mode writes `number` and `counter` as bare
+        YAML numbers and `toggle` as a bare boolean.
+
+        A module that overrides the vault root (`base_path` or `platform`)
+        always writes through the filesystem, and the 201 reports
+        `transport_mode: FileSystem` for it.
 
         **Idempotency**: supply `Idempotency-Key` to enable safe replay. Within
         the 5-minute window a duplicate key replays the original response
@@ -388,7 +402,10 @@ paths:
           description: Capture written successfully.
           headers:
             Location:
-              description: URL of the history entry for this capture.
+              description: >
+                `/api/v1/history/{history_id}`. No route serves this path, so
+                fetching it returns 404. Read the capture back with
+                `GET /captures/{history_id}`.
               schema:
                 type: string
               example: "/api/v1/history/20260425T143302000-0-coffee"
@@ -424,9 +441,14 @@ paths:
                 captured_at: "2026-04-25T14:33:02Z"
         "400":
           description: >
-            Validation failure (required field empty, invalid number, unknown
-            field, bad JSON, invalid `captured_at` range, or missing
-            `auto_create_inputs` for a templated field).
+            Validation failure: required field empty, invalid `number`,
+            `toggle`, or `counter` token, bad JSON, `captured_at` out of range,
+            missing `auto_create_inputs` for a templated field, or an
+            `Idempotency-Key` that is not 1–256 ASCII printable characters.
+            Per-field `details.fields[].code` is one of `required`,
+            `invalid_number`, `invalid_toggle`, `invalid_counter`, or
+            `auto_create_input_required`. Values for fields the module does
+            not define, or that `show_when` hides, are dropped, not rejected.
           content:
             application/json:
               schema:
@@ -485,7 +507,11 @@ paths:
                   code: unsupported_media_type
                   message: "Content-Type must be application/json."
         "500":
-          description: Engine write failed or unhandled internal error.
+          description: >
+            `write_error` when the engine write fails, including transport
+            failures and a missing target note in `update` mode. This endpoint
+            never returns 502. `internal_error` when the request body cannot be
+            read.
           content:
             application/json:
               schema:
@@ -496,16 +522,6 @@ paths:
                   message: "Engine write failed."
                   details:
                     engine_error: "file already exists"
-        "502":
-          description: Obsidian API and filesystem fallback both unreachable.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error:
-                  code: transport_error
-                  message: "API + filesystem both unreachable."
 
   /history:
     get:
@@ -601,6 +617,23 @@ paths:
                     me: 1
                 has_more: false
                 next_cursor: null
+        "400":
+          description: >
+            Invalid `since` or `until` (not RFC 3339), `limit` outside 1–1000,
+            or a `module` key the config does not define. `details.field` names
+            the parameter. An unknown module also carries
+            `details.code: unknown_module`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: validation_failed
+                  message: "Unknown module key."
+                  details:
+                    code: unknown_module
+                    field: module
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -715,6 +748,12 @@ paths:
                     method: Espresso
         "201":
           description: New preset created.
+          headers:
+            Location:
+              description: URL of the new preset, name percent-encoded.
+              schema:
+                type: string
+              example: "/api/v1/presets/coffee/Morning%20Onyx"
           content:
             application/json:
               schema:
@@ -728,7 +767,9 @@ paths:
                     dose_g: "18"
                     method: Espresso
         "400":
-          description: Invalid request body.
+          description: >
+            Invalid JSON body, an empty name (`details.field: name`), or the
+            reserved name `order` (`details.code: reserved_name`).
           content:
             application/json:
               schema:
@@ -736,7 +777,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Unknown module key.
+          description: Unknown module key, or a name containing `/`.
           content:
             application/json:
               schema:
@@ -749,6 +790,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "415":
           description: Content-Type is not `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            `internal_error`: the body could not be read or the preset could
+            not be saved.
           content:
             application/json:
               schema:
@@ -789,6 +838,12 @@ paths:
                 error:
                   code: not_found
                   message: "Preset not found."
+        "500":
+          description: "`internal_error`: the deletion could not be saved."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /presets/{module}/order:
     put:
@@ -863,7 +918,9 @@ paths:
               example:
                 error:
                   code: validation_failed
-                  message: "Names list must be an exact permutation of current presets."
+                  message: "Reorder list is missing preset names."
+                  details:
+                    missing: ["Decaf evening"]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -872,8 +929,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Body exceeds the 256 KiB limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "415":
           description: Content-Type is not `application/json`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            `internal_error`: the body could not be read or the new order could
+            not be saved.
           content:
             application/json:
               schema:
@@ -913,7 +984,7 @@ components:
           example:
             error:
               code: unauthorized
-              message: "Missing or invalid token."
+              message: "Missing or invalid authentication token."
 
   schemas:
 
@@ -938,7 +1009,7 @@ components:
         version:
           type: string
           description: Pour binary version from `CARGO_PKG_VERSION`.
-          example: "0.2.2"
+          example: "1.1.0"
         schema_version:
           type: string
           description: >
@@ -1014,9 +1085,11 @@ components:
         config_version:
           type: string
           description: >
-            Version of the pour config schema (e.g. `"0.3.0"`). The PWA may
+            Version of the pour config schema (e.g. `"0.4.0"`). The PWA may
             use this to detect incompatible config shapes across updates.
-          example: "0.3.0"
+            Falls back to `"0.1.0"` when the config file has no
+            `config_version` key.
+          example: "0.4.0"
 
     Module:
       type: object
@@ -1046,10 +1119,11 @@ components:
           example: "☕"
         mode:
           type: string
-          enum: [create, append]
+          enum: [create, append, update]
           description: >
             `create` = new file per capture; `append` = append under a header
-            in the daily note.
+            in an existing note; `update` = rewrite named frontmatter keys on
+            an existing note.
           example: create
         fields:
           type: array
@@ -1058,13 +1132,15 @@ components:
           description: Ordered list of fields in this module.
         callout_type:
           type: ["string", "null"]
-          description: Default Obsidian callout type for `textarea` fields (e.g. `"note"`).
+          description: >
+            Obsidian callout type that `{{callout}}` resolves to in
+            `append_template` (e.g. `"note"`).
           example: null
         append_under_header:
           type: ["string", "null"]
           description: >
             Header string to append under in `append` mode (e.g. `"## Today"`).
-            Null = append at end of file.
+            Required for `append` modules. Null for `create` and `update`.
           example: null
         append_template:
           type: ["string", "null"]
@@ -1073,12 +1149,14 @@ components:
         append_shallow:
           type: boolean
           description: >
-            When true in `append` mode, search only the top-level heading (not
-            nested headings).
+            When true in `append` mode, any following heading ends the target
+            section, so sub-headings are not absorbed.
           example: false
         daily_link:
           type: boolean
-          description: Whether to add a `[[date]]` link in `append` mode.
+          description: >
+            Whether `create` mode adds a `daily` frontmatter key linking to
+            today's daily note (e.g. `daily: "[[20260425]]"`).
           example: false
 
     Field:
@@ -1113,7 +1191,7 @@ components:
           example: bean
         field_type:
           type: string
-          enum: [text, textarea, number, static_select, dynamic_select, composite_array]
+          enum: [text, textarea, number, static_select, dynamic_select, composite_array, toggle, counter]
           description: Wire name for the Rust `FieldType` enum (snake_case).
           example: dynamic_select
         prompt:
@@ -1162,8 +1240,9 @@ components:
         allow_create:
           type: ["boolean", "null"]
           description: >
-            Whether the user can type a novel value for a `dynamic_select` to
-            create a new note. Null for non-dynamic fields.
+            Whether the user can type a novel value. On a `dynamic_select` this
+            creates a new note; on a `static_select` it adds to `options`. Null
+            when unset.
           example: true
         wikilink:
           type: ["boolean", "null"]
@@ -1201,8 +1280,9 @@ components:
         list:
           type: boolean
           description: >
-            When true, the frontmatter value is written as a YAML list
-            (`- value`) rather than a scalar.
+            When true, a frontmatter value containing `", "` is split on it and
+            written as a YAML list (`- value`). A value without `", "` stays a
+            scalar.
           example: false
         sub_fields:
           type: ["array", "null"]
@@ -1217,7 +1297,8 @@ components:
       type: object
       description: >
         Visibility rule. Exactly one of `equals` or `one_of` must be present.
-        Client-side evaluation only; the server ships these verbatim.
+        The client evaluates it while rendering. The server re-evaluates it at
+        submit time and drops values for hidden fields.
       required:
         - field
       properties:
@@ -1326,7 +1407,9 @@ components:
           example: null
         allow_create:
           type: boolean
-          description: Whether the user can type a novel value (legacy flag; usually false).
+          description: >
+            `static_select` only. Whether the user can type a novel value,
+            which is added to the template field's `options` in `config.toml`.
           example: false
 
     Vault:
@@ -1339,8 +1422,10 @@ components:
         date_format:
           type: string
           description: >
-            strftime format string used for date tokens in file paths and
-            frontmatter. Default `"%Y%m%d"`.
+            strftime format for the `{{date}}` placeholder in module paths,
+            the date in auto-generated filenames, and the `daily_link` target.
+            The frontmatter `date` key does not use it (`%Y-%m-%d` unless the
+            module sets `frontmatter_date_format`). Default `"%Y%m%d"`.
           example: "%Y%m%d"
         transport_mode:
           type: string
@@ -1461,8 +1546,8 @@ components:
         client_id:
           type: ["string", "null"]
           description: >
-            Opaque label to disambiguate clients in logs. Free-form. Null or
-            absent = unlabelled.
+            Opaque client label. Free-form. The server accepts it and ignores
+            it.
           example: phone-pwa
 
     SubmitResponse:
@@ -1482,7 +1567,9 @@ components:
         transport_mode:
           type: string
           enum: [API, FileSystem]
-          description: Transport backend used for this write.
+          description: >
+            Transport backend used for this write. Always `FileSystem` for a
+            module that overrides the vault root.
           example: API
         auto_created:
           type: array
@@ -1579,8 +1666,10 @@ components:
         code:
           type: string
           description: >
-            Machine-readable warning slug, e.g. `"autocreate_failed"`,
-            `"history_record_failed"`.
+            Machine-readable warning slug: `"autocreate_failed"`,
+            `"history_record_failed"`, `"frontmatter_update_notice"` (an
+            `update` write inserted a key the note lacked, or fell back from
+            the API to the filesystem), or `"post_write_shell_failed"`.
           example: autocreate_failed
         field:
           type: ["string", "null"]
@@ -1632,7 +1721,7 @@ components:
           description: >
             Full UTF-8 file content as written (YAML frontmatter + Markdown
             body). Trusted user data; no sanitization is applied.
-          example: "---\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: 18\n---\n\nBright, blueberry, mid-body.\n"
+          example: "---\ndate: 2026-04-25\nicon: ☕\nbean: \"[[Ethiopia Guji]]\"\ndose_g: \"18\"\n---\n\nBright, blueberry, mid-body.\n"
         transport_mode:
           type: string
           enum: [API, FileSystem]
@@ -1654,15 +1743,14 @@ components:
         - vault_path
         - first_field
       description: >
-        A single recorded capture event. Legacy entries (pre-Step-C) may have
-        `id: null` — the API returns only entries that have an id, but callers
-        should handle null defensively.
+        A single recorded capture event. Legacy entries (pre-Step-C) have no
+        stored id; the API returns them with `id: ""`.
       properties:
         id:
-          type: ["string", "null"]
+          type: string
           description: >
             Opaque identifier. Format: `<YYYYMMDDTHHmmSSsss>-<counter>-<module_key>`.
-            Null on legacy entries that predate the API.
+            Empty string on legacy entries that predate the API.
           example: "20260425T183042000-0-coffee"
         module_key:
           type: string
@@ -1750,7 +1838,7 @@ components:
             - type: "null"
           description: >
             Dashboard statistics. Present only when neither `since` nor `until`
-            query parameters are supplied. Null or absent on windowed queries.
+            query parameters are supplied. Omitted on windowed queries.
         has_more:
           type: boolean
           description: >
@@ -1885,19 +1973,12 @@ components:
             - internal_error
             - idempotency_replay_in_flight
             - read_error
-            - captured_at_out_of_range
-            - unknown_module
-            - not_dynamic_select
-            - missing_source
-            - autocreate_failed
-            - auto_create_input_required
           description: >
-            Machine-readable error slug. `unknown_module`, `not_dynamic_select`,
-            and `missing_source` are logical sub-variants of `not_found` /
-            `validation_failed` that may appear in `details` objects for richer
-            client-side error handling. `autocreate_failed` and
-            `auto_create_input_required` appear in warning/details payloads on
-            submit. See §5.2 of the contract for the full table.
+            Machine-readable error slug. Sub-codes of `validation_failed`
+            appear in `details.code` instead: `captured_at_out_of_range` and
+            `auto_create_input_required` on submit, `unknown_module` on
+            `/history`, `reserved_name` on preset upsert. See §5.2 of the
+            contract for the full table.
           example: validation_failed
         message:
           type: string

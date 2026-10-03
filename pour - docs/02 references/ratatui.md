@@ -6,7 +6,7 @@ tags:
 aliases:
   - ratatui
 date created: Tuesday, March 31st 2026, 12:14:35 am
-date modified: Wednesday, April 29th 2026, 5:31:54 pm
+date modified: Saturday, October 3rd 2026, 6:47:29 am
 ---
 
 # Ratatui - TUI Framework Reference
@@ -90,7 +90,7 @@ let block = Block::default()
     .border_style(Style::default().fg(Color::Cyan));
 ```
 
-### Paragraph (text display)
+### Paragraph (Text Display)
 
 ```rust
 let text = Paragraph::new("Hello world")
@@ -99,7 +99,7 @@ let text = Paragraph::new("Hello world")
     .wrap(Wrap { trim: true });
 ```
 
-### List (selectable items)
+### List (Selectable Items)
 
 ```rust
 let items = vec![
