@@ -15,89 +15,83 @@ use crate::app::App;
 use crate::priors::ResolvedPanel;
 use crate::visibility::visible_field_indices;
 
-/// Minimum form height (rows) preserved before a stacked priors panel is given
-/// any space. Below this, the panel is not rendered stacked (Architect #3).
-const MIN_FORM_HEIGHT: u16 = 9;
+/// Where and how the priors panel goes this frame.
+enum PanelRender<'a> {
+    /// The column panel to the right of the form.
+    Columns {
+        area: Rect,
+        panel: &'a ResolvedPanel,
+        priors: usize,
+        summary: bool,
+    },
+    /// A one-line hint on the bottom row: collapsed, too narrow, or empty.
+    Hint { area: Rect, text: String },
+}
 
 /// Split the full form area into (form_area, optional priors render).
 ///
-/// - No panel or width unavailable → full area to the form.
-/// - Wide terminal → panel on the right ([`panel::PANEL_WIDTH`]).
-/// - Narrow terminal → panel stacked below, collapsing to a one-line hint when
-///   the height budget is too small (Architect decision #3).
-///
-/// Returns the form area plus an optional `(Rect, collapsed)` describing where
-/// and how to paint the panel after the form renders.
+/// - Not resolved yet → full area to the form, nothing drawn.
+/// - Empty state, `Ctrl+R` collapsed, or too narrow for one column → a
+///   one-line hint on the bottom row.
+/// - Otherwise → the column panel on the right, as wide as [`panel::fit`]
+///   allows. The panel never moves below the form, so its rows stay aligned.
 fn split_for_panel(
     area: Rect,
     priors: Option<&ResolvedPanel>,
     collapsed: bool,
-) -> (Rect, Option<(Rect, bool, &ResolvedPanel)>) {
+) -> (Rect, Option<PanelRender<'_>>) {
     let Some(panel) = priors else {
         return (area, None);
     };
 
-    // Collapsed by user (Ctrl+R): reserve a single hint row at the bottom.
-    if collapsed {
-        if area.height <= MIN_FORM_HEIGHT {
-            return (area, None);
+    let hint_text = if panel.is_empty() {
+        panel::empty_hint()
+    } else if collapsed {
+        panel::collapsed_hint(panel)
+    } else {
+        match panel::fit(area.width, panel) {
+            panel::Fit::Columns { priors, summary } => {
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Min(1),
+                        Constraint::Length(panel::panel_width(priors + usize::from(summary))),
+                    ])
+                    .split(area);
+                return (
+                    chunks[0],
+                    Some(PanelRender::Columns {
+                        area: chunks[1],
+                        panel,
+                        priors,
+                        summary,
+                    }),
+                );
+            }
+            panel::Fit::Hint => panel::narrow_hint(panel),
         }
-        let form = Rect {
-            height: area.height - 1,
-            ..area
-        };
-        let hint = Rect {
-            y: area.y + area.height - 1,
-            height: 1,
-            ..area
-        };
-        return (form, Some((hint, true, panel)));
-    }
+    };
 
-    // Side-by-side when the terminal is wide enough.
-    if area.width >= panel::SIDE_BY_SIDE_MIN_WIDTH {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(1), Constraint::Length(panel::PANEL_WIDTH)])
-            .split(area);
-        return (chunks[0], Some((chunks[1], false, panel)));
+    // One hint row at the bottom, when there is a row to spare.
+    if area.height < 2 {
+        return (area, None);
     }
-
-    // Stacked below: give the panel what's left after the form minimum, up to a
-    // reasonable cap. Collapse to a one-line hint if the budget is too small.
-    let available = area.height.saturating_sub(MIN_FORM_HEIGHT);
-    if available < panel::STACKED_MIN_ROWS {
-        // Not enough room for a box — collapse to a single hint row (if we can
-        // spare even one row without clipping the form).
-        if area.height <= MIN_FORM_HEIGHT {
-            return (area, None);
-        }
-        let form = Rect {
-            height: area.height - 1,
-            ..area
-        };
-        let hint = Rect {
-            y: area.y + area.height - 1,
-            height: 1,
-            ..area
-        };
-        return (form, Some((hint, true, panel)));
-    }
-
-    // Cap the stacked panel so it never dominates the screen.
-    let panel_h = available
-        .min(panel.rows.len() as u16 + 5)
-        .max(panel::STACKED_MIN_ROWS);
     let form = Rect {
-        height: area.height - panel_h,
+        height: area.height - 1,
         ..area
     };
-    let panel_area = Rect {
-        y: area.y + form.height,
-        height: panel_h,
+    let hint = Rect {
+        y: area.y + area.height - 1,
+        height: 1,
         ..area
     };
-    (form, Some((panel_area, false, panel)))
+    (
+        form,
+        Some(PanelRender::Hint {
+            area: hint,
+            text: hint_text,
+        }),
+    )
 }
 
 /// Render the form view for the currently selected module.
@@ -117,7 +111,7 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     let full_area = frame.area();
 
-    // Carve out the read-only priors panel (right / stacked-below / collapsed).
+    // Carve out the read-only priors panel (right, or a one-line hint).
     // Never rendered while an overlay is active, to avoid visual clutter behind
     // the modal.
     let overlay_active = form_state.preset_picker.is_some()
@@ -269,16 +263,40 @@ pub fn render(app: &App, frame: &mut Frame) {
     frame.render_widget(footer, chunks[2]);
 
     // Fields after the footer: a textarea popout near the bottom of the form
-    // runs over the footer and has to paint on top of it.
-    fields::render_fields(frame, chunks[1], &module.fields, form_state, has_picker);
+    // runs over the footer and has to paint on top of it. The returned item
+    // heights line the priors panel's rows up with the form.
+    let item_heights =
+        fields::render_fields(frame, chunks[1], &module.fields, form_state, has_picker);
 
-    // Read-only priors panel: right, stacked-below, or a one-line hint.
-    if let Some((panel_area, collapsed, panel)) = panel_render {
-        if collapsed {
-            panel::render_collapsed(frame, panel_area, panel);
-        } else {
-            panel::render_panel(frame, panel_area, panel);
+    // Read-only priors panel: columns on the right, or a one-line hint.
+    match panel_render {
+        Some(PanelRender::Columns {
+            area: panel_area,
+            panel,
+            priors,
+            summary,
+        }) => {
+            let visible: Vec<&crate::config::FieldConfig> =
+                visible_field_indices(&module.fields, &form_state.field_values)
+                    .into_iter()
+                    .filter_map(|ci| module.fields.get(ci))
+                    .collect();
+            let rows =
+                panel::RowLayout::new(chunks[1], &item_heights, &visible, form_state.active_field);
+            panel::render_panel(
+                frame,
+                panel_area,
+                panel,
+                (priors, summary),
+                &rows,
+                &form_state.field_values,
+            );
         }
+        Some(PanelRender::Hint {
+            area: hint_area,
+            text,
+        }) => panel::render_hint(frame, hint_area, &text),
+        None => {}
     }
 
     // Preset picker overlay: drilldown tree modal

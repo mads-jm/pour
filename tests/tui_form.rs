@@ -2508,3 +2508,504 @@ fn multi_char_emoji_scroll_by_the_cells_they_take() {
         row(&shot.buf, c.y)
     );
 }
+
+// ── Priors panel: reference columns aligned to the form (L1.5) ──
+//
+// The panel draws one column per prior to the right of the form, and each
+// visible field's panel row must sit on the same screen line as the field.
+// Two-line form items (a preset with a description, a callout textarea) push
+// later fields down, and the panel has to follow.
+
+const PRIORS_FORM_TOML: &str = r####"
+[vault]
+base_path = "/tmp/vault"
+
+[modules.brew]
+mode = "create"
+path = "Brews/{date}.md"
+
+[[modules.brew.fields]]
+name = "method"
+field_type = "static_select"
+prompt = "Method"
+options = ["Pour Over", "Espresso"]
+
+[[modules.brew.fields]]
+name = "pressure_bar"
+field_type = "number"
+prompt = "Pressure"
+show_when = { field = "method", equals = "Espresso" }
+
+[[modules.brew.fields]]
+name = "notes"
+field_type = "textarea"
+prompt = "Notes"
+callout = "quote"
+
+[[modules.brew.fields]]
+name = "yield_g"
+field_type = "number"
+prompt = "Yield"
+
+[[modules.brew.fields]]
+name = "dose_g"
+field_type = "number"
+prompt = "Dose"
+default = "18"
+
+[[modules.brew.fields]]
+name = "recipe"
+field_type = "composite_array"
+prompt = "Recipe"
+
+[[modules.brew.fields.sub_fields]]
+name = "water_g"
+field_type = "number"
+prompt = "Water"
+
+[[modules.brew.fields]]
+name = "bean"
+field_type = "text"
+prompt = "Bean"
+"####;
+
+/// Title bar rows above the field list (text, blank, border).
+const TITLE_ROWS: usize = 3;
+
+/// A form over `PRIORS_FORM_TOML` with a selected preset that has a
+/// description, so the preset row takes two lines.
+fn priors_app() -> App {
+    let config = Config::from_toml(PRIORS_FORM_TOML).expect("parse");
+    let transport = Transport::Fs(FsWriter::new(std::path::PathBuf::from("/tmp/vault")));
+    let mut app = App::new(
+        config,
+        transport,
+        History::load_from(std::path::PathBuf::from("/tmp/test-priors-history.json")),
+        Presets::empty(),
+        FieldPresets::empty(),
+    );
+    app.selected_module = app.module_keys.iter().position(|k| k == "brew").unwrap();
+    app.form_state = app.init_form("brew");
+    app.screen = pour::app::Screen::Form;
+    let fs = app.form_state.as_mut().unwrap();
+    fs.preset_names = vec!["Morning".to_string()];
+    fs.preset_descriptions = vec![Some("light and bright".to_string())];
+    fs.selected_preset_name = Some("Morning".to_string());
+    app
+}
+
+/// A prior capture with scalar frontmatter, plus a `recipe` list so the
+/// composite row has something it must not show.
+fn prior(recency: i64, pairs: &[(&str, &str)]) -> pour::priors::Capture {
+    let mut fm = pour::data::frontmatter_read::Frontmatter::new();
+    for (k, v) in pairs {
+        fm.insert(
+            k.to_string(),
+            pour::data::frontmatter_read::FrontmatterValue::Scalar(v.to_string()),
+        );
+    }
+    fm.insert(
+        "recipe".to_string(),
+        pour::data::frontmatter_read::FrontmatterValue::List(vec!["bloom".to_string()]),
+    );
+    pour::priors::Capture {
+        frontmatter: fm,
+        recency,
+        path: format!("Brews/{recency}.md"),
+    }
+}
+
+/// Resolve the panel for `app`'s current form against three priors with
+/// distinct yields (newest first: 270, 250, 280) and doses (18, 16, 17).
+fn resolve_three(app: &mut App) {
+    let module = app.config.modules["brew"].clone();
+    let plan = pour::priors::PriorsPlan::build(&module);
+    let corpus = vec![
+        prior(
+            3,
+            &[
+                ("method", "Pour Over"),
+                ("yield_g", "270"),
+                ("dose_g", "18"),
+            ],
+        ),
+        prior(
+            2,
+            &[
+                ("method", "Pour Over"),
+                ("yield_g", "250"),
+                ("dose_g", "16"),
+            ],
+        ),
+        prior(
+            1,
+            &[
+                ("method", "Pour Over"),
+                ("yield_g", "280"),
+                ("dose_g", "17"),
+            ],
+        ),
+    ];
+    let fs = app.form_state.as_mut().unwrap();
+    fs.priors_panel = Some(pour::priors::resolve(&plan, &corpus, &fs.field_values));
+}
+
+/// Render the form at `width` × 24 and return each screen row as a string.
+fn screen_rows(app: &App, width: u16) -> Vec<String> {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, 24)).expect("terminal");
+    terminal
+        .draw(|frame| pour::tui::form::render(app, frame))
+        .expect("render must not panic");
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect()
+        })
+        .collect()
+}
+
+/// The part of a row right of column `x`.
+fn right_of(row: &str, x: usize) -> String {
+    row.chars().skip(x).collect()
+}
+
+fn row_with(rows: &[String], needle: &str) -> usize {
+    rows.iter()
+        .position(|r| r.contains(needle))
+        .unwrap_or_else(|| panic!("no row contains {needle:?}:\n{}", rows.join("\n")))
+}
+
+#[test]
+fn a_panel_cell_sits_on_its_fields_row_below_two_line_items() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+    let rows = screen_rows(&app, 100);
+
+    // Both two-line items really render as two lines.
+    assert!(rows.iter().any(|r| r.contains("light and bright")));
+    assert!(rows.iter().any(|r| r.contains("[!quote]")));
+
+    // Preset (2 lines) + Method (1) + Notes callout (2) put Yield at row 5 of
+    // the field list.
+    let yield_row = row_with(&rows, "Yield");
+    assert_eq!(yield_row, TITLE_ROWS + 5);
+
+    // At 100 columns all three priors fit; the panel starts 34 cells in from
+    // the right edge.
+    let panel = right_of(&rows[yield_row], 100 - 34);
+    for v in ["270", "250", "280"] {
+        assert!(panel.contains(v), "yield {v} on the Yield row: {panel:?}");
+    }
+    // ...and on no other row.
+    let elsewhere: Vec<usize> = (0..rows.len())
+        .filter(|&y| y != yield_row && right_of(&rows[y], 66).contains("270"))
+        .collect();
+    assert!(elsewhere.is_empty(), "270 also on rows {elsewhere:?}");
+
+    // Composite rows stay blank even though every prior has recipe entries,
+    // and the textarea row is blank because `show` does not list it.
+    for label in ["Recipe", "Notes"] {
+        let y = row_with(&rows, label);
+        let cells = right_of(&rows[y], 66);
+        let inner: String = cells.chars().skip(1).take(32).collect();
+        assert!(inner.trim().is_empty(), "{label} row: {cells:?}");
+    }
+}
+
+#[test]
+fn panel_rows_follow_the_visible_set_when_a_gate_changes() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+
+    // Method empty: Pressure is hidden, Yield sits where the two-line items
+    // put it.
+    let rows = screen_rows(&app, 100);
+    assert!(!rows.iter().any(|r| r.contains("Pressure")));
+    let yield_row = row_with(&rows, "Yield");
+    assert_eq!(yield_row, TITLE_ROWS + 5);
+    assert!(right_of(&rows[yield_row], 66).contains("270"));
+
+    // Switch to Espresso and re-resolve: Pressure appears under Method and
+    // pushes every later row, panel included, down one line.
+    let module = app.config.modules["brew"].clone();
+    let plan = pour::priors::PriorsPlan::build(&module);
+    let corpus = vec![
+        prior(
+            5,
+            &[
+                ("method", "Espresso"),
+                ("pressure_bar", "9"),
+                ("yield_g", "36"),
+            ],
+        ),
+        prior(
+            4,
+            &[
+                ("method", "Espresso"),
+                ("pressure_bar", "6"),
+                ("yield_g", "40"),
+            ],
+        ),
+    ];
+    let fs = app.form_state.as_mut().unwrap();
+    fs.field_values
+        .insert("method".to_string(), "Espresso".to_string());
+    fs.priors_panel = Some(pour::priors::resolve(&plan, &corpus, &fs.field_values));
+
+    let rows = screen_rows(&app, 100);
+    // Two priors: the panel is 24 cells wide at the right edge.
+    let panel_x = 100 - 24;
+    let cells = |y: usize| -> Vec<String> {
+        right_of(&rows[y], panel_x)
+            .split_whitespace()
+            .map(str::to_string)
+            .collect()
+    };
+
+    let pressure_row = row_with(&rows, "Pressure");
+    assert_eq!(pressure_row, TITLE_ROWS + 3, "preset (2) + Method (1)");
+    assert_eq!(cells(pressure_row), vec!["│", "9", "6", "│"]);
+
+    let yield_row = row_with(&rows, "Yield");
+    assert_eq!(yield_row, TITLE_ROWS + 6, "one row lower than before");
+    assert_eq!(cells(yield_row), vec!["│", "36", "40", "│"]);
+}
+
+#[test]
+fn cells_elide_a_prefix_shared_across_the_row() {
+    let mut app = priors_app();
+    let module = app.config.modules["brew"].clone();
+    let plan = pour::priors::PriorsPlan::build(&module);
+    let resolve_beans = |app: &mut App, beans: &[&str]| {
+        let corpus: Vec<_> = beans
+            .iter()
+            .enumerate()
+            .map(|(i, b)| prior(10 - i as i64, &[("bean", b)]))
+            .collect();
+        let fs = app.form_state.as_mut().unwrap();
+        fs.priors_panel = Some(pour::priors::resolve(&plan, &corpus, &fs.field_values));
+    };
+    let bean_cells = |app: &App| -> Vec<String> {
+        let rows = screen_rows(app, 100);
+        let row = right_of(&rows[row_with(&rows, "Bean")], 66);
+        // Inside the borders, three 10-cell columns after the 2-cell gutter.
+        let inner: Vec<char> = row.chars().skip(1 + 2).take(30).collect();
+        inner
+            .chunks(10)
+            .map(|c| c.iter().collect::<String>().trim().to_string())
+            .collect()
+    };
+
+    // Every bean starts with the same roaster prefix: the cells show what
+    // tells them apart, not `YesPlz -…` three times.
+    resolve_beans(
+        &mut app,
+        &[
+            "YesPlz - Homestar",
+            "[[YesPlz - SOE Ethiopia Yirgacheffe]]",
+            "YesPlz - Gesha Village",
+        ],
+    );
+    assert_eq!(
+        bean_cells(&app),
+        vec!["…Homestar", "…SOE Eth…", "…Gesha V…"]
+    );
+
+    // `·` is still decided on the full value. The form's own value counts as
+    // a neighbor, so the remaining cells keep their elision.
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert("bean".to_string(), "YesPlz - Homestar".to_string());
+    assert_eq!(bean_cells(&app), vec!["·", "…SOE Eth…", "…Gesha V…"]);
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert("bean".to_string(), String::new());
+
+    // A prefix that ends mid-word is not elided, and a value that fits is
+    // left alone.
+    resolve_beans(&mut app, &["Ethiopia Guji", "Ethiopian Sidamo", "Kenya"]);
+    assert_eq!(bean_cells(&app), vec!["Ethiopia…", "Ethiopia…", "Kenya"]);
+}
+
+#[test]
+fn a_narrow_terminal_drops_columns_instead_of_stacking_the_panel() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+
+    // 84 cells: two columns fit beside the 60-cell form.
+    let rows = screen_rows(&app, 84);
+    let yield_row = row_with(&rows, "Yield");
+    let panel = right_of(&rows[yield_row], 84 - 24);
+    assert!(panel.contains("270") && panel.contains("250"), "{panel:?}");
+    assert!(!panel.contains("280"), "third column dropped: {panel:?}");
+    assert!(
+        !rows.iter().any(|r| r.contains("280")),
+        "the dropped prior is not stacked anywhere"
+    );
+
+    // 74 cells: one column.
+    let rows = screen_rows(&app, 74);
+    let panel = right_of(&rows[row_with(&rows, "Yield")], 74 - 14);
+    assert!(panel.contains("270") && !panel.contains("250"), "{panel:?}");
+
+    // 73 cells: below one column the panel is a one-line hint on the last row.
+    let rows = screen_rows(&app, 73);
+    assert!(!rows.iter().any(|r| r.contains("270")));
+    let last = rows.last().unwrap();
+    assert!(last.contains("priors: similar · 3 priors"), "{last:?}");
+    assert!(
+        last.contains("— widen to see them"),
+        "the whole hint fits at 73 cells: {last:?}"
+    );
+}
+
+#[test]
+fn a_default_filled_value_renders_as_same_and_follows_edits() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+    assert_eq!(
+        app.form_state.as_ref().unwrap().field_values["dose_g"],
+        "18",
+        "dose_g is filled from its config default"
+    );
+
+    let rows = screen_rows(&app, 100);
+    let panel = right_of(&rows[row_with(&rows, "Dose")], 66);
+    let cells: Vec<&str> = panel.split_whitespace().collect();
+    // Border, then one cell per prior: 18 matches the default, 16 and 17 don't.
+    assert_eq!(cells, vec!["│", "·", "16", "17", "│"], "{panel:?}");
+
+    // Typing a dose moves the marks on the next frame, with no re-resolve.
+    app.form_state
+        .as_mut()
+        .unwrap()
+        .field_values
+        .insert("dose_g".to_string(), "16".to_string());
+    let rows = screen_rows(&app, 100);
+    let panel = right_of(&rows[row_with(&rows, "Dose")], 66);
+    let cells: Vec<&str> = panel.split_whitespace().collect();
+    assert_eq!(cells, vec!["│", "18", "·", "17", "│"], "{panel:?}");
+}
+
+#[test]
+fn the_active_fields_row_is_marked_across_the_panel() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+    // active_field 3 = Yield (preset 0, Method 1, Notes 2).
+    app.form_state.as_mut().unwrap().active_field = 3;
+    let rows = screen_rows(&app, 100);
+    let panel = right_of(&rows[row_with(&rows, "Yield")], 66);
+    assert!(panel.starts_with("│▸"), "{panel:?}");
+
+    // On the preset row no panel row is marked.
+    app.form_state.as_mut().unwrap().active_field = 0;
+    let rows = screen_rows(&app, 100);
+    assert!(!rows.iter().any(|r| right_of(r, 66).contains('▸')));
+}
+
+#[test]
+fn no_surviving_prior_shows_a_one_line_empty_state() {
+    let mut app = priors_app();
+    let module = app.config.modules["brew"].clone();
+    let plan = pour::priors::PriorsPlan::build(&module);
+    let fs = app.form_state.as_mut().unwrap();
+    fs.priors_panel = Some(pour::priors::resolve(&plan, &[], &fs.field_values));
+
+    let rows = screen_rows(&app, 100);
+    let last = rows.last().unwrap();
+    assert!(last.contains("no prior captures match"), "{last:?}");
+}
+
+#[test]
+fn ctrl_r_collapse_names_the_panel_state() {
+    let mut app = priors_app();
+    resolve_three(&mut app);
+    app.form_state.as_mut().unwrap().priors_collapsed = true;
+
+    let rows = screen_rows(&app, 100);
+    assert!(!rows.iter().any(|r| r.contains("270")));
+    let last = rows.last().unwrap();
+    assert!(
+        last.contains("similar · 3 priors — ^R to expand"),
+        "{last:?}"
+    );
+    assert!(!last.contains("repeat:"));
+}
+
+#[test]
+fn rank_by_values_head_the_columns_and_ages_close_them() {
+    let mut app = priors_app();
+    let module = app.config.modules["brew"].clone();
+    let mut plan = pour::priors::PriorsPlan::build(&module);
+    plan.rank_by = pour::priors::plan::RankBy::Field {
+        field: "yield_g".to_string(),
+        descending: true,
+    };
+    let day = 24 * 60 * 60 * 1000;
+    let now = chrono::Utc::now().timestamp_millis();
+    let corpus = vec![
+        prior(now - 3 * day, &[("yield_g", "270")]),
+        prior(now - 8 * day, &[("yield_g", "280")]),
+    ];
+    let fs = app.form_state.as_mut().unwrap();
+    fs.priors_panel = Some(pour::priors::resolve(&plan, &corpus, &fs.field_values));
+
+    let rows = screen_rows(&app, 100);
+    // Two columns are too narrow for the full header; the rank label goes
+    // rather than being cut mid-word.
+    assert!(rows[0].contains("┌ similar ─"), "{:?}", rows[0]);
+
+    // Header: the line above the first field (the preset description line).
+    let header = right_of(&rows[row_with(&rows, "Method") - 1], 66);
+    assert_eq!(
+        header.split_whitespace().collect::<Vec<_>>(),
+        vec!["│", "280", "270", "│"]
+    );
+    // Footer: the spacer line under the last field.
+    let footer = right_of(&rows[row_with(&rows, "Bean") + 1], 66);
+    assert_eq!(
+        footer.split_whitespace().collect::<Vec<_>>(),
+        vec!["│", "1w", "3d", "│"]
+    );
+}
+
+#[test]
+fn the_summary_column_shows_when_it_fits_and_drops_first() {
+    let mut app = priors_app();
+    let module = app.config.modules["brew"].clone();
+    let mut plan = pour::priors::PriorsPlan::build(&module);
+    plan.summary = true;
+    let corpus = vec![
+        prior(3, &[("yield_g", "270")]),
+        prior(2, &[("yield_g", "250")]),
+        prior(1, &[("yield_g", "280")]),
+    ];
+    let fs = app.form_state.as_mut().unwrap();
+    fs.priors_panel = Some(pour::priors::resolve(&plan, &corpus, &fs.field_values));
+
+    // 104 cells: three priors plus the summary column (44 wide).
+    let rows = screen_rows(&app, 104);
+    let yield_cells = right_of(&rows[row_with(&rows, "Yield")], 104 - 44);
+    assert_eq!(
+        yield_cells.split_whitespace().collect::<Vec<_>>(),
+        vec!["│", "270", "250", "280", "270", "│"],
+        "median of 270/250/280 in the last column"
+    );
+    assert!(rows.iter().any(|r| r.contains("median")));
+    // Non-number rows stay blank in the summary column.
+    let method = right_of(&rows[row_with(&rows, "Method")], 104 - 44);
+    assert_eq!(method.split_whitespace().count(), 2, "{method:?}");
+
+    // 100 cells: the summary column is the first to go.
+    let rows = screen_rows(&app, 100);
+    assert!(!rows.iter().any(|r| r.contains("median")));
+    let yield_cells = right_of(&rows[row_with(&rows, "Yield")], 66);
+    assert_eq!(yield_cells.split_whitespace().count(), 5);
+}

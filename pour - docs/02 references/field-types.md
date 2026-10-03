@@ -43,33 +43,36 @@ Every module defined in `[modules.<name>]` supports these keys:
 <a id="priors-block"></a>
 ### `[modules.<name>.priors]` block
 
-Declares a read-only review panel that shows the best-relevant prior captures beside the capture form (see [[pour-review-priors]]). **All keys are optional** — omitting the whole block yields a zero-config default. The block never writes, never blocks submit, and only resolves at form-open and on `match_on`-field change.
+Declares a read-only review panel that shows your most similar prior captures beside the capture form, one column per prior, with each row on the same line as its form field (see [[pour-review-priors]]). **All keys are optional.** Omitting the whole block yields a zero-config default. The panel never writes, never blocks submit, and resolves only at form-open and when a `match_on` field or a gate field changes.
+
+Before scoring, the panel applies a **hard filter** that needs no config. Any field that another field's `show_when` names is a gate. When the form has a value for a gate, priors with a different value, or no value, for it are dropped. On coffee that keeps espresso brews off a pour-over form. Values in fields that `show_when` currently hides are ignored, as they are at submit, so a stale `brewer` left over from Pour Over doesn't affect an Espresso form.
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `match_on` | array | no | Ordered list (most → least specific) of keys defining "similar". Widen by dropping the most-specific (front) key when a tier yields no matches (the new-bag cascade). Each entry is a **bare string** (equality, or wikilink when the referenced field has `wikilink = true`) or an **object** `{ field, mode }`. In **L1** only `mode = "equality"` / `"wikilink"` are accepted; `"overlap"` / `"window"` are reserved for L2 and rejected at config-load. |
-| `rank_by` | string | no | `"<field> desc"` / `"<field> asc"` (sort by a field; L1), `"recent"` (newest first), or `"none"` (scan order). The `"<field> max"` / `"<field> min"` single-extreme forms are reserved for a later phase and rejected in L1. Absent → `"recent"`. |
-| `show` | array | no | Which frontmatter fields render as columns and get summarized. Each entry is a **bare string** (default aggregation) or an **object** `{ field, agg }`. `agg` ∈ `median` (default), `mean`, `max`, `min`, `latest`. Absent → numeric + select fields in config order, capped at 4. |
-| `limit` | integer | no | Max rows displayed. Must be `> 0`. Defaults to `5`. |
+| `match_on` | array | no | Ordered list (most → least important) of fields that define "similar". Each prior scores one point per field that agrees with the form's current value. Fields left empty on the form don't count. Equal scores go to the prior that agrees on the earlier field. Each entry is a **bare string** (equality, or wikilink when the referenced field has `wikilink = true`) or an **object** `{ field, mode }`. Only `mode = "equality"` / `"wikilink"` are accepted; `"overlap"` / `"window"` are reserved for L2 and rejected at config-load. |
+| `rank_by` | string | no | Tie-breaker between equally similar priors: `"<field> desc"` / `"<field> asc"`, `"recent"` (newest first), or `"none"` (scan order). A prior missing the `rank_by` field sorts after the ones that have it, and its column renders dimmed. The `"<field> max"` / `"<field> min"` forms are reserved and rejected. Absent → `"recent"`. Recency always breaks the last tie, except under `"none"`. |
+| `show` | array | no | Which fields get a cell in each prior's column. Each entry is a **bare string** or an **object** `{ field, agg }`. `agg` ∈ `median` (default), `mean`, `max`, `min`, `latest`, and only matters for the summary column. Absent → every field except `textarea` and `composite_array`. Rows for fields outside `show` stay blank. `composite_array` rows are always blank: presets are how you reuse recipe stages. |
+| `limit` | integer | no | How many priors to show, one column each. Must be `> 0`. Defaults to `3`. |
+| `summary` | bool | no | `true` adds one column on the far right that aggregates each `number` row (per its `agg`, median by default) over the displayed priors. Other rows stay blank. The header names the aggregation, or reads `summary` when the rows use different ones. Defaults to `false`, because an average across brews reads like a recipe nobody brewed. |
 
 All `match_on` / `rank_by` / `show` field names must reference fields that exist on the module.
 
-**Zero-config default** (no `[priors]` block): match on the module's first `wikilink`/select field if one exists (else recent-N of the same module); `rank_by = "recent"`; `show` = numeric + select fields capped at 4; `limit = 5`.
+**Zero-config default** (no `[priors]` block): `match_on` is every `wikilink`/select field in config field order; `rank_by = "recent"`; `show` = every field except `textarea` and `composite_array`; `limit = 3`; `summary = false`.
 
 ```toml
 [modules.coffee.priors]
-match_on = ["bean", "roaster", "method"]   # ordered: most → least specific
-rank_by  = "rating desc"                     # best shots first
-show     = ["dose_g", "yield_g", "time_s"]   # columns + numeric (median) summary
-limit    = 5
+match_on = ["bean", "brewer", "grinder", "intent"]  # similarity, most → least important
+rank_by  = "rating desc"                             # tie-breaker only
+limit    = 3                                         # one column per prior
+summary  = true                                      # optional median column
 
-# object forms: explicit wikilink mode and a mean-aggregated column
+# object forms: explicit wikilink mode and a mean-aggregated summary row
 [modules.brew.priors]
 match_on = [{ field = "roaster", mode = "wikilink" }]
-show     = [{ field = "water_temp_c", agg = "mean" }]
+show     = ["dose_g", { field = "water_temp_c", agg = "mean" }]
 ```
 
-**TUI:** the panel renders to the right of the form on wide terminals (≥ 100 cols), stacks below on narrower ones, and collapses to a one-line summary hint on short terminals or via `Ctrl+R`. It auto-appears when the matched tier is non-empty and shows a one-line empty state otherwise.
+**TUI:** the panel sits to the right of the form. Each cell holds one prior's value for the field on that line. `·` means the value equals what the form holds now, including a value filled from a field's `default`, and the marks follow your edits as you type. A differing value is highlighted. The header reads `similar`, or `no close match` when you've filled at least one `match_on` field and no shown prior agrees on any of them, plus the `rank_by` label when it names a field. Column headers show each prior's `rank_by` value and the footer row shows each prior's age (`3d`, `1w`). The active field's row is highlighted across the panel. The form keeps at least 60 columns, so the panel drops columns as the terminal narrows: with `limit = 3`, 3 columns from 94 columns wide, 2 from 84, 1 from 74. The summary column is the first to go. Below 74 the panel becomes a one-line hint on the bottom row, and `Ctrl+R` collapses it to the same hint. When no prior survives the hard filter, that row shows a one-line empty state.
 
 ## Field Config Keys
 

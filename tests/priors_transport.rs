@@ -194,17 +194,89 @@ async fn fs_scan_feeds_resolver_end_to_end() {
     let module = coffee_module();
     let plan = PriorsPlan::build(&module);
 
-    // New bag → cascade widens to roaster+method; wikilink match compares
-    // the bare "Onyx" against the stored "[[Onyx]]".
+    // New bag → both priors still agree on roaster + method; the wikilink
+    // match compares the bare "Onyx" against the stored "[[Onyx]]".
     let mut mv = HashMap::new();
     mv.insert("bean".to_string(), "New".to_string());
     mv.insert("roaster".to_string(), "Onyx".to_string());
     mv.insert("method".to_string(), "V60".to_string());
 
-    let panel = resolve(&plan, &corpus, &mv).expect("roaster+method tier matches");
-    assert_eq!(panel.tier_fields, vec!["roaster", "method"]);
-    assert_eq!(panel.rows.len(), 2);
-    // Median dose over qualifying {15, 17} = 16.
-    let summary = panel.summary.unwrap();
-    assert_eq!(summary.cells[0].1, "16");
+    let panel = resolve(&plan, &corpus, &mv);
+    assert_eq!(panel.columns.len(), 2);
+    assert!(panel.columns.iter().all(|c| c.score == 2));
+    // Equal score → rating desc: the 5-rated brew (dose 15) comes first.
+    let doses: Vec<Option<&str>> = panel
+        .columns
+        .iter()
+        .map(|c| panel.cell(c, "dose_g"))
+        .collect();
+    assert_eq!(doses, vec![Some("15"), Some("17")]);
+}
+
+/// The TUI's entry point drops hidden fields before resolving: a stale
+/// `brewer` left behind by switching to Espresso neither gates, scores, nor
+/// turns the header into `no close match`.
+#[tokio::test]
+async fn resolve_panel_ignores_values_of_hidden_fields() {
+    use pour::priors::resolve_panel;
+
+    let toml = r#"
+[vault]
+base_path = "/tmp"
+
+[modules.coffee]
+mode = "create"
+path = "Coffee/{date}.md"
+
+[modules.coffee.priors]
+match_on = ["bean", "brewer"]
+
+[[modules.coffee.fields]]
+name = "brew_method"
+field_type = "static_select"
+prompt = "Brew method"
+options = ["Pour Over", "Espresso"]
+
+[[modules.coffee.fields]]
+name = "brewer"
+field_type = "text"
+prompt = "Brewer"
+show_when = { field = "brew_method", equals = "Pour Over" }
+
+[[modules.coffee.fields]]
+name = "bean"
+field_type = "text"
+prompt = "Bean"
+"#;
+    let module = Config::from_toml(toml)
+        .unwrap()
+        .modules
+        .get("coffee")
+        .unwrap()
+        .clone();
+
+    let dir = tempfile::tempdir().unwrap();
+    let coffee_dir = dir.path().join("Coffee");
+    std::fs::create_dir_all(&coffee_dir).unwrap();
+    std::fs::write(
+        coffee_dir.join("shot1.md"),
+        "---\nbrew_method: Espresso\nbean: Old\n---\n",
+    )
+    .unwrap();
+    std::fs::write(
+        coffee_dir.join("shot2.md"),
+        "---\nbrew_method: Espresso\nbean: Other\n---\n",
+    )
+    .unwrap();
+    let transport = Transport::Fs(FsWriter::new(PathBuf::from(dir.path())));
+
+    let mut form = HashMap::new();
+    form.insert("brew_method".to_string(), "Espresso".to_string());
+    form.insert("brewer".to_string(), "V60".to_string());
+
+    let panel = resolve_panel(&transport, &module, &form).await;
+    assert_eq!(panel.columns.len(), 2);
+    assert!(panel.columns.iter().all(|c| c.score == 0));
+    assert!(!panel.no_close_match, "nothing visible was filled to miss");
+    assert_eq!(panel.header(), "similar");
 }

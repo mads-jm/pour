@@ -225,3 +225,54 @@ rank_by = "none"
     )
     .expect("none valid");
 }
+
+// ── L1.5 keys and defaults ──
+
+#[test]
+fn limit_defaults_to_three() {
+    let config = config_with_priors(
+        r#"
+[modules.coffee.priors]
+match_on = ["bean"]
+"#,
+    )
+    .expect("valid block");
+    let module = config.modules.get("coffee").unwrap();
+    assert_eq!(module.priors.as_ref().unwrap().limit, None);
+    assert_eq!(pour::priors::PriorsPlan::build(module).limit, 3);
+}
+
+#[test]
+fn summary_true_parses_and_reaches_the_plan() {
+    let config = config_with_priors(
+        r#"
+[modules.coffee.priors]
+summary = true
+"#,
+    )
+    .expect("summary is a valid key");
+    let module = config.modules.get("coffee").unwrap();
+    assert_eq!(module.priors.as_ref().unwrap().summary, Some(true));
+    assert!(pour::priors::PriorsPlan::build(module).summary);
+}
+
+#[test]
+fn an_l1_era_block_still_parses_with_summary_off() {
+    // The exact shape L1 shipped with: no `summary` key, explicit limit.
+    let config = config_with_priors(
+        r#"
+[modules.coffee.priors]
+match_on = ["bean", "roaster", "method"]
+rank_by = "rating desc"
+show = ["dose_g", { field = "rating", agg = "mean" }]
+limit = 5
+"#,
+    )
+    .expect("L1 block still valid");
+    let module = config.modules.get("coffee").unwrap();
+    let priors = module.priors.as_ref().unwrap();
+    assert_eq!(priors.summary, None);
+    let plan = pour::priors::PriorsPlan::build(module);
+    assert_eq!(plan.limit, 5, "an explicit limit still wins");
+    assert!(!plan.summary);
+}

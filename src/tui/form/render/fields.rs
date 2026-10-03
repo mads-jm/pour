@@ -19,13 +19,19 @@ use super::clip::{clip_line, single_line_skip};
 ///   0                      = preset row
 ///   1..=visible_count      = real fields (visible_indices[active_field - 1])
 ///   visible_count + 1      = submit button
+///
+/// Returns the screen-row height of every list item, in list order: the preset
+/// row, each visible field, the blank spacer, then `[ pour ]`. The priors panel
+/// lines its rows up from these heights, so a two-line item (a preset with a
+/// description, a callout textarea) shifts the panel exactly as it shifts the
+/// form.
 pub(super) fn render_fields(
     frame: &mut Frame,
     area: Rect,
     fields: &[FieldConfig],
     form_state: &FormState,
     has_picker: bool,
-) {
+) -> Vec<usize> {
     // Compute which fields are currently visible given the form's current values.
     // `vi` (visible index) is the render position; `ci` (config index) is the field's
     // position in the original `fields` slice.
@@ -361,6 +367,7 @@ pub(super) fn render_fields(
     )])));
 
     let item_count = items.len();
+    let item_heights: Vec<usize> = items.iter().map(ListItem::height).collect();
     // Screen rows above the active item and the rows it takes. Items are not
     // one row each: a preset description and a callout textarea add a row.
     let active_top: usize = items
@@ -439,6 +446,8 @@ pub(super) fn render_fields(
             super::composite::render_field_preset_picker(frame, area, picker);
         }
     }
+
+    item_heights
 }
 
 /// The `now …` half of a counter row: `64/96 oz`, or `—` before the read lands.

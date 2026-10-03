@@ -188,9 +188,10 @@ pub struct FormState {
     /// preset save or a schema-adjusted apply). Cleared on next user action.
     pub composite_status: Option<String>,
     /// Resolved read-only priors panel (§ pour-review-priors). `None` until the
-    /// first resolve completes or when the matched tier is empty (empty state).
+    /// first resolve completes. A resolved panel with no columns is the empty
+    /// state (no prior survived the hard filter).
     pub priors_panel: Option<crate::priors::ResolvedPanel>,
-    /// When `true`, the priors panel is collapsed to a one-line summary hint
+    /// When `true`, the priors panel is collapsed to a one-line hint
     /// (toggled with `Ctrl+R`). Read-only; never affects submit.
     pub priors_collapsed: bool,
 }
