@@ -4,8 +4,9 @@
 //! # Two paths, one corpus shape
 //!
 //! Both paths produce the same `Vec<Capture>` so the resolver (which owns the
-//! cascade, rank, and summary) behaves identically regardless of transport —
-//! this is the "search path + FS-scan fallback parity" the brief requires.
+//! hard filter, scoring, rank, and summary) behaves identically regardless of
+//! transport. This is the "search path + FS-scan fallback parity" the brief
+//! requires.
 //!
 //! - **API up:** list the module directory, then fetch each note as
 //!   `application/vnd.olrapi.note+json` to obtain pre-parsed frontmatter and
@@ -15,18 +16,18 @@
 //!   file and parse its frontmatter with [`parse_frontmatter`], using the file
 //!   mtime as the recency key.
 //!
-//! # Why corpus-fetch rather than per-tier `/search/` filtering
+//! # Why corpus-fetch rather than `/search/` filtering
 //!
-//! The new-bag cascade (§4.1) widens by re-querying with progressively fewer
-//! keys. Pushing each tier server-side would mean several `/search/` round
-//! trips whose union must still be de-duplicated and re-ranked client-side.
-//! Fetching the module's corpus once and letting the (pure, tested) resolver
-//! cascade in-process keeps the two transport paths *provably* equivalent and
-//! keeps all match/rank logic in one unit-testable place. The injection-safe
-//! JsonLogic builder (`super::jsonlogic`) is retained and tested as the
-//! documented `/search/` query surface — see [`build_tier_predicate`] — so the
-//! server-side-filter optimization is a localized future change, not a
-//! re-architecture.
+//! The resolver drops priors that fail the `show_when` gate filter, then
+//! scores the rest by how many `match_on` fields agree with the form (§4.1).
+//! A server-side `/search/` query can express the exact-match filter but not
+//! the scoring, so the client would still have to fetch and rank everything
+//! that passes. Fetching the module's corpus once and resolving in-process
+//! keeps the two transport paths equivalent and keeps all match and rank logic
+//! in one unit-testable place. The injection-safe JsonLogic builder
+//! (`super::jsonlogic`) is kept and tested as the query a future server-side
+//! filter would send (see [`build_tier_predicate`]), so pushing the gate
+//! filter to the server stays a local change.
 //!
 //! A conservative bound is applied: the corpus fetch stops after
 //! `MAX_CORPUS` notes so a large module directory cannot stall form-open.
@@ -44,7 +45,7 @@ use super::resolver::Capture;
 
 /// Upper bound on how many notes the corpus fetch reads per resolve. Keeps
 /// form-open responsive on large module directories; the resolver only shows
-/// `limit` rows anyway (default 5).
+/// `limit` columns anyway (default 3).
 const MAX_CORPUS: usize = 500;
 
 /// Fetch the module's prior captures from the given vault-relative directory.
@@ -138,13 +139,13 @@ fn frontmatter_from_json(map: &serde_json::Map<String, Value>) -> Frontmatter {
     fm
 }
 
-/// Build the JsonLogic predicate for a specific cascade tier (the first
-/// `tier_len` match keys), given the current form values.
+/// Build the JsonLogic predicate that requires the first `tier_len` match
+/// keys to equal the current form values.
 ///
-/// This is the documented, injection-safe `/search/` query surface. It is
-/// retained and tested even though the corpus-fetch path drives the cascade
-/// in-process (see module docs). Returns `None` when any active key lacks a
-/// value — that tier is not queryable and the caller widens.
+/// No caller uses it at runtime. The resolver filters and scores in-process
+/// (see module docs). It is the tested, injection-safe `/search/` query a
+/// future server-side filter would send. Returns `None` when any of those keys
+/// lacks a value, since the query can't be built.
 pub fn build_tier_predicate(
     plan: &PriorsPlan,
     tier_len: usize,

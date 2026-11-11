@@ -31,7 +31,7 @@ tags:
 - [ ] TUI test coverage for icon rendering
 - [ ] `secrets.toml` file permissions on Unix
 - [ ] `App.deferred_stderr` not drained on panic — autocreate diagnostics may be lost
-- [ ] `render_append_template` hardcodes `%Y-%m-%d` for `{{date}}` (only `path` rendering honors `date_format`)
+- [ ] `render_append_template` hardcodes `%Y-%m-%d` for `{{date}}` (only `path` rendering honors `date_format`) [#41](https://github.com/mads-jm/pour/issues/41)
 - [ ] `required` + `show_when` — clear value on hide or preserve for toggle-back?
 - [ ] Config migration — aspirational or planned? Annotate docs accordingly.
 - [ ] `semver` crate vs hand-rolled — ~30KB, eliminates edge cases.
